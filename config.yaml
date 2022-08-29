@@ -1,0 +1,33 @@
+TOPEX:
+  id: 1
+  bias: 0
+JASON-1: 
+  id: 2
+  bias: 0
+JASON-2: 
+  id: 3
+  bias: 0
+JASON-3: 
+  id: 4
+  bias: 0.0093
+ERS-1: 
+  id: 1001
+  bias: 0.0054
+ERS-2: 
+  id: 1002
+  bias: 0.0067
+ENVISAT1: 
+  id: 1003
+  bias: 0.0067
+CRYOSAT2: 
+  id: 1005
+  bias: 0.0137
+SARAL: 
+  id: 1004
+  bias: 0.0096
+SNTNL-3A: 
+  id: 1006
+  bias: 0.0083
+SNTNL-3B: 
+  id: 1007
+  bias: 0.0067

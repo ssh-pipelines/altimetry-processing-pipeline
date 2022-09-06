@@ -78,25 +78,28 @@ def ssh_smoothing(ssh: np.array, times: np.array) -> np.array:
 
     return ssh_smoothed
 
-def make_ds(data: dict) -> xr.Dataset:
+def make_ds(data: dict, times) -> xr.Dataset:
     '''
+    Convert dictionary of np arrays into an xarray Dataset object.
     '''
     variables = {k: xr.DataArray(v, dims=['time'])
                 for k, v in data.items()}
 
     ds = xr.Dataset(
         data_vars=variables,
-        coords=dict(time=data['times'])
+        coords=dict(time=times)
     )
+    ds.time.encoding['units'] = 'seconds since 1970-01-01'
 
     return ds
 
-def data_subset(ds: xr.Dataset, date: datetime) -> xr.Dataset:
+def date_subset(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     '''
+    Drop times outside of date
     '''
-    date_secs = date.timestamp()
-    tomorrow_secs = (date+timedelta(days=1)).timestamp()
-    ds = np.where((ds.time > date_secs) & (ds.time < tomorrow_secs))
+    today = str(date)[:10]
+    tomorrow = str(date + timedelta(days=1))[:10]
+    ds = ds.sel(time=slice(today, tomorrow))
     return ds
 
 

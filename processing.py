@@ -1,7 +1,7 @@
 import xarray as xr
 import numpy as np
 from datetime import datetime, timedelta
-
+import logging
 import processing_utils
 
 '''
@@ -29,6 +29,7 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     ds: the processed pass
     '''
     if ds.time_rel_eq.values is None:
+        logging.error("Pass is missing time_rel_eq values")
         raise Exception("No time dimension")
 
     data = {}
@@ -45,12 +46,14 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     if 'seaice_conc' in ds:
         data['seaice_conc'] = ds.seaice_conc.values
     else:
+        logging.info(f'Missing seaice_conc flag. Adding zeros array')
         data['seaice_conc'] = np.zeros(data['ssh'].shape, 'i')
 
     # Make qual_alt_rain_ice if it doesn't exist
     if 'qual_alt_rain_ice' in ds:
         data['qual_alt_rain_ice'] = ds.qual_alt_rain_ice.values
     else:
+        logging.info(f'Missing qual_alt_rain_ice flag. Adding zeros array')
         data['qual_alt_rain_ice'] = np.zeros(data['ssh'].shape, 'i')
 
     # Wrap lons
@@ -63,10 +66,12 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     if "latency" in ds:
         data['latency'] = ds.latency.values
     else:
+        logging.info(f'Missing latency flag. Adding zeros array')
         data['latency'] = np.zeros(data['ssh'].shape, 'i')
 
     # If this file uses Shailen's orbit, set latencies to 12.
     if "alt" in ds and "JPL orbital altitude" in ds.alt.attrs['long_name']:
+        logging.info(f'Modifying latency array to account for Shailens orbit')
         data['latency'] = np.full_like(ds.latency.values, 12)
 
     # Drop nans
@@ -78,6 +83,7 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
         times = [timedelta(microseconds=t*1000000) + eq_time_dt for t in ds.time_rel_eq.values[~nan_indeces]]
         
     except Exception as e:
+        logging.error(f'Error while computing time values. {e}')
         print(e)
         exit()
 

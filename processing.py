@@ -101,7 +101,6 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     ds.attrs['start_time'] = ds.time.values[0]
     ds.attrs['end_time'] = ds.time.values[-1]
     ds.attrs['sat_id'] = ds.attrs["mission_name"]
-    new_ds.to_netcdf('test.nc')
     return new_ds
 
 

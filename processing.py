@@ -39,6 +39,8 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     ds = processing_utils.apply_bias(ds, sat)
     data['ssh'] = ds.ssh.values
 
+    print(type(ds.time.values[0]))
+
     ssh_smoothed = processing_utils.ssh_smoothing(data['ssh'], ds.time.values)
     data['ssh_smoothed'] = ssh_smoothed
 
@@ -95,8 +97,8 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     new_ds = new_ds.sortby('time')
 
     # Set attrs
-    ds.attrs['track_id'] = ds.attrs["cycle_number"] * \
-        1000 + ds.attrs["pass_number"]
+    track = ds.attrs["cycle_number"] * 1000 + ds.attrs["pass_number"]
+    ds.attrs['track_id'] = track
 
     ds.attrs['start_time'] = ds.time.values[0]
     ds.attrs['end_time'] = ds.time.values[-1]
@@ -104,10 +106,75 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     return new_ds
 
 
-def s6_pass(ds: xr.Dataset, date: datetime) -> xr.Dataset:
+def s6_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
+
+
     ds = ds.rename_vars({'ssha': 'ssh'})
     pass
 
 
-def gsfc_pass(ds: xr.Dataset, date: datetime) -> xr.Dataset:
-    pass
+def gsfc_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
+    '''
+    Oh boy
+
+    These are different because the granules are per cycle ie: bigger timespan than a day.
+
+    We might want to subset first to speed up the rest of the processing.    
+    '''
+    print('good luck')
+    data = {}
+    ds = ds.rename_vars({'ssha': 'ssh'})
+
+    ds = processing_utils.filter_outliers(ds)
+    data['ssh'] = ds.ssh.values
+
+    ref_time = np.datetime64('1985-01-01T00:00:00Z')
+    times = [(t - ref_time) / np.timedelta64(1, 'ms') for t in ds.time.values]
+    print(type(ds.time.values[0]), type(times[0]))
+    exit()
+    ssh_smoothed = processing_utils.ssh_smoothing(data['ssh'], [(t - ref_time) / np.timedelta64(1, 's') for t in ds.time.values])
+    data['ssh_smoothed'] = ssh_smoothed
+
+    # Make seaice_conc if it doesn't exist
+    if 'seaice_conc' in ds:
+        data['seaice_conc'] = ds.seaice_conc.values
+    else:
+        logging.info(f'Missing seaice_conc flag. Adding zeros array')
+        data['seaice_conc'] = np.zeros(data['ssh'].shape, 'i')
+
+    # Make flag if it doesn't exist
+    if 'flag' in ds:
+        data['flag'] = ds.flag.values
+    else:
+        logging.info(f'Missing glag flag. Adding zeros array')
+        data['flag'] = np.zeros(data['ssh'].shape, 'i')
+
+    # Wrap lons
+    lons = ds.lon.values
+    lons[lons < 0.] += 360.
+    data['lon'] = lons
+    data['lat'] = ds.lat.values
+
+    # Get latencies
+    data['latency'] = np.full_like(data['ssh'].shape, 11, 'i')
+
+    # Drop nans
+    nan_indeces = np.isnan(ssh_smoothed)
+
+    times = ds.time.values
+
+    for k in data.keys():
+        data[k] = np.array(data[k])[~nan_indeces]
+
+    new_ds = processing_utils.make_ds(data, times)
+    new_ds = processing_utils.date_subset(new_ds, date)
+    new_ds = new_ds.sortby('time')
+
+    # Set attrs
+    track = ds.attrs["cycle_number"] * 1000 + ds.attrs["pass_number"]
+    ds.attrs['track_id'] = track
+
+    ds.attrs['start_time'] = ds.time.values[0]
+    ds.attrs['end_time'] = ds.time.values[-1]
+    ds.attrs['sat_id'] = ds.attrs["mission_name"]
+    return new_ds

@@ -23,10 +23,13 @@ ex: JASON_3, 2021-10-21, rads
 5. Write that file to S3
 '''
 
-def mock_s3_get() -> List[str]:
+def mock_s3_get(source) -> List[str]:
     logging.info('Mocking collecting pass paths from S3...')
-    paths = glob(
-        '/Users/username/Downloads/ssha-dev-data-minimal-backup-2022-07-21/rads/J3/j3p*c210.nc')
+    if source=='rads':
+        glob_string = '/Users/username/Downloads/ssha-dev-data-minimal-backup-2022-07-21/rads/J3/j3p*c210.nc'
+    elif source=='gsfc':
+        glob_string = '/Users/username/Downloads/GSFC-some-pass-files-2022-09-12/Merged_TOPEX_Jason_OSTM_Jason-3_Cycle_1072.V5_1.nc'
+    paths = glob(glob_string)
     paths.sort()
     return paths
 
@@ -38,6 +41,7 @@ def get_processor(source: str) -> Callable:
     elif source == 'gsfc':
         return gsfc_pass
     else:
+        logging.error(f'{source} not supported source.')
         raise Exception(f'{source} not supported source.')
 
 def merge_passes(inputs: List[xr.Dataset]) -> xr.Dataset:
@@ -51,7 +55,7 @@ def work(satellite: str, date: datetime, source: str):
     
     '''
     # Mock S3 - need to account for better date grabbing 
-    paths = mock_s3_get()
+    paths = mock_s3_get(source)
     processor = get_processor(source)
 
     processed_passes = []
@@ -73,7 +77,17 @@ def work(satellite: str, date: datetime, source: str):
 if __name__ == '__main__':
     configure_logging(file_timestamp=False)
 
-    date = datetime(2021, 10, 21)
-    satellite = 'JASON-3'
-    source = 'rads'
-    work(satellite, date, source)
+    def rads_test():
+        date = datetime(2021, 10, 21)
+        satellite = 'JASON-3'
+        source = 'rads'
+        work(satellite, date, source)
+
+    def gsfc_test():
+        date = datetime(2021,10,28)
+        satellite = 'MERGED_ALT'
+        source = 'gsfc'
+        work(satellite, date, source)
+
+    # rads_test()
+    gsfc_test()

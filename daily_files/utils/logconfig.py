@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 def configure_logging(file_timestamp: bool = True, log_level: str = 'INFO') -> None:
-    logs_directory = 'logs'
+    logs_directory = 'daily_files/logs'
     os.makedirs(logs_directory, exist_ok=True)
     log_filename = f'{datetime.now().isoformat() if file_timestamp else "log"}.log'
     logfile_path = os.path.join(logs_directory, log_filename)

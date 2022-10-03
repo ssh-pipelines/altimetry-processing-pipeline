@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 Processing functions that are shared across all pass sources
 '''
 
-with open('config.yaml', 'r') as f:
+with open('daily_files/config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 
@@ -22,7 +22,7 @@ def filter_outliers(ds: xr.Dataset, limit: float = 1.5) -> xr.Dataset:
 
 def apply_bias(ds: xr.Dataset, sat: str) -> xr.Dataset:
     '''
-    
+
     '''
     ds.ssh.values = ds.ssh + config[sat]['bias']
     return ds
@@ -78,12 +78,13 @@ def ssh_smoothing(ssh: np.array, times: np.array) -> np.array:
 
     return ssh_smoothed
 
+
 def make_ds(data: dict, times) -> xr.Dataset:
     '''
     Convert dictionary of np arrays into an xarray Dataset object.
     '''
     variables = {k: xr.DataArray(v, dims=['time'])
-                for k, v in data.items()}
+                 for k, v in data.items()}
 
     ds = xr.Dataset(
         data_vars=variables,
@@ -93,6 +94,7 @@ def make_ds(data: dict, times) -> xr.Dataset:
 
     return ds
 
+
 def date_subset(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     '''
     Drop times outside of date
@@ -101,6 +103,3 @@ def date_subset(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     tomorrow = str(date + timedelta(days=1))[:10]
     ds = ds.sel(time=slice(today, tomorrow))
     return ds
-
-
-

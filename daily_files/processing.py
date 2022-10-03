@@ -2,7 +2,7 @@ import xarray as xr
 import numpy as np
 from datetime import datetime, timedelta
 import logging
-import processing_utils
+import processing_utils as processing_utils
 
 '''
 
@@ -39,8 +39,6 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     ds = processing_utils.apply_bias(ds, sat)
     data['ssh'] = ds.ssh.values
 
-    print(type(ds.time.values[0]))
-
     ssh_smoothed = processing_utils.ssh_smoothing(data['ssh'], ds.time.values)
     data['ssh_smoothed'] = ssh_smoothed
 
@@ -75,22 +73,21 @@ def rads_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     if "alt" in ds and "JPL orbital altitude" in ds.alt.attrs['long_name']:
         logging.info(f'Modifying latency array to account for Shailens orbit')
         data['latency'] = np.full_like(ds.latency.values, 12)
-
+    
     # Drop nans
-    nan_indeces = np.isnan(ssh_smoothed)
+    nan_indices = np.isnan(ssh_smoothed)
 
     try:
         eq_time = ds.attrs["equator_time"]
         eq_time_dt = datetime.strptime(eq_time, "%Y-%m-%d %H:%M:%S.%f")
-        times = [timedelta(microseconds=t*1000000) + eq_time_dt for t in ds.time_rel_eq.values[~nan_indeces]]
-        
+        times = [timedelta(microseconds=t*1000000) + eq_time_dt for t in ds.time_rel_eq.values[~nan_indices]]
+
     except Exception as e:
         logging.error(f'Error while computing time values. {e}')
         print(e)
-        exit()
 
     for k in data.keys():
-        data[k] = np.array(data[k])[~nan_indeces]
+        data[k] = np.array(data[k])[~nan_indices]
 
     new_ds = processing_utils.make_ds(data, times)
     new_ds = processing_utils.date_subset(new_ds, date)
@@ -159,12 +156,12 @@ def gsfc_pass(ds: xr.Dataset, date: datetime, sat: str) -> xr.Dataset:
     data['latency'] = np.full_like(data['ssh'].shape, 11, 'i')
 
     # Drop nans
-    nan_indeces = np.isnan(ssh_smoothed)
+    nan_indices = np.isnan(ssh_smoothed)
 
     times = ds.time.values
 
     for k in data.keys():
-        data[k] = np.array(data[k])[~nan_indeces]
+        data[k] = np.array(data[k])[~nan_indices]
 
     new_ds = processing_utils.make_ds(data, times)
     new_ds = processing_utils.date_subset(new_ds, date)

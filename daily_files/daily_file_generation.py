@@ -4,11 +4,11 @@ import logging
 from typing import Callable, List
 
 import xarray as xr
-from utils.s3_utils import get_bucket
+from daily_files.utils.s3_utils import get_bucket
 
-from processing import gsfc_pass, rads_pass, s6_pass
-from utils.logconfig import configure_logging
-from utils import s3_utils
+from daily_files.processing import gsfc_pass, rads_pass, s6_pass
+from daily_files.utils.logconfig import configure_logging
+from daily_files.utils import s3_utils
 
 
 '''
@@ -36,9 +36,15 @@ def mock_s3_get(source) -> List[str]:
     return paths
 
 def get_paths_from_s3(date, source, satellite, bucket, profile=''):
-    key = f'pass_files/{source}/'
-    objs = s3_utils.get_objects(bucket, key)
 
+    if source == 'rads':
+        prefix = f'pass_files/{source}/'
+        objs = s3_utils.get_objects(bucket, prefix)
+    else:
+        if satellite == 'merged_alt':
+            bucket_name = 'podaac-ops-cumulus-protected/MERGED_TP_J1_OSTM_OST_CYCLES_V51/'
+        objs = s3_utils.get_podaac_objects(bucket_name)
+        
     paths = [o.key for o in objs if o.key[-1] != '/']
 
     return paths
@@ -54,10 +60,13 @@ def get_processor(source: str) -> Callable:
         logging.error(f'{source} not supported source.')
         raise Exception(f'{source} not supported source.')
 
-def merge_passes(inputs: List[xr.Dataset]) -> xr.Dataset:
+def merge_passes(inputs: List[xr.Dataset], paths: List[str]) -> xr.Dataset:
     logging.info(f'Merging processed passes into daily file.')
     ds = xr.concat(inputs, 'time')
     ds = ds.sortby('time')
+    
+    ds.attrs['source_files'] = [p.split('/')[-1] for p in paths]
+
     return ds
 
 def work(satellite: str, date: datetime, source: str):
@@ -81,7 +90,7 @@ def work(satellite: str, date: datetime, source: str):
         else:
             logging.info('Ignoring empty pass')
 
-    daily_ds = merge_passes(processed_passes)
+    daily_ds = merge_passes(processed_passes, paths)
     filename = f'{satellite}-alt_ssh{str(date)[:10].replace("-","")}.nc'
     out_path = f'tmp/{filename}'
     logging.info(f'Saving {out_path}')

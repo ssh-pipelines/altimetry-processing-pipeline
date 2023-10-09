@@ -1,0 +1,119 @@
+26 Jun 2023
+Notes on how to edit "./NewShapeFile/new_basin_polygons.shp" to fix boundary issues:
+
+1. delete #58 - Drake Passage polygon is not valid, and covered by other basins 
+2. Delete #10 - Great Barrier Reef - Covered by Coral Sea (#303)
+3. Delete #298 - Columbia River - too small for altimeter footprint
+4. Delete #297 - Yangtze River - small area
+5. Merge #294 - Saragasso Sea - Merge with North Atlantic (#3)
+6. Delete #290 - Canal do Norte - River Outlet
+7. Delete #289 - Canal do Sul - River Outlet
+8. Delete #288 - Canal Perigoso - River Outlet
+9. Delete #287 - "No Name" - River Outlet
+10. Delete #283 - "No Name" - River Outlet
+11. Delete #260 - Guba Gusinaya - Inland Estuary (also small) 
+12. Delete #259 - Ozero Mogotoyevo - Inland Estuary (also small)
+13. Delete #258 - Matochkin Shar Strait - Too small (less than 10 km across)
+14. Delete #255 - Amazon River - requires special processing
+15. Delete #251 - Seno de Skyring - Too small
+16. Delete #244 - "No Name" - Too Small
+17. Delete #242 - Wager Bay - Too Small
+18. Delete #241 - Sherman Basin - Too Small
+19. Delete #240 - Goldsmith Channel - Too Small
+20. Delete #239 - "No Name" - Too Small
+21. Delete #238 - Bathurst Inlet - Too Small
+22. Merge #230 - "No Name" - Merge with Amundsen Gulf (#107) (actually, ignoring this one after all)
+23. Delete #226 - Husky Lakes - Too Small
+24. Delete #225 - "No Name" - Too Small
+25. Delete #224 - Baird Inlet - Too Small
+26. Delete #221 - Smith Sound - Too Narrow
+27. Delete #220 - "No Name" - Too Narrow
+28. Delete #210 - Dardanelles
+29. Merge #197 - St Helena Bay - Merge with South Atlantic (#7) - weird thin strip
+30. Merge #196 - Baia de Mapulo - Merge with Mozambique Channel (#34) - thin strip
+31. Delete #193 - Bab el Mandeb - Too Narrow to mess with
+32. Delete #192 - Bosporus - Too Small
+33. Delete #178 - Estrecho de Magellanes - Too narrow
+34. Merge #160 - La Prouse Strait - Merge with Sea of Japan (#304) - Too Narrow
+35. Delete #137 - Sognefjorden - Too Narrow
+36. Delete #135 - Karskiye Strait - Too small to fix
+37. Delete #131 - Hamilton Inlet - Too Narrow
+38. Merge #113 - Lincoln Sea - Merge with Arctic (#1) & compare with Remko land mask - some parts of polygon seem to be misplaced (NOTE: This actually looks ok.  Leave alone)
+39. Merge #110 - Yucatan Channel - Merge with Caribbean Sea (#16)
+40. Delete #98 - Strait of Gibraltar - Too narrow, not worth keeping
+41. Change #75 - shift Strait of Florida northwestern boundary to follow bathmetry
+42. Merge #36 - Scotia Sea - Merge with Southern Ocean (#2) - Not sure why this is a separate polygon to being with
+43. Delete #32 - Luzon Strait - 
+
+Completed.  
+Note: In order to make this operation work on the original file, going back and
+pulling out the "ne_id" numbers for this list of "feature IDs".
+
+Feature ID  ne_id  name
+ 58  1159116269  Drake Passage         
+ 10  1159117285  Great Barrier Reef    
+298  1159120745  Columbia River        
+297  1159120729  Yangtze River         
+294  1159120667  Sargasso Sea          
+290  1159120591  Canal do Norte        
+289  1159120573  Canal do Sul          
+288  1159120555  Canal Perigoso        
+287  1159120537                        
+283  1159120473                        
+260  1159120055  Guba Gusinaya         
+259  1159120037  Ozero Mogotoyevo      
+258  1159120015  Matochkin Shar Strait 
+255  1159119967  Amazon River          
+251  1159119901  Seno de Skyring       
+244  1159119777                        
+242  1159119745  Wager Bay             
+241  1159119727  Sherman Basin         
+240  1159119707  Goldsmith Channel     
+239  1159119689                        
+238  1159119669  Bathurst Inlet        
+230  1159119523                        
+226  1159119455  Husky Lakes           
+225  1159119435                        
+224  1159119417  Baird Inlet           
+221  1159119367  Smith Sound           
+220  1159119343                        
+210  1159119155  Dardanelles           
+197  1159118925  St. Helena Bay        
+196  1159118905  Baia de Maputo        
+193  1159118853  Bab el Mandeb         
+192  1159118835  Bosporus              
+178  1159118553  Estrecho de Magellanes
+160  1159118231  La Prouse Strait    
+137  1159117781  Sognefjorden          
+135  1159117755  Karskiye Strait       
+131  1159117665  Hamilton Inlet        
+113  1159117355  Lincoln Sea           
+110  1159117301  Yucatan Channel       
+ 98  1159117067  Strait of Gibraltar   
+ 75  1159116625  Straits of Florida    
+ 36  1159115811  Scotia Sea            
+ 32  1159115729  Luzon Strait          
+
+delete list:
+delind=[1:4,6:21,23:28,32:33,35:37,40,43];
+
+merge list:  Note after further consideration, we'll just leave #230 (ne_id: 1159119523) alone
+
+ne_id (original) ne_id (merge with)
+1159120667 1159115057
+1159118925 1159115149
+1159118905 1159115771
+1159118231 1159115305
+1159117301 1159115379
+1159115811 1159115037
+
+Splits & Merges:
+1159117755 1159116231 1159115861
+
+Fix bad fjord placement (check Remko's mask), maybe merge with Arctic
+1159117355 1159115017
+
+Shift Florida Straigth NW boundary, slice from GOM
+1159116625 1159115399
+
+Finally, split SPac, Indian and SAtl Oceans to accommodate SO 

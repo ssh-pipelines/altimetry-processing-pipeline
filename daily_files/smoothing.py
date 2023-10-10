@@ -6,7 +6,7 @@ import logging
 
 
 '''
-Smoothing functions that are shared across all pass sources
+Smoothing functions that are shared across all data sources
 '''
 
 def mirror_nans(ssh_vals: np.ndarray) -> np.ndarray:
@@ -56,12 +56,10 @@ def ssh_smoothing(ds: xr.Dataset) -> xr.Dataset:
 
     We use xarray's reindex feature to automatically populate missing
     index values with NaNs. This works because we assume "time" has been 
-    indexed to each second by this point. For RADS data, this is handled
-    upstream.
+    indexed to each second by this point. 
     '''
     logging.info('Beginning smoothing...')
     start = time.time()
-
     
     ssh_smoothed = []
     times = np.arange(ds.time.values[0] - np.timedelta64(9, 's'), ds.time.values[-1] + np.timedelta64(10, 's'), dtype='datetime64[s]')

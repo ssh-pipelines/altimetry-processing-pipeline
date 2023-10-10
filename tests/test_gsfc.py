@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from datetime import datetime
 from daily_files.daily_file_generation import merge_passes
-from daily_files.processing import gsfc_pass
+from daily_files.processing import gsfc_processing
 
 
 class EndToEndGSFCProcessingTestCase(unittest.TestCase):   
@@ -17,7 +17,7 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
         processed_files = []
         for path in paths:
             ds = xr.open_dataset(path)
-            processed_files.append(gsfc_pass(ds, datetime(2022,1,18), 'gsfc'))
+            processed_files.append(gsfc_processing(ds, datetime(2022,1,18)))
         cls.daily_ds = merge_passes(processed_files, paths)
 
 

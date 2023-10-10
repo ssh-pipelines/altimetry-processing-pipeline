@@ -1,32 +1,31 @@
 # Daily File Generation
 
-This repo will eventually be for the containerized version of daily file code.
+*NOTE: repo is in active development and some or all functionalities described in the README may not be working or implemented.*
 
-The important code is in `processing.py` which will contain processing functions for each
-of our daily file data sources (rads, S6, GSFC). Independent from this repo will be a data
-harvesting repo - this daily file generation code assumes pass files from each source
-are staged on one of our buckets.
+Containerized software that supports generation of "Daily Files" used in the SSHA data pipeline. Container generates a single Daily File for a single satellite source. 
 
+Currently supported sources are:
+- GSFC altimeter data (`MERGED_TP_J1_OSTM_OST_CYCLES_V51`)
+- Sentinel 6 altimeter data support in progress
 
-## Rads processing notes
+## Overview
 
-1. rads_dates.py:
-Extract from file: TIME, LATS, LONS, SSH, SEA_ICE, FLAG1, FLAG2, Satellite, Phase, TRACK_ID, ColTitle, latencies, bad_tracks
-Modifications: TIME+= equator crossing time, SEA_ICE = seaice_conc or zeros np array, TRACK_ID = np array of track_id
+For data sources available from PODAAC and are thus available in CMR, CMR is queried for a given date which will return none, or 1, or more granules containing data on the given date. Each granule is harmonized and merged (if necessary) to create a single netCDF.
 
-2. rads_dates2.py:
-Works on sats2 = ['TOPEX','JASON-1','JASON-2','JASON-3'] first, then sats1 = ['ERS-1','ERS-2','ENVISAT1','CRYOSAT2','SARAL','SNTNL-3A','SNTNL-3B']:
-    getAllPass() -> grabs all .jsons that were saved in rads_dates.py
-    data_sort_dump() -> loops through all time steps:
-        - removes large absolute values
-        - applies ssh bias
-        - creates smoothed ssh
-        - subsets data that falls on day
-        - builds up complete "thisday" and "nextday" dictionaries - why both today and tomorrow?
-        - makes h5 file 'alt_ssh{0:d}{1:02d}{2:02d}.h5'
+Containers are given date and source parameters and execute the following steps:
+1. Query CMR for granules for date and source
+2. Process each granule. This includes data subsetting, smoothing, creation of data flags, and general harmonization to create a consistent Daily File product.
+3. Processed granules are merged if needed, and saved as a netCDF before being uploaded to an S3 bucket.
 
-What we want changed:
-- Remove all intermediary save to disks
-- End result is netcdf
-- Define some attributes (current daily files have none)
-- sat_id as attr, not array
+## Building the image
+From the root directory after cloning the repo:
+```
+docker build -t daily_files:latest .
+```
+
+## Running the container
+
+```
+docker run -e DATE={date} -e SOURCE={input_source} daily_files:latest
+```
+where `date` is of the format %Y%m%d and `input_source` is one of the support data sources: [`GSFC`, `S6`]

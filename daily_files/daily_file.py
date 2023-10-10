@@ -93,10 +93,6 @@ class DailyFile(ABC):
         self.ds = self.drop_dupe_times(self.ds)
         self.ds = self.filter_outliers(self.ds)
         
-        
-
-
-    
     def make_ssh_smoothed(self):
         self.ds = ssh_smoothing(self.ds)
     
@@ -117,6 +113,7 @@ class DailyFile(ABC):
         '''
         
         '''
+        logging.info('Mapping data points to their respective basin')
         poly_df = gpd.read_file('daily_files/ref_files/basin_shapefile/new_basin_polygons.shp')
         points_df = self.make_lonlat_points(self.ds.latitude.values, self.ds.longitude.values)
         join_df = gpd.sjoin(points_df, poly_df, how='left',predicate="within")
@@ -189,9 +186,6 @@ class DailyFile(ABC):
 class GSFC_DailyFile(DailyFile):
     
     def __init__(self, ds:xr.Dataset, date: datetime):
-        '''
-
-        '''
         ssh: np.ndarray = ds.ssha.values / 1000 # Convert from mm
         lats: np.ndarray = ds.lat.values
         lons: np.ndarray = ds.lon.values

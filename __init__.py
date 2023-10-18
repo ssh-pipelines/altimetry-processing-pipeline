@@ -1,2 +1,2 @@
-import daily_files.processing
-import daily_files.daily_file_generation
+import daily_files.processing.gsfc_daily_file
+import daily_files.daily_file_job

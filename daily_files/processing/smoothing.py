@@ -54,19 +54,23 @@ def ssh_smoothing(ds: xr.Dataset) -> xr.Dataset:
     '''
     Calculate smoothed ssh values and add to ds.
 
-    We use xarray's reindex feature to automatically populate missing
+    We use the pandas reindex feature to automatically populate missing
     index values with NaNs. This works because we assume "time" has been 
     indexed to each second by this point. 
     '''
     logging.info('Beginning smoothing...')
     start = time.time()
     
-    ssh_smoothed = []
+    # List of all times with +/- 9 second padding
     times = np.arange(ds.time.values[0] - np.timedelta64(9, 's'), ds.time.values[-1] + np.timedelta64(10, 's'), dtype='datetime64[s]')
+    
+    # Convert to pandas and reindex based on padded time list. Fills with NaNs at new index locations
     df = pd.DataFrame({'ssh': ds.ssh.values, 'nasa_flag': ds.nasa_flag.values}, ds.time.values)
-
     padded_df = df.reindex(times)
 
+    # Iterate through original time values, slicing the reindexed or padded pandas version of data to get filled in 19 point window
+    # Compute smoothed value for each original time step
+    ssh_smoothed = []
     for cur_time in ds.time.values:
 
         window_start = cur_time - np.timedelta64(9, 's')

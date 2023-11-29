@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 import logging
-from typing import Iterable
+import os
+import pickle
 import xarray as xr
 import numpy as np
 import geopandas as gpd
 import shapely
+import s3fs
 
 from datetime import datetime, timedelta
 
@@ -22,7 +24,7 @@ class DailyFile(ABC):
     - Time
     
     Individual subclasses will implement:
-    make_daily_file_ds (defines sequence of processing):
+        make_daily_file_ds (defines sequence of processing):
         make_nasa_flag()
         clean_date()
         make_ssh_smoothed()
@@ -31,7 +33,7 @@ class DailyFile(ABC):
     make_nasa_flag (creates boolean flag from source data flags)
     '''
     
-    def __init__(self, ssh: np.ndarray, lat: np.ndarray, lon: np.ndarray, time: np.ndarray, sat_cycle: np.ndarray, sat_pass: np.ndarray):
+    def __init__(self, ssh: np.ndarray, lat: np.ndarray, lon: np.ndarray, time: np.ndarray, sat_cycle: np.ndarray, sat_pass: np.ndarray, mss_path: str):
         self.time: np.ndarray = time
         self.data = {
             'ssh': xr.DataArray(ssh, dims=['time']),
@@ -40,9 +42,9 @@ class DailyFile(ABC):
             'cycle': xr.DataArray(sat_cycle, dims=['time']),
             'pass': xr.DataArray(sat_pass, dims=['time'])
         }
-        
+        self.mss = self.get_mss(mss_path)
         self.ds = self.make_ds()
-        
+
     @abstractmethod
     def make_daily_file_ds(self):
         '''
@@ -56,6 +58,13 @@ class DailyFile(ABC):
         '''
         Abstract method for defining the NASA flag variable.
         Defined per source dataset
+        '''
+        raise NotImplementedError
+    
+    @abstractmethod
+    def set_source_attrs(self):
+        '''
+        Abstract method for defining source specific metadata
         '''
         raise NotImplementedError
 
@@ -92,9 +101,23 @@ class DailyFile(ABC):
         '''
         Subsets data to date, drops duplicate times and filters outliers
         '''
+        logging.info('Performing subsetting by date and filtering outlier values')
         self.ds = self.date_subset(self.ds, date)
         self.ds = self.drop_dupe_times(self.ds)
         self.ds = self.filter_outliers(self.ds)
+        
+    def get_mss(self, mss_path: str):
+        s3 = s3fs.S3FileSystem(key=os.environ['AWS_ACCESS_KEY_ID'],
+                            secret=os.environ['AWS_SECRET_ACCESS_KEY'], 
+                            token=os.environ['AWS_SESSION_TOKEN'])
+        mss_file_like = s3.open(mss_path)
+        mss_interpolator = pickle.load(mss_file_like)
+        return mss_interpolator
+        
+    def mss_swap(self):
+        logging.info('Applying mss swap to ssh values...')
+        mss_corr_interponrads = self.mss.ev(self.ds.latitude, self.ds.longitude)
+        self.ds.ssh.values = self.ds.ssh.values + mss_corr_interponrads
         
     def make_ssh_smoothed(self):
         self.ds = ssh_smoothing(self.ds)
@@ -122,12 +145,23 @@ class DailyFile(ABC):
         join_df = gpd.sjoin(points_df, poly_df, how='left',predicate="within")
         self.ds['basin_flag'] = (('time'), join_df.feature_id.values)
     
-    def set_latlon_attrs(self):
-        self.ds.latitude.attrs = {'units': 'degrees_north'}
-        self.ds.longitude.attrs = {'units': 'degrees_east'}
-    
-    
-    def set_ssh_var_attrs(self):
+    def set_var_attrs(self):
+        # Lat/lon coordinates
+        self.ds['latitude'].attrs = {'long_name': 'latitude', 
+                                     'standard_name': 'latitude', 
+                                     'units': 'degrees_north'}
+        self.ds['longitude'].attrs = {'long_name': 'longitude', 
+                                      'standard_name': 'longitude', 
+                                      'units': 'degrees_east'}
+        
+        # Time
+        self.ds['time'].attrs = {'long_name': 'time', 'standard_name': 'time'}
+        
+        # Cycle and pass
+        self.ds['cycle'].attrs = {'long_name': 'cycle number', 'standard_name': 'cycle'}
+        self.ds['pass'].attrs = {'long_name': 'pass number', 'standard_name': 'pass'}
+
+        # SSH variables
         for ssh_var in ['ssh', 'ssh_smoothed']:
             self.ds[ssh_var].attrs = {
                 'valid_min': np.nanmin(self.ds[ssh_var]), 
@@ -135,40 +169,62 @@ class DailyFile(ABC):
                 'units': 'm', 
                 'coordinates': 'latitude longitude'
             }
+        self.ds['ssh'].attrs['long_name'] = 'sea surface height'
+        self.ds['ssh'].attrs['standard_name'] = 'ssh'
+        self.ds['ssh_smoothed'].attrs['long_name'] = 'smoothed sea surface height'
+        self.ds['ssh_smoothed'].attrs['standard_name'] = 'ssh_smoothed'
         
+        # Basin flag
+        self.ds['basin_flag'].attrs = {'long_name': 'basin flag mapping point to ocean basin', 
+                                       'standard_name': 'basin_flag', 
+                                       'reference': 'url_to_basin_reference'}
+        
+        # Nasa flag
+        self.ds['nasa_flag'].attrs = {'long_name': 'nasa ssh quality flag', 
+                                       'standard_name': 'nasa_flag', 
+                                       'flag_meanings': 'good bad'}
     
     def set_global_attrs(self):
+        '''
+        Sets the global attrs that are common across all sources. Individual processors
+        set source specific global attrs via the abstract set_source_attrs().
+        '''
         global_attrs = {
-            'title': "Example Sea Surface Height Data",
-            'institution': "NASA",
-            'source': "Simulated data for example purposes",
+            'title': "Standardized Along-Track Sea Surface Height",
+            'institution': "NASA/Jet Propulsion Laboratory",
+            'source': "", # Source specific
+            'source_url': "", # Source specific
             'history': f"Created on {datetime.now().isoformat(timespec='seconds')}",
-            'references': "None",
-            'comment': "This dataset is for illustrative purposes only.",
+            'references': "", # Source specific
+            'comment': "Sea Surface Height data are computed relative to the mean sea surface specified in the global attribute: mean_sea_surface.",
+            'mean_sea_surface': "",
             'Conventions': "CF-1.7",
             'Metadata_Conventions': "Unidata Dataset Discovery v1.0",
             'standard_name_vocabulary': "CF Standard Name Table v29",
             'id': "PODAAC-EXAMPLE-DATA",
             'naming_authority': "org.nasa.podaac",
-            'project': "Example Project",
+            'project': "NASA-SSH",
             'processing_level': "Level 2",
+            'product_generation_step': "1",
             'acknowledgement': "This data is provided by NASA\'s PO.DAAC.",
             'license': "Public Domain",
-            'product_version': "1.0",
-            'summary': "Example dataset containing sea surface height data along a satellite ground track.",
-            'keywords': "Earth Science, Oceans, Ocean Topography, Sea Surface Height",
+            'product_version': "2401",
+            'summary': "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in \"mean_sea_surface\". \
+                Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in climate-quality \
+                    scientific studies without additional adjustments to account for inter-satellite biases.",
+            'keywords': "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
             'keywords_vocabulary': "NASA Global Change Master Directory (GCMD) Science Keywords",
-            'platform': "Example Satellite",
-            'instrument': "Example Instrument",
+            'platform': "Satellite",
+            'instrument': "Altimeter",
             # 'cdm_data_type': "Point", # This causes issues when opening via Panoply
             'publisher_name': "NASA PO.DAAC",
             'publisher_url': "https://podaac.jpl.nasa.gov/",
             'publisher_email': "podaac@podaac.jpl.nasa.gov",
-            'creator_name': "Your Name",
-            'creator_email': "your.email@example.com",
-            'creator_url': "https://www.example.com",
-            'geospatial_lat_min': '-66LL',
-            'geospatial_lat_max': '66LL',
+            'creator_name': "NASA-SSH",
+            # 'creator_email': "your.email@example.com",
+            'creator_url': "https://podaac.jpl.nasa.gov/NASA-SSH/",
+            'geospatial_lat_min': '', # Source specific
+            'geospatial_lat_max': '', # Source specific
             'geospatial_lon_min': '-180LL',
             'geospatial_lon_max': '180LL',
             'time_coverage_start': str(self.ds.time.values[0])[:19] + 'Z',
@@ -181,7 +237,6 @@ class DailyFile(ABC):
             self.ds.attrs[k] = v
             
     def set_metadata(self):
-        self.set_latlon_attrs()
-        self.set_ssh_var_attrs()
+        self.set_var_attrs()
         self.set_global_attrs()
         

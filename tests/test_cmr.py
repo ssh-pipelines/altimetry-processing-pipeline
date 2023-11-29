@@ -1,9 +1,8 @@
 from typing import Iterable
 import unittest
-import xarray as xr
-import numpy as np
 from datetime import datetime
 from daily_files.fetching.cmr_query import CMR_Query, CMR_Granule
+from daily_files.utils.logconfig import configure_logging
 
 
 class EndToEndCMRQueryTestCase(unittest.TestCase):   
@@ -11,7 +10,9 @@ class EndToEndCMRQueryTestCase(unittest.TestCase):
     concept_id: str
     
     @classmethod
-    def setUpClass(cls) -> None:      
+    def setUpClass(cls) -> None:
+        configure_logging(False, 'INFO', True)
+        
         gsfc_concpept_id = 'C2204129664-POCLOUD'
         date = datetime(2021,12,29)
         cmr_query = CMR_Query(gsfc_concpept_id, date)

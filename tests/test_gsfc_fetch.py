@@ -1,12 +1,15 @@
 import unittest
 from daily_files.daily_file_job import Daily_File_Job
+from daily_files.utils.logconfig import configure_logging
 
 
 class GSFCFetchTestCase(unittest.TestCase):   
     daily_file_generator: Daily_File_Job
     
     @classmethod
-    def setUpClass(cls) -> None:  
+    def setUpClass(cls) -> None:
+        configure_logging(False, 'INFO', True)
+        
         date = '2020-01-01'
         source = 'GSFC'
         satellite = 'GSFC'

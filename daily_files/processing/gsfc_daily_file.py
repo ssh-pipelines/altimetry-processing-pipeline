@@ -1,33 +1,45 @@
+import logging
 import xarray as xr
 import numpy as np
 from datetime import datetime
-
+from typing import TextIO
 from daily_files.processing.daily_file import DailyFile
 
 class GSFC_DailyFile(DailyFile):
-    
-    def __init__(self, ds:xr.Dataset, date: datetime):
+
+    def __init__(self, file_obj:TextIO, date: datetime):
+        ds = xr.open_dataset(file_obj, engine='h5netcdf')
+        
         ssh: np.ndarray = ds.ssha.values / 1000 # Convert from mm
         lats: np.ndarray = ds.lat.values
         lons: np.ndarray = ds.lon.values
         times: np.ndarray = ds.time.values
         cycles: np.ndarray = np.full_like(ds.ssha.values, ds.attrs["merged_cycle"])
         passes: np.ndarray = ds["reference_orbit"].values
-        
-        super().__init__(ssh, lats, lons, times, cycles, passes)
-        
+
+        self.source_mss = 'DTU15'
+        self.target_mss = 'DTU21'
+        mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
+        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
+
+        super().__init__(ssh, lats, lons, times, cycles, passes, mss_path)
+    
         self.make_daily_file_ds(date, ds.flag, ds.Surface_Type.values)
     
-    
+
     def make_daily_file_ds(self, date: datetime, flag: xr.DataArray, surface_type: np.ndarray):
-        # Add in the gsfc flags we use in order to maintain consistant
-        # temporal cropping of data. Will later be removed from ds during 
-        # "nasa_flag" creation
+        '''
+        Ordering of steps to create daily file from GSFC granule
+        '''
         self.make_nasa_flag(flag, surface_type)
         self.clean_date(date)
+        self.mss_swap()
         self.make_ssh_smoothed()
         self.map_points_to_basin()
-        self.set_metadata()
+        self.set_var_attrs()
+        self.set_global_attrs()
+        self.set_source_attrs()
+        
     
     def gsfc_flag_splitting(self, gsfc_flag: xr.DataArray) -> dict:
         '''
@@ -54,6 +66,7 @@ class GSFC_DailyFile(DailyFile):
         Contiguous_1Hz_Data = 0
         Sigma_H_of_fit>15cm = 0
         '''
+        logging.info('Converting GSFC flag to NASA flag')
         split_flags = self.gsfc_flag_splitting(gsfc_flag)
         valid_array = np.where((surface_type == 0) | (surface_type == 2), 0, 1)
         flag_list = ['Radiometer_Observation_is_Suspect', 'Sigma0_Ku_Band_Out_of_Range', 'Significant_Wave_Height>8m', 
@@ -68,4 +81,21 @@ class GSFC_DailyFile(DailyFile):
         
         all_flags = [split_flags[flag] for flag in split_flags.keys()]                
         self.ds['gsfc_flag'] = (('time', 'flag_dim'), np.array(all_flags).T.astype('bool'))
+        self.ds['gsfc_flag'].attrs = {
+            'standard_name': 'source_data_flag',
+            'long_name': 'source data flag',
+            'Flag info': ', '.join(gsfc_flag.attrs['flag_meanings'].split())
+        }
         self.ds.gsfc_flag.attrs['Flag info'] = ', '.join(gsfc_flag.attrs['flag_meanings'].split())
+        
+    def set_source_attrs(self):
+        '''
+        Sets GSFC specific global attributes
+        '''
+        self.ds.attrs['source'] = "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 5.1"
+        self.ds.attrs['source_url'] = "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V51"
+        self.ds.attrs['references'] = "https://doi.org/10.5067/ALTUG-TJ151"
+        self.ds.attrs['geospatial_lat_min'] = "-67LL"
+        self.ds.attrs['geospatial_lat_max'] = "67LL"
+        self.ds.attrs['mean_sea_surface'] = self.target_mss
+        self.ds.attrs['mean_sea_surface_comment'] = f'Mean sea surface has been switched from {self.source_mss} to {self.target_mss}'

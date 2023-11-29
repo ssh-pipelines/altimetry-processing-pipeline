@@ -8,4 +8,6 @@ RUN pip install --upgrade pip \
 COPY ./daily_files ${LAMBDA_TASK_ROOT}/daily_files
 COPY app.py .
 
+ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/daily_files"
+
 CMD [ "app.handler" ]

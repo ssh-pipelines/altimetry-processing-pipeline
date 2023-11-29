@@ -1,21 +1,22 @@
 from datetime import datetime
 import logging
 from typing import Iterable
-from daily_files.utils.s3_utils import upload_s3
-
 import xarray as xr
+import os
+
+from daily_files.utils.s3_utils import upload_s3
+from daily_files.utils.logconfig import configure_logging
+
 from daily_files.fetching.fetcher import Fetcher
 from daily_files.fetching.cmr_query import CMR_Granule
-from daily_files.processing.daily_file import DailyFile
-
 from daily_files.fetching.gsfc_fetch import GSFC_Fetch
+from daily_files.fetching.s6_fetch import S6_Fetch
 
+from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.gsfc_daily_file import GSFC_DailyFile
-# from daily_files.processing.s6_daily_file import S6_DailyFile
+from daily_files.processing.s6_daily_file import S6_DailyFile
 # from daily_files.processing.cmems_daily_file import CMEMS_DailyFile
 
-
-from daily_files.utils.logconfig import configure_logging
 
 class SourceNotSupported(Exception):
     pass
@@ -27,10 +28,10 @@ class Daily_File_Job():
             'fetcher': GSFC_Fetch,
             'processor': GSFC_DailyFile
         },
-        # 'S6': {
-        #     'fetcher': Podaac_S3_Fetch,
-        #     'processor': S6_DailyFile
-        # },
+        'S6': {
+            'fetcher': S6_Fetch,
+            'processor': S6_DailyFile
+        },
         # 'CMEMS': {
         #     'fetcher': Podaac_S3_Fetch,
         #     'processor': S3_Bucket_Fetch
@@ -40,6 +41,7 @@ class Daily_File_Job():
     DAILY_FILE_BUCKET = 'example-bucket'
     
     def __init__(self, date: str, source: str, satellite: str):
+        logging.info(f'Starting {source} job for {date}')
         self.date: datetime = datetime.strptime(date, '%Y-%m-%d')
         self.source: str = source
         self.satellite: str = satellite
@@ -65,6 +67,7 @@ class Daily_File_Job():
         return processor
     
     def fetch_granules(self):
+        logging.info('Fetching granules...')
         self.fetcher = self.fetch_type(self.date)
         self.granules: Iterable[CMR_Granule] = self.fetcher.granules
         
@@ -96,18 +99,18 @@ def work(job: Daily_File_Job):
     processed_passes = []
     for granule in job.granules:
         logging.info(f'Processing {granule.title}')
-        ds = xr.open_dataset(job.fetcher.fetch(granule.s3_url))
-        processed_ds = job.processor(ds, job.date).ds
+        file_obj = job.fetcher.fetch(granule.s3_url)
+        processed_ds = job.processor(file_obj, job.date).ds
         if processed_ds.time.size:
             processed_passes.append(processed_ds)
         else:
-            logging.info('Ignoring empty pass')
+            logging.info('Ignoring empty granule')
             
-    source_granule_names = [granule['title'] for granule in job.granules]
+    source_granule_names = [granule.title for granule in job.granules]
     daily_ds = merge_passes(processed_passes, source_granule_names)
     
     filename = f'{job.satellite}-alt_ssh{str(job.date)[:10].replace("-","")}.nc'
-    out_path = f'tmp/{filename}'
+    out_path = f'/tmp/{filename}'
     save_ds(daily_ds, out_path)
     
     s3_output_path = f'daily_files/{job.satellite}/{job.date.year}/{filename}'
@@ -115,12 +118,14 @@ def work(job: Daily_File_Job):
         
 
 def start_job(event: dict):
-    configure_logging(file_timestamp=False)
-
     date = event['date']
     source = event['source']
     satellite = event['satellite']
+    os.environ['EARTHDATA_USER'] = event['EARTHDATA_USER']
+    os.environ['EARTHDATA_PASSWORD'] = event['EARTHDATA_PASSWORD']    
     
+    configure_logging(file_timestamp=False, log_level=event.get('log_level', 'INFO'))
+        
     daily_file_generator = Daily_File_Job(date, source, satellite)
     daily_file_generator.fetch_granules()
     work(daily_file_generator)

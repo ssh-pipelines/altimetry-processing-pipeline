@@ -15,5 +15,5 @@ class S6_Collections():
     S6_COLLECTIONS: Iterable[S6_Collection] = [
             S6_Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08', 'C2619443998-POCLOUD', 1),
             S6_Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08_UNVALIDATED', 'C2619444006-POCLOUD', 2),
-            S6_Collection('JASON_CS_S6A_L2_ALT_LR_STD_OST_STC_F', 'C1968980609-POCLOUD', 3),
+            S6_Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F', 'C1968980609-POCLOUD', 3),
         ]

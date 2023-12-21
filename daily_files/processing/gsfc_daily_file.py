@@ -9,6 +9,7 @@ class GSFC_DailyFile(DailyFile):
 
     def __init__(self, file_obj:TextIO, date: datetime):
         ds = xr.open_dataset(file_obj, engine='h5netcdf')
+        ds = ds.where(~np.isnat(ds.time), drop=True)
         
         ssh: np.ndarray = ds.ssha.values / 1000 # Convert from mm
         lats: np.ndarray = ds.lat.values

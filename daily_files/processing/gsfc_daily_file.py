@@ -1,22 +1,25 @@
+import ast
 import logging
 import xarray as xr
 import numpy as np
+import pandas as pd
 from datetime import datetime
 from typing import TextIO
 from daily_files.processing.daily_file import DailyFile
+from daily_files.collection_metadata import AllCollections
 
-class GSFC_DailyFile(DailyFile):
+class GSFCDailyFile(DailyFile):
 
-    def __init__(self, file_obj:TextIO, date: datetime):
+    def __init__(self, file_obj:TextIO, date: datetime, collection_id: str):
         ds = xr.open_dataset(file_obj, engine='h5netcdf')
-        ds = ds.where(~np.isnat(ds.time), drop=True)
-        
         ssh: np.ndarray = ds.ssha.values / 1000 # Convert from mm
         lats: np.ndarray = ds.lat.values
         lons: np.ndarray = ds.lon.values
         times: np.ndarray = ds.time.values
         cycles: np.ndarray = np.full_like(ds.ssha.values, ds.attrs["merged_cycle"])
-        passes: np.ndarray = ds["reference_orbit"].values
+        passes: np.ndarray = self.compute_passes(ds)
+
+        self.collection_id = collection_id
 
         self.source_mss = 'DTU15'
         self.target_mss = 'DTU21'
@@ -24,21 +27,34 @@ class GSFC_DailyFile(DailyFile):
         mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
 
         super().__init__(ssh, lats, lons, times, cycles, passes, mss_path)
-    
+        
+        self.og_ds = ds
         self.make_daily_file_ds(date, ds.flag, ds.Surface_Type.values)
     
-
+    def compute_passes(self, ds: xr.Dataset) -> np.ndarray:
+        '''
+        Computes passes using look up table that converts a reference_orbit and index value to pass number.
+        '''
+        logging.info('Computing pass values')
+        df = pd.read_csv('daily_files/ref_files/complete_gsfc_pass_lut.csv', converters={'id': str}).set_index('id')
+        
+        # Convert reference_orbit and index from GSFC file to 7 digit long, left-padded string
+        ds_ids = [str(orbit).zfill(3)+str(index).zfill(4) for orbit, index in zip(ds.reference_orbit.values, ds['index'].values)]
+        passes = df.loc[ds_ids]['pass'].values
+        return passes
+    
     def make_daily_file_ds(self, date: datetime, flag: xr.DataArray, surface_type: np.ndarray):
         '''
         Ordering of steps to create daily file from GSFC granule
         '''
         self.make_nasa_flag(flag, surface_type)
         self.clean_date(date)
+        if self.ds.time.size < 2:
+            return
         self.mss_swap()
         self.make_ssh_smoothed()
         self.map_points_to_basin()
-        self.set_var_attrs()
-        self.set_global_attrs()
+        self.set_metadata()
         self.set_source_attrs()
         
     
@@ -76,7 +92,7 @@ class GSFC_DailyFile(DailyFile):
         for flag in flag_list:
             valid_array = np.logical_or(valid_array, split_flags[flag])
         self.ds['nasa_flag'] = (('time'), valid_array)
-        self.ds.nasa_flag.attrs['flag_derivation'] = 'Logical AND of Surface_Type = 0 OR 2, Radiometer_Observation_is_Suspect = 0, \
+        self.ds['nasa_flag'].attrs['flag_derivation'] = 'Logical AND of Surface_Type = 0 OR 2, Radiometer_Observation_is_Suspect = 0, \
             Attitude_Out_of_Range = 0, Sigma0_Ku_Band_Out_of_Range = 0, Possible_Rain_Contamination = 0, Sea_Ice_Detected = 0, \
             Significant_Wave_Height>8m = 0, Any_Applied_SSH_Correction_Out_of_Limits = 0, Contiguous_1Hz_Data = 0, Sigma_H_of_fit>15cm = 0'
         
@@ -87,16 +103,17 @@ class GSFC_DailyFile(DailyFile):
             'long_name': 'source data flag',
             'Flag info': ', '.join(gsfc_flag.attrs['flag_meanings'].split())
         }
-        self.ds.gsfc_flag.attrs['Flag info'] = ', '.join(gsfc_flag.attrs['flag_meanings'].split())
         
     def set_source_attrs(self):
         '''
         Sets GSFC specific global attributes
         '''
-        self.ds.attrs['source'] = "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 5.1"
-        self.ds.attrs['source_url'] = "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V51"
-        self.ds.attrs['references'] = "https://doi.org/10.5067/ALTUG-TJ151"
+        collection_meta = AllCollections.collections[self.collection_id]
+        self.ds.attrs['source'] = collection_meta.source
+        self.ds.attrs['source_url'] = collection_meta.source_url
+        self.ds.attrs['references'] = collection_meta.reference
         self.ds.attrs['geospatial_lat_min'] = "-67LL"
         self.ds.attrs['geospatial_lat_max'] = "67LL"
         self.ds.attrs['mean_sea_surface'] = self.target_mss
-        self.ds.attrs['mean_sea_surface_comment'] = f'Mean sea surface has been switched from {self.source_mss} to {self.target_mss}'
+        self.ds.attrs['mean_sea_surface_comment'] = f'Mean sea surface has been converted from source native {self.source_mss} to {self.target_mss}'
+        self.ds.attrs['absolute_offset_applied'] = 0

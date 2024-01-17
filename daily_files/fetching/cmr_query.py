@@ -7,8 +7,10 @@ from cmr import GranuleQuery
 class S3NotFound(Exception):
     """Raise for S3 URL not available in CMR metadata exception"""
 
-class CMR_Granule():
-    
+class CMRGranule():
+    '''
+    Class for storing granule level metadata
+    '''
     def __init__(self, query_result: dict):
         self.granule_id: str = query_result.get('id')
         self.title: str = query_result.get('title')
@@ -24,14 +26,17 @@ class CMR_Granule():
                 return link['href']
         raise S3NotFound()
 
-class CMR_Query():
-    
+
+class CMRQuery():
+    '''
+    Class for querying CMR for granules for a given collection concept id and date
+    '''
     def __init__(self, concept_id: str, date: datetime):
         self.concept_id: str = concept_id
         self.start_date: datetime = date
         self.end_date: datetime = self.start_date + timedelta(days=1) - timedelta(seconds=1)
-        
-    def query_with_wait(self):
+             
+    def granule_query_with_wait(self):
         api = GranuleQuery()
         max_retries = 3
         attempt = 1
@@ -45,13 +50,13 @@ class CMR_Query():
         logging.error('Unable to query CMR')
         raise RuntimeError
 
-    def query(self) -> Iterable[CMR_Granule]:
+    def query(self) -> Iterable[CMRGranule]:     
         api = GranuleQuery()
         try:
             query_results = api.concept_id(self.concept_id).provider('POCLOUD').temporal(self.start_date, self.end_date).get_all()
         except RuntimeError:
-            query_results = self.query_with_wait()
-        cmr_granules = [CMR_Granule(result) for result in query_results]
+            query_results = self.granule_query_with_wait()
+        cmr_granules = [CMRGranule(result) for result in query_results]
         logging.info(f'Found {len(cmr_granules)} granule(s) from CMR query')
         return cmr_granules      
         

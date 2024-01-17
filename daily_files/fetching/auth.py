@@ -1,11 +1,9 @@
 import base64
 import json
-import logging
 import requests
-import os
 
 
-class Podaac_S3_Creds():
+class PodaacS3Creds():
   
     def __init__(self, username: str, password: str):
         self.auth = f'{username}:{password}'

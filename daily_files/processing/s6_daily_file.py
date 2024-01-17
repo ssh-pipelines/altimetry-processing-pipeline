@@ -4,12 +4,14 @@ import numpy as np
 from datetime import datetime
 
 from daily_files.processing.daily_file import DailyFile
+from daily_files.collection_metadata import AllCollections
 
-class S6_DailyFile(DailyFile):
+class S6DailyFile(DailyFile):
     
-    def __init__(self, file_obj:TextIO, date: datetime):
+    def __init__(self, file_obj:TextIO, date: datetime, collection_id: str):
         ds = self.extract_grouped_data(file_obj)
         self.original_ds = ds
+        self.collection_id = collection_id
         
         ssh: np.ndarray = ds.ssha.values
         lats: np.ndarray = ds.latitude.values
@@ -18,7 +20,12 @@ class S6_DailyFile(DailyFile):
         cycles: np.ndarray = np.full_like(ds.ssha.values, ds.attrs["cycle_number"])
         passes: np.ndarray = np.full_like(ds.ssha.values, ds.attrs["pass_number"])
         
-        super().__init__(ssh, lats, lons, times, cycles, passes)
+        self.source_mss = 'DTU18'
+        self.target_mss = 'DTU21'
+        mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
+        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
+        
+        super().__init__(ssh, lats, lons, times, cycles, passes, mss_path)
         
         self.make_daily_file_ds(date)
     
@@ -41,25 +48,19 @@ class S6_DailyFile(DailyFile):
     
     
     def make_daily_file_ds(self, date: datetime):
-        # Add in the gsfc flags we use in order to maintain consistant
-        # temporal cropping of data. Will later be removed from ds during 
-        # "nasa_flag" creation
+        '''
+        Ordering of steps to create daily file from GSFC granule
+        '''
         self.make_nasa_flag()
         self.clean_date(date)
+        if self.ds.time.size < 2:
+            return
+        self.mss_swap()
         self.make_ssh_smoothed()
         self.map_points_to_basin()
         self.set_metadata()
+        self.set_source_attrs()
     
-    def gsfc_flag_splitting(self, gsfc_flag: xr.DataArray) -> dict:
-        '''
-        Breaks out individual GSFC flags from comprehensive flag
-        '''
-        split_flags = {}
-        bin_strings = [f'{v:#017b}'[2:] for v in gsfc_flag.values]
-        for i, flag_name in zip(range(-1, -16, -1), gsfc_flag.attrs['flag_meanings'].split()):
-            name = flag_name.replace('/', '_per_')
-            split_flags[name] = [int(v[i]) for v in bin_strings]
-        return split_flags
     
     def make_nasa_flag(self):
         '''
@@ -80,3 +81,17 @@ class S6_DailyFile(DailyFile):
         for var in flag_ds.data_vars:
             self.ds[var] = ('time', flag_ds[var].values.astype('bool'))
             self.ds[var].attrs['Flag info'] = flag_ds[var].attrs['comment']
+
+    def set_source_attrs(self):
+        '''
+        Sets S6 specific global attributes
+        '''
+        collection_meta = AllCollections.collections[self.collection_id]
+        self.ds.attrs['source'] = collection_meta.source
+        self.ds.attrs['source_url'] = collection_meta.source_url
+        self.ds.attrs['references'] = collection_meta.reference
+        self.ds.attrs['geospatial_lat_min'] = "-66.15LL"
+        self.ds.attrs['geospatial_lat_max'] = "66.15LL"
+        self.ds.attrs['mean_sea_surface'] = self.target_mss
+        self.ds.attrs['mean_sea_surface_comment'] = f'Mean sea surface has been switched from {self.source_mss} to {self.target_mss}'
+        self.ds.attrs['absolute_offset_applied'] = 0

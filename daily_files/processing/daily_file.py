@@ -80,10 +80,11 @@ class DailyFile(ABC):
         '''
         Drop times outside of date
         '''
+        ds = ds.where(~np.isnat(ds.time), drop=True)
+        
         today = str(date)[:10]
-        end_today = str(date + timedelta(1) - timedelta(seconds=1))[:10]
-        logging.debug(f'Subsetting data to between {today} and {end_today}')
-        ds = ds.sel(time=slice(today, end_today), drop=True)
+        logging.debug(f'Subsetting data to {today}')
+        ds = ds.sel(time=today)
         return ds
     
     def drop_dupe_times(self, ds: xr.Dataset) -> xr.Dataset:
@@ -177,12 +178,12 @@ class DailyFile(ABC):
         # Basin flag
         self.ds['basin_flag'].attrs = {'long_name': 'basin flag mapping point to ocean basin', 
                                        'standard_name': 'basin_flag', 
-                                       'reference': 'url_to_basin_reference'}
+                                       'reference': 'Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com'}
         
         # Nasa flag
-        self.ds['nasa_flag'].attrs = {'long_name': 'nasa ssh quality flag', 
+        self.ds['nasa_flag'].attrs.update({'long_name': 'nasa ssh quality flag', 
                                        'standard_name': 'nasa_flag', 
-                                       'flag_meanings': 'good bad'}
+                                       'flag_meanings': 'good bad'})
     
     def set_global_attrs(self):
         '''

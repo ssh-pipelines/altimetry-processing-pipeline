@@ -1,12 +1,12 @@
 from typing import Iterable
 import unittest
 from datetime import datetime
-from daily_files.fetching.cmr_query import CMR_Query, CMR_Granule
+from daily_files.fetching.cmr_query import CMRQuery, CMRGranule
 from daily_files.utils.logconfig import configure_logging
 
 
 class EndToEndCMRQueryTestCase(unittest.TestCase):   
-    granules: Iterable[CMR_Granule]
+    granules: Iterable[CMRGranule]
     concept_id: str
     
     @classmethod
@@ -15,7 +15,7 @@ class EndToEndCMRQueryTestCase(unittest.TestCase):
         
         gsfc_concpept_id = 'C2204129664-POCLOUD'
         date = datetime(2021,12,29)
-        cmr_query = CMR_Query(gsfc_concpept_id, date)
+        cmr_query = CMRQuery(gsfc_concpept_id, date)
         
         cls.concept_id = gsfc_concpept_id
         cls.date = date

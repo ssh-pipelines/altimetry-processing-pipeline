@@ -1,11 +1,13 @@
 from datetime import datetime
 from io import TextIOWrapper
+import logging
 import os
 import s3fs
 from typing import Iterable
 from daily_files.fetching.cmr_query import CMRGranule, CMRQuery
 from daily_files.fetching.fetcher import Fetcher
 from daily_files.fetching.auth import PodaacS3Creds
+from daily_files.utils.s3_utils import get_secret
 
 class PodaacS3Fetcher(Fetcher):
     '''
@@ -15,13 +17,15 @@ class PodaacS3Fetcher(Fetcher):
     granules: Iterable[CMRGranule]
     
     def __init__(self):
-        pass
+        edl_secret = get_secret('EDL_auth')
+        self.ed_user = edl_secret.get('user')
+        self.ed_pass = edl_secret.get('password')
         
     def cmr_query(self, concept_id: str, date: datetime) -> Iterable[CMRGranule]:
         return CMRQuery(concept_id, date).query()
                 
     def setup_s3(self) -> s3fs.S3FileSystem:
-        creds = PodaacS3Creds(os.environ['EARTHDATA_USER'], os.environ['EARTHDATA_PASSWORD']).creds
+        creds = PodaacS3Creds(self.ed_user, self.ed_pass).creds
         s3 = s3fs.S3FileSystem(anon=False,
                             key=creds['accessKeyId'],
                             secret=creds['secretAccessKey'], 
@@ -30,7 +34,12 @@ class PodaacS3Fetcher(Fetcher):
     
     def fetch(self, src: str) -> TextIOWrapper:
         self.s3 = self.setup_s3()
-        return self.s3.open(src)
+        try:
+            opened_s3 = self.s3.open(src)
+        except Exception as e:
+            logging.exception(f'Error opening {src}')
+            raise e
+        return opened_s3
     
     def fetch_all(self) -> Iterable[s3fs.S3FileSystem]:
         opened_objs = []

@@ -1,10 +1,10 @@
 import unittest
-from daily_files.daily_file_job import Daily_File_Job
+from daily_files.daily_file_job import DailyFileJob
 from daily_files.utils.logconfig import configure_logging
 
 
 class GSFCFetchTestCase(unittest.TestCase):   
-    daily_file_generator: Daily_File_Job
+    daily_file_generator: DailyFileJob
     
     @classmethod
     def setUpClass(cls) -> None:
@@ -14,7 +14,7 @@ class GSFCFetchTestCase(unittest.TestCase):
         source = 'GSFC'
         satellite = 'GSFC'
             
-        cls.daily_file_generator = Daily_File_Job(date, source, satellite)
+        cls.daily_file_generator = DailyFileJob(date, source, satellite)
         cls.daily_file_generator.fetch_granules()
         
     

@@ -3,33 +3,35 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import TextIO
+from typing import Iterable, TextIO
 from daily_files.processing.daily_file import DailyFile
 from daily_files.collection_metadata import AllCollections
 
 class GSFCDailyFile(DailyFile):
 
-    def __init__(self, file_obj:TextIO, date: datetime, collection_id: str):
-        ds = xr.open_dataset(file_obj, engine='h5netcdf')
-        ssh: np.ndarray = ds.ssha.values / 1000 # Convert from mm
-        lats: np.ndarray = ds.lat.values
-        lons: np.ndarray = ds.lon.values
-        times: np.ndarray = ds.time.values
-        cycles: np.ndarray = np.full_like(ds.ssha.values, ds.attrs["merged_cycle"])
-        passes: np.ndarray = self.compute_passes(ds)
-
-        self.collection_id = collection_id
+    def __init__(self, file_objs:Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
+        opened_files = [xr.open_dataset(file_obj, engine='h5netcdf') for file_obj in file_objs]
+        cycles = np.concatenate([np.full_like(ds.ssha.values, ds.attrs["merged_cycle"]) for ds in opened_files])
+        self.og_ds = xr.concat(opened_files, dim='N_Records')
+        
+        ssh: np.ndarray = self.og_ds.ssha.values / 1000 # Convert from mm
+        lats: np.ndarray = self.og_ds.lat.values
+        lons: np.ndarray = self.og_ds.lon.values
+        times: np.ndarray = self.og_ds.time.values
+        cycles, passes = self.compute_cycles_passes(self.og_ds, cycles)
+        dac: np.ndarray = np.full_like(self.og_ds.ssha.values, 0) # Place holder until real DAC data is available
+        self.collection_ids = collection_ids
 
         self.source_mss = 'DTU15'
         self.target_mss = 'DTU21'
         mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
         mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
 
-        super().__init__(ssh, lats, lons, times, cycles, passes, mss_path)
+        super().__init__(ssh, lats, lons, times, cycles, passes, mss_path, dac)
         
-        self.make_daily_file_ds(date, ds.flag)
+        self.make_daily_file_ds(date)
     
-    def compute_passes(self, ds: xr.Dataset) -> np.ndarray:
+    def compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> np.ndarray:
         '''
         Computes passes using look up table that converts a reference_orbit and index value to pass number.
         '''
@@ -39,13 +41,16 @@ class GSFCDailyFile(DailyFile):
         # Convert reference_orbit and index from GSFC file to 7 digit long, left-padded string
         ds_ids = [str(orbit).zfill(3)+str(index).zfill(4) for orbit, index in zip(ds.reference_orbit.values, ds['index'].values)]
         passes = df.loc[ds_ids]['pass'].values
-        return passes
+        
+        if 254 in passes and 1 in passes:
+            cycles[(cycles==cycles[0]) & (passes==1)] += 1
+        return cycles, passes
     
-    def make_daily_file_ds(self, date: datetime, flag: xr.DataArray):
+    def make_daily_file_ds(self, date: datetime):
         '''
         Ordering of steps to create daily file from GSFC granule
         '''
-        self.make_nasa_flag(flag)
+        self.make_nasa_flag()
         self.clean_date(date)
         if self.ds.time.size < 2:
             return
@@ -57,41 +62,60 @@ class GSFCDailyFile(DailyFile):
         self.set_source_attrs()
         
     
-    def gsfc_flag_splitting(self, gsfc_flag: xr.DataArray) -> dict:
+    def gsfc_flag_splitting(self) -> np.ndarray:
         '''
         Breaks out individual GSFC flags from comprehensive flag
         '''
-        split_flags = {}
-        bin_strings = [f'{v:#017b}'[2:] for v in gsfc_flag.values]
-        for i, flag_name in zip(range(-1, -16, -1), gsfc_flag.attrs['flag_meanings'].split()):
-            name = flag_name.replace('/', '_per_')
-            split_flags[name] = [int(v[i]) for v in bin_strings]
-        return split_flags
+        flag = self.og_ds.flag.values
+        max_bits = int(np.ceil(np.log2(flag.max())))
+        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
+        return binary_representation
     
-    def make_nasa_flag(self, gsfc_flag: xr.DataArray):
+    def make_nasa_flag(self):
         '''
         Convert source GSFC flag data into binary nasa_flag
         '''
         logging.info('Converting GSFC flag to NASA flag')
-        split_flags = self.gsfc_flag_splitting(gsfc_flag)
-        valid_array = np.full_like(gsfc_flag.values, 0)
+        og_flag_index = [1, 2, 3, 4, 5, 9]
+        flag_array = self.gsfc_flag_splitting()
+        valid_array = ~flag_array[:, og_flag_index].any(axis=1)
         
-        flag_list = ['Radiometer_Observation_is_Suspect', 'Sigma0_Ku_Band_Out_of_Range', 'Significant_Wave_Height>8m', 
-                    'Possible_Rain_Contamination', 'Sea_Ice_Detected', 'Any_Applied_SSH_Correction_Out_of_Limits', 
-                    'Sigma_H_of_fit>15cm', 'Contiguous_1Hz_Data', 'Attitude_Out_of_Range']
-        for flag in flag_list:
-            valid_array = np.logical_or(valid_array, split_flags[flag])
-        self.ds['nasa_flag'] = (('time'), valid_array)
-        self.ds['nasa_flag'].attrs['flag_derivation'] = f'nasa_flag is set to 0 if: abs(ssha) < 2 meter & basin_flag is set to the fill value & the following gsfc_flag values are set to 0: {", ".join(flag_list)}'
+        all_flags = self.og_ds.flag.attrs['flag_meanings'].split()
+        flag_list = [all_flags[i] for i in og_flag_index]
         
-        all_flags = [split_flags[flag] for flag in split_flags.keys()]                
-        self.ds['gsfc_flag'] = (('time', 'flag_dim'), np.array(all_flags).T.astype('bool'))
+        pflag = ((self.og_ds.Surface_Type.values == 0) | (self.og_ds.Surface_Type.values == 2)) \
+            & (valid_array) \
+            & (~np.isnan(self.ds.ssh))
+
+        # Make stdflag
+        ssh = self.ds.ssh.values
+        nmedian = 15
+        nstd = 95
+        timestamps = np.arange(1, len(ssh)+1)
+
+        rolling_median = pd.Series(ssh[pflag]).rolling(nmedian, center=True, min_periods=1).median().values
+        dx = ssh[pflag] - rolling_median
+
+        dx_median = pd.Series(np.square(dx)).rolling(nstd, center=True, min_periods=1).median().values
+        rolling_std = np.clip(np.sqrt(dx_median), 0.05, None)
+
+        median_interp = np.interp(timestamps, timestamps[pflag], rolling_median)
+        std_interp = np.interp(timestamps, timestamps[pflag], rolling_std)
+
+        stdflag = abs(ssh - median_interp) <= std_interp * 5
+        
+        nasa_flag = ~(pflag & stdflag)
+        
+        self.ds['nasa_flag'] = (('time'), nasa_flag.data)
+        self.ds['nasa_flag'].attrs['flag_derivation'] = f'nasa_flag is set to 0 if: abs(ssha) < 2 meter & basin_flag is set to any valid, non-fill value & the following gsfc_flag values are set to 0: {", ".join(flag_list)}'
+        
+        self.ds['gsfc_flag'] = (('time', 'src_flag_dim'), np.array(flag_array[:, og_flag_index]).astype('bool'))
         self.ds['gsfc_flag'].attrs = {
             'standard_name': 'source_data_flag',
             'long_name': 'source data flag',
         }
         
-        for i, src_flag in enumerate(gsfc_flag.attrs['flag_meanings'].split()):
+        for i, src_flag in enumerate(flag_list):
             key = f'flag_column_{i+1}'
             self.ds['gsfc_flag'].attrs[key] = src_flag
     
@@ -103,10 +127,19 @@ class GSFCDailyFile(DailyFile):
         '''
         Sets GSFC specific global attributes
         '''
-        collection_meta = AllCollections.collections[self.collection_id]
-        self.ds.attrs['source'] = collection_meta.source
-        self.ds.attrs['source_url'] = collection_meta.source_url
-        self.ds.attrs['references'] = collection_meta.reference
+        sources = set()
+        source_urls = set()
+        references = set()
+        
+        for collection_id in self.collection_ids:
+            collection_meta = AllCollections.collections[collection_id]
+            sources.add(collection_meta.source)
+            source_urls.add(collection_meta.source_url)
+            references.add(collection_meta.reference)
+            
+        self.ds.attrs['source'] = ', and '.join(sorted(sources))
+        self.ds.attrs['source_url'] = ', and '.join(sorted(source_urls))
+        self.ds.attrs['references'] = ', and '.join(sorted(references))
         self.ds.attrs['geospatial_lat_min'] = "-67LL"
         self.ds.attrs['geospatial_lat_max'] = "67LL"
         self.ds.attrs['mean_sea_surface'] = self.target_mss

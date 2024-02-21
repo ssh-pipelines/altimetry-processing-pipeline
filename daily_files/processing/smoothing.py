@@ -6,17 +6,20 @@ import logging
 
 
 '''
-Smoothing functions that are shared across all data sources
+Smoothing functions that are shared across all data sources.
 '''
 
 SINC_COEFF = np.array([-2.06117e-05, -0.00110582, -0.00461792, -0.00907955, -0.00675300, 
                         0.0150775, 0.0646945, 0.134041, 0.196706, 
                         0.222115, 
                         0.196706, 0.134041, 0.0646945, 0.0150775,
-                        -0.00675300, -0.00907955, -0.00461792, -0.00110582, -2.06117e-05775, 
+                        -0.00675300, -0.00907955, -0.00461792, -0.00110582, -2.06117e-05, 
                         ])
 
 def mirror_nans(arr: np.ndarray) -> np.ndarray:
+    '''
+    Mirror nans in array, if an index is nan, it's mirrored index should also be nan
+    '''
     nan_indices = np.isnan(arr)
     arr[nan_indices[::-1]] = np.nan
     return arr
@@ -24,19 +27,44 @@ def mirror_nans(arr: np.ndarray) -> np.ndarray:
 def nan_check(ssh_vals: np.ndarray) -> bool:
     '''
     Check if 19 point window is all nans, or
-    if the 5 points around the center are all nans
+    if the 6 points around the center are all nans
     '''
     nan_arr = np.isnan(ssh_vals)
-    if np.all(nan_arr) or np.all(nan_arr[6:13]):
-        return True
-    return False
+    return np.all(nan_arr) or (np.all(nan_arr[6:9]) & np.all(nan_arr[10:13]))
 
 def smooth_point(ssh_vals: np.ndarray) -> np.float32:
     numerator = np.nansum(ssh_vals * SINC_COEFF)
     denominator = np.nansum(SINC_COEFF[~np.isnan(ssh_vals)])
-    smoothed_val = numerator/denominator
-    return smoothed_val
+    return numerator/denominator
 
+def pad_df(ds: xr.Dataset) -> pd.DataFrame:
+    '''
+    Pads an extra +/- 9 seconds to front and end of data frame to ensure sufficent
+    data points to smooth
+    '''
+    df = pd.DataFrame({'ssh': ds.ssh.values, 'flag': ds.nasa_flag.values}, ds.time.values)    
+    padded_df = df.reindex(np.arange(ds.time.values[0] - np.timedelta64(9, 's'), ds.time.values[-1] + np.timedelta64(10, 's'), dtype='datetime64[s]'))
+    return padded_df
+
+def make_windows(df: pd.DataFrame):
+    '''
+    Uses pandas rolling function to create windows
+    CAUTION! Since we expect the original nans to be carred through (as we need them as part of our smoothing algorithm)
+    we need to ensure that nans have been temporarily filled with a fill value prior to this function's execution.
+    '''
+    return df.rolling(19, center=True)
+
+def smooth(sdf: np.ndarray):
+    '''
+    Convert fill value back to nan, mirror nans, compute smoothed value
+    '''
+    sdf = np.where(sdf==9999, np.nan, sdf)
+    ssh_vals = mirror_nans(sdf)
+    if nan_check(ssh_vals):
+        smoothed_val = np.nan
+    else:
+        smoothed_val = smooth_point(ssh_vals)
+    return smoothed_val
 
 def ssh_smoothing(ds: xr.Dataset) -> xr.Dataset:
     '''
@@ -50,41 +78,20 @@ def ssh_smoothing(ds: xr.Dataset) -> xr.Dataset:
     fast time-based indexing (necessary because GSFC data does not contain all timesteps)
     '''
     logging.info('Beginning smoothing...')
-    start = time.time()
         
-    # Convert to pandas and reindex based on +/- 9 second padding time list. Fills with NaNs at new index locations
-    df = pd.DataFrame({'ssh': ds.ssh.values, 'flag': ds.nasa_flag.values}, ds.time.values)    
-    padded_df = df.reindex(np.arange(ds.time.values[0] - np.timedelta64(9, 's'), ds.time.values[-1] + np.timedelta64(10, 's'), dtype='datetime64[s]'))
-    
+    # Convert to pandas and reindex based on +/- 9 second padding time list. Fills with NaNs at new index locations (times)
+    padded_df = pad_df(ds)
+
     # Apply nasa_flag to ssh
     padded_df.ssh = np.where(padded_df.flag.values == 0, padded_df.ssh, np.nan)
-   
-    # Make 19 point time windows centered on times in original data
-    time_windows = [(t - np.timedelta64(9, 's'), t + np.timedelta64(9, 's')) for t in ds.time.values]
+       
+    # Use Pandas rolling to shift through 19 point windows, applying smooth function to each
+    # Fill nans in order to get rolling windows to function properly since we handle nans on our own
+    windows = make_windows(padded_df.ssh.fillna(9999))
+    ssh_smoothed = windows.aggregate(smooth)
     
-    # Iterate through original time windows, slicing the reindexed (padded) pandas version of data to get filled in 19 point window
-    # Compute smoothed value for each original time step
-    ssh_smoothed = []
-    for begin, end in time_windows:
-        ssh_vals = padded_df[begin:end].ssh.values.copy()
-        
-        # Set values in window to nan where basin is not visible
-        '''
-        To be implemented
-        '''
-            
-        # Mirror nans in window
-        ssh_vals = mirror_nans(ssh_vals)
-    
-        # Check if we have correct non-nan values to compute smooth value
-        if nan_check(ssh_vals):
-            smoothed_val = np.nan
-        else:
-            smoothed_val = smooth_point(ssh_vals)            
-        ssh_smoothed.append(smoothed_val)
-        
-    # Add smoothed values array to ds object
+    # Reindex selecting only points at original data
+    ssh_smoothed = ssh_smoothed[pd.DatetimeIndex(ds.time.values)]
     ds['ssh_smoothed'] = (('time'), ssh_smoothed)
-    logging.debug(f'Smoothing took {time.time() - start} seconds')
-
+    
     return ds

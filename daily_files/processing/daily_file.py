@@ -33,10 +33,11 @@ class DailyFile(ABC):
     make_nasa_flag (creates boolean flag from source data flags)
     '''
     
-    def __init__(self, ssh: np.ndarray, lat: np.ndarray, lon: np.ndarray, time: np.ndarray, sat_cycle: np.ndarray, sat_pass: np.ndarray, mss_path: str):
+    def __init__(self, ssh: np.ndarray, lat: np.ndarray, lon: np.ndarray, time: np.ndarray, sat_cycle: np.ndarray, sat_pass: np.ndarray, mss_path: str, dac: np.ndarray):
         self.time: np.ndarray = time
         self.data = {
             'ssh': xr.DataArray(ssh, dims=['time']),
+            'dac': xr.DataArray(dac, dims=['time']),
             'latitude': xr.DataArray(lat, dims=['time']),
             'longitude': xr.DataArray(lon, dims=['time']),
             'cycle': xr.DataArray(sat_cycle, dims=['time']),
@@ -105,7 +106,6 @@ class DailyFile(ABC):
         logging.info('Performing subsetting by date and filtering outlier values')
         self.ds = self.date_subset(self.ds, date)
         self.ds = self.drop_dupe_times(self.ds)
-        self.ds = self.filter_outliers(self.ds)
         
     def get_mss(self, mss_path: str):
         s3 = s3fs.S3FileSystem(key=os.environ['AWS_ACCESS_KEY_ID'],
@@ -131,9 +131,7 @@ class DailyFile(ABC):
         lons = (lons + 180) % 360 - 180
         lonlats = list(zip(lons, lats))
         lonlat_points = [shapely.Point(lonlat) for lonlat in lonlats]
-        points_df = gpd.GeoDataFrame(lonlat_points)
-        points_df = points_df.set_geometry(0)
-        points_df = points_df.set_crs('4326')
+        points_df = gpd.GeoDataFrame(lonlat_points, geometry=0, crs='4326')
         return points_df
     
     def map_points_to_basin(self):
@@ -141,10 +139,14 @@ class DailyFile(ABC):
         
         '''
         logging.info('Mapping data points to their respective basin')
-        poly_df = gpd.read_file('daily_files/ref_files/basin_shapefile/new_basin_polygons.shp')
+        poly_df = gpd.read_file('daily_files/ref_files/basin_shapefile/new_basin_lake_polygons.shp')
         points_df = self.make_lonlat_points(self.ds.latitude.values, self.ds.longitude.values)
         join_df = gpd.sjoin(points_df, poly_df, how='left',predicate="within")
-        self.ds['basin_flag'] = (('time'), join_df.feature_id.values)
+        self.ds['basin_flag'] = (('time'), np.nan_to_num(join_df.feature_id.values))
+        poly_df['feature_id'] = poly_df['feature_id'].astype(str).str.ljust(4, ' ')
+        basin_table = poly_df[['feature_id', 'name']].agg(','.join, axis=1).values
+        basin_table = np.insert(basin_table, 0, '0   ,Land', axis=0)
+        self.ds['basin_names_table'] = (('basin_name_dim'), basin_table.astype('S33'))
     
     def set_var_attrs(self):
         # Lat/lon coordinates
@@ -163,7 +165,7 @@ class DailyFile(ABC):
         self.ds['pass'].attrs = {'long_name': 'pass number', 'standard_name': 'pass'}
 
         # SSH variables
-        for ssh_var in ['ssh', 'ssh_smoothed']:
+        for ssh_var in ['ssh', 'ssh_smoothed', 'dac']:
             self.ds[ssh_var].attrs = {
                 'valid_min': np.nanmin(self.ds[ssh_var]), 
                 'valid_max': np.nanmax(self.ds[ssh_var]), 
@@ -174,10 +176,17 @@ class DailyFile(ABC):
         self.ds['ssh'].attrs['standard_name'] = 'ssh'
         self.ds['ssh_smoothed'].attrs['long_name'] = 'smoothed sea surface height'
         self.ds['ssh_smoothed'].attrs['standard_name'] = 'ssh_smoothed'
+        self.ds['dac'].attrs['long_name'] = 'dynamic atmospheric correction'
+        self.ds['dac'].attrs['standard_name'] = 'dac'
         
         # Basin flag
         self.ds['basin_flag'].attrs = {'long_name': 'basin flag mapping point to ocean basin', 
                                        'standard_name': 'basin_flag', 
+                                       'reference': 'Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com'}
+        
+        self.ds['basin_names_table'].attrs = {'long_name': 'Table mapping basin ids to basin names', 
+                                       'standard_name': 'basin_names_table',
+                                       'note': 'Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag',
                                        'reference': 'Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com'}
         
         # Nasa flag
@@ -210,28 +219,24 @@ class DailyFile(ABC):
             'acknowledgement': "This data is provided by NASA\'s PO.DAAC.",
             'license': "Public Domain",
             'product_version': "2401",
-            'summary': "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in \"mean_sea_surface\". \
-                Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in climate-quality \
-                    scientific studies without additional adjustments to account for inter-satellite biases.",
+            'summary': "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in mean_sea_surface. Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in climate-quality scientific studies without additional adjustments to account for inter-satellite biases.",
             'keywords': "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
             'keywords_vocabulary': "NASA Global Change Master Directory (GCMD) Science Keywords",
             'platform': "Satellite",
             'instrument': "Altimeter",
-            # 'cdm_data_type': "Point", # This causes issues when opening via Panoply
             'publisher_name': "NASA PO.DAAC",
             'publisher_url': "https://podaac.jpl.nasa.gov/",
             'publisher_email': "podaac@podaac.jpl.nasa.gov",
             'creator_name': "NASA-SSH",
-            # 'creator_email': "your.email@example.com",
             'creator_url': "https://podaac.jpl.nasa.gov/NASA-SSH/",
             'geospatial_lat_min': '', # Source specific
             'geospatial_lat_max': '', # Source specific
-            'geospatial_lon_min': '-180LL',
-            'geospatial_lon_max': '180LL',
+            'geospatial_lon_min': '0LL',
+            'geospatial_lon_max': '360LL',
             'time_coverage_start': str(self.ds.time.values[0])[:19] + 'Z',
             'time_coverage_end': str(self.ds.time.values[-1])[:19] + 'Z',
             'REFTime': '1990-01-01 00:00:00',
-            'REFTime_Description': 'This string contains a time in the format "yyyy-mm-dd HH:MM:SS" to which all times in the "time" variable are referenced.'
+            'REFTime_Description': 'This string contains a time in the format yyyy-mm-dd HH:MM:SS to which all times in the time variable are referenced.'
         }
         
         for k, v in global_attrs.items():

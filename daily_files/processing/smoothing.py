@@ -1,13 +1,8 @@
 import xarray as xr
 import pandas as pd
 import numpy as np
-import time
 import logging
 
-
-'''
-Smoothing functions that are shared across all data sources.
-'''
 
 SINC_COEFF = np.array([-2.06117e-05, -0.00110582, -0.00461792, -0.00907955, -0.00675300, 
                         0.0150775, 0.0646945, 0.134041, 0.196706, 
@@ -49,7 +44,7 @@ def pad_df(ds: xr.Dataset) -> pd.DataFrame:
 def make_windows(df: pd.DataFrame):
     '''
     Uses pandas rolling function to create windows
-    CAUTION! Since we expect the original nans to be carred through (as we need them as part of our smoothing algorithm)
+    CAUTION! Since we expect the original nans to be carried through (as we need them as part of our smoothing algorithm)
     we need to ensure that nans have been temporarily filled with a fill value prior to this function's execution.
     '''
     return df.rolling(19, center=True)

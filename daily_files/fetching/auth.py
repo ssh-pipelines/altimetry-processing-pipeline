@@ -9,8 +9,9 @@ class PodaacS3Creds():
   
     def __init__(self, username: str, password: str):
         self.edl_auth: str = f'{username}:{password}'
-        self.current_pds3_auth: dict = get_secret('podaac_direct_s3_auth')
-        self.creds = self.get_creds()
+        # self.current_pds3_auth: dict = get_secret('podaac_direct_s3_auth')
+        # self.creds = self.get_creds()
+        self.creds = self.refresh_creds()
     
     def get_creds(self):
         '''
@@ -44,7 +45,7 @@ class PodaacS3Creds():
         results = requests.get(temp_creds_url, cookies={'accessToken': final.cookies['accessToken']})
         results.raise_for_status()
         creds = json.loads(results.content)
-        self.update_secret(creds)
+        # self.update_secret(creds)
         return creds
     
     def update_secret(self, creds: dict):

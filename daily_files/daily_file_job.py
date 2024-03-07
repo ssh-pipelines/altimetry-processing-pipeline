@@ -108,6 +108,8 @@ def start_job(event: dict):
     date = event.get('date')
     source = event.get('source')
     satellite = event.get('satellite')
+    os.environ['EARTHDATA_USER'] = event['EARTHDATA_USER']
+    os.environ['EARTHDATA_PASSWORD'] = event['EARTHDATA_PASSWORD']
     
     if None in [date, source, satellite]:
         raise RuntimeError('One of date, source, or satellite job parameters missing. Job failure.')

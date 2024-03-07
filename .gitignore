@@ -7,3 +7,5 @@ __pycache__
 tests.py
 *invoke.py
 *.pkl
+
+testing_granules

@@ -13,11 +13,11 @@ class EndToEndCMRQueryTestCase(unittest.TestCase):
     def setUpClass(cls) -> None:
         configure_logging(False, 'INFO', True)
         
-        gsfc_concpept_id = 'C2204129664-POCLOUD'
+        gsfc_concept_id = 'C2204129664-POCLOUD'
         date = datetime(2021,12,29)
-        cmr_query = CMRQuery(gsfc_concpept_id, date)
+        cmr_query = CMRQuery(gsfc_concept_id, date)
         
-        cls.concept_id = gsfc_concpept_id
+        cls.concept_id = gsfc_concept_id
         cls.date = date
         cls.granules = cmr_query.query()
 

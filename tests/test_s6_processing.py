@@ -1,3 +1,4 @@
+import pickle
 import unittest
 import xarray as xr
 import numpy as np
@@ -18,19 +19,35 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls) -> None:
-        configure_logging(False, 'DEBUG', True)
+        configure_logging(False, 'INFO', True)
         
         cls.paths = glob('tests/testing_granules/s6/*.nc')
         cls.paths.sort()
 
         opened_paths = [open(p, 'rb') for p in cls.paths]
         
-        cls.daily_ds = S6DailyFile(opened_paths, datetime(2023,12,17), ['C2619443998-POCLOUD']).ds
+        daily_file_job = S6DailyFile(opened_paths, datetime(2023,12,17), ['C2619443998-POCLOUD'])
+        cls.daily_ds = daily_file_job.ds
         [op.close() for op in opened_paths]
+        
+        mss_path = 'tests/testing_granules/mss_interps/DTU18_interp_to_DTU21.pkl'
+        with open(mss_path, 'rb') as f:
+            mss_interp = pickle.load(f)
+            
+        mss_corr_interponrads =mss_interp.ev(cls.daily_ds.latitude, cls.daily_ds.longitude)
+        
+        og_ds = daily_file_job.original_ds.where(~np.isnat(daily_file_job.original_ds.time), drop=True)
+        today = str(datetime(2023,12,17))[:10]
+        og_ds = og_ds.sel(time=today)
+        og_ds = og_ds.drop_duplicates(dim='time')
+        
+        swapped_vals = cls.daily_ds.ssh.values + og_ds['mean_sea_surface_sol1'].values - og_ds['mean_sea_surface_sol2'].values - mss_corr_interponrads
+        cls.daily_ds.ssh.values = swapped_vals
+        cls.daily_ds = cls.daily_ds.drop_vars(['mean_sea_surface_sol1', 'mean_sea_surface_sol2'])
         
         granules = [cls.Granule(p.split('/')[-1]) for p in cls.paths]
         cls.daily_ds.attrs['source_files'] = ', '.join([g.title for g in granules])
-        save_ds(cls.daily_ds, 's6_test.nc')
+        save_ds(cls.daily_ds, 'tests/testing_granules/s6_test.nc')
 
     def test_file_date_coverage(self):
         self.assertGreaterEqual(self.daily_ds.time.values.min(), np.datetime64('2023-12-17'))

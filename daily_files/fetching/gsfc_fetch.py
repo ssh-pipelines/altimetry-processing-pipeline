@@ -13,5 +13,6 @@ class GSFCFetch(PodaacS3Fetcher):
         '''
         Sets self.granules from inhereted cmr_query method
         '''
+        super().__init__()
         self.date = date
         self.granules = self.cmr_query(self.concept_id, self.date)

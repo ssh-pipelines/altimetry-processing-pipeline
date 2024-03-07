@@ -26,6 +26,7 @@ class S6Fetch(PodaacS3Fetcher):
         Uses intermediary self.priority_granules dict to select by priority
             where key is cycle_pass and value is (collection priority, CMRGranule object)
         '''
+        super().__init__()
         self.date = date
         self.priority_granules = {}
         self.granules = self.select_priority_granules()

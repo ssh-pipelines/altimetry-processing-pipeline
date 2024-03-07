@@ -4,6 +4,7 @@ import time
 from typing import Iterable, TextIO
 import pandas as pd
 import xarray as xr
+import netCDF4 as nc
 import numpy as np
 from datetime import datetime
 
@@ -31,40 +32,51 @@ class S6DailyFile(DailyFile):
         
         self.source_mss = 'DTU18'
         self.target_mss = 'DTU21'
-        mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
-        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
+        self.mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
+        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{self.mss_name}.pkl'
         
         super().__init__(ssh, lats, lons, times, cycles, passes, mss_path, dac)
+        
+        self.ds['mean_sea_surface_sol1'] = (('time'), self.original_ds['mean_sea_surface_sol1'].values)
+        self.ds['mean_sea_surface_sol2'] = (('time'), self.original_ds['mean_sea_surface_sol2'].values)
         
         self.make_daily_file_ds(date)
     
     def extract_grouped_data(self, file_obj:TextIO) -> xr.Dataset:
         '''
-        S6 data comes in groups so we must "open" files multiple times to access variables
         '''
-        ku_ds = xr.open_dataset(file_obj, group='data_01/ku')
-        ku_sub_ds = ku_ds[['sig0_ocean_nr', 'range_ocean_nr_qual', 'swh_ocean_nr', 'ssha_nr']]
+        ds = nc.Dataset('file_like', 'r', memory=file_obj.read())
+        das = []
 
-        base_ds = xr.open_dataset(file_obj, group='data_01')
-        sub_ds = base_ds[['latitude', 'longitude', 'time',
-                    'surface_classification_flag', 'rain_flag', 'rad_water_vapor_qual', 'dac']]
-
-        head_ds = xr.open_dataset(file_obj)
-        cycle_num = head_ds.attrs["cycle_number"]
-        pass_num = head_ds.attrs["pass_number"]
-        
-        ds = xr.merge([sub_ds, ku_sub_ds])
-        ds['cycle'] = (('time'), np.full(ds.time.values.shape, cycle_num))
-        ds['passes'] = (('time'), np.full(ds.time.values.shape, pass_num))
-        
-        ds.attrs = head_ds.attrs
-        return ds
+        for var in ['latitude', 'longitude', 'surface_classification_flag', 'rain_flag', 'rad_water_vapor_qual', 'dac', 'mean_sea_surface_sol1', 'mean_sea_surface_sol2']:
+            nc_var = ds.groups['data_01'].variables[var]
+            nc_var_data = nc_var[:]
+            nc_var_attrs = {k:v for k,v in nc_var.__dict__.items() if k != 'scale_factor'}
+            da = xr.DataArray(nc_var_data, dims='time', attrs=nc_var_attrs, name=var)
+            das.append(da)
+            
+        for var in ['sig0_ocean_nr', 'range_ocean_nr_qual', 'swh_ocean_nr', 'ssha_nr']:
+            nc_var = ds.groups['data_01'].groups['ku'].variables[var]
+            nc_var_data = nc_var[:]
+            nc_var_attrs = {k:v for k,v in nc_var.__dict__.items() if k != 'scale_factor'}
+            da = xr.DataArray(nc_var_data, dims='time', attrs=nc_var_attrs, name=var)
+            das.append(da)
+            
+        merged_ds = xr.merge(das)
+        merged_ds = merged_ds.set_coords(['latitude', 'longitude'])
+        merged_ds['time'] = ds.groups['data_01'].variables['time'][:]
+        merged_ds['time'].attrs = {k: v for k,v in ds.groups['data_01'].variables['time'].__dict__.items() if k != 'scale_factor' and k != 'add_offset'}
+        merged_ds.attrs = {k: v for k,v in ds.__dict__.items() if k != 'scale_factor' and k != 'add_offset'}
+        merged_ds['cycle'] = (('time'), np.full(merged_ds.time.values.shape, ds.cycle_number))
+        merged_ds['passes'] = (('time'), np.full(merged_ds.time.values.shape, ds.pass_number))
+        return xr.decode_cf(merged_ds)
     
     
     def make_daily_file_ds(self, date: datetime):
         '''
         Ordering of steps to create daily file from GSFC granule
         '''
+        
         start = time.time()
         self.make_nasa_flag()
         logging.debug(f'Nasa_flag took {time.time() - start} seconds')
@@ -77,7 +89,10 @@ class S6DailyFile(DailyFile):
             return
         
         # start = time.time()
-        self.mss_swap()
+        try:
+            self.mss_swap()
+        except Exception as e:
+            logging.error(f'Unable to perform mss swap...{e}')
         # logging.debug(f'MSS swapping took {time.time() - start} seconds')
         
         start = time.time()
@@ -97,6 +112,7 @@ class S6DailyFile(DailyFile):
     def make_nasa_flag(self):
         '''
         '''
+        logging.info('Making nasa_flag...')
         kqual = self.original_ds.range_ocean_nr_qual.values
         surfc = self.original_ds.surface_classification_flag.values
         rqual = self.original_ds.rad_water_vapor_qual.values
@@ -166,6 +182,12 @@ class S6DailyFile(DailyFile):
             key = f'flag_column_{i+1}'
             self.ds['s6_flag'].attrs[key] = src_flag
             
+    def mss_swap(self):
+        logging.info('Applying mss swap to ssh values...')
+        mss_corr_interponrads = self.mss.ev(self.ds.latitude, self.ds.longitude)
+        self.ds.ssh.values = self.ds.ssh.values + self.ds.mean_sea_surface_sol1 - self.ds.mean_sea_surface_sol2 - mss_corr_interponrads
+        self.ds = self.ds.drop_vars(['mean_sea_surface_sol1', 'mean_sea_surface_sol2'])
+    
     def apply_basin_to_nasa(self):
         valid_array = np.where(self.ds.basin_flag != 55537, self.ds.nasa_flag, 1)
         self.ds.nasa_flag.values = valid_array

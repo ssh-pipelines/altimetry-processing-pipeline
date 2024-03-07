@@ -1,12 +1,12 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractproperty
 import logging
 import os
-import pickle
 import xarray as xr
 import numpy as np
 import geopandas as gpd
 import shapely
-import s3fs
+import boto3
+import pickle
 
 from datetime import datetime, timedelta
 
@@ -43,8 +43,13 @@ class DailyFile(ABC):
             'cycle': xr.DataArray(sat_cycle, dims=['time']),
             'pass': xr.DataArray(sat_pass, dims=['time'])
         }
-        self.mss = self.get_mss(mss_path)
+        try:
+            self.mss = self.get_mss(mss_path)
+        except Exception as e:
+            logging.error(f'Missing AWS keys, unable to get MSS interpolator: {e}')
+        
         self.ds = self.make_ds()
+        
 
     @abstractmethod
     def make_daily_file_ds(self):
@@ -63,12 +68,20 @@ class DailyFile(ABC):
         raise NotImplementedError
     
     @abstractmethod
+    def mss_swap(self):
+        '''
+        Abstract method for performing an MSS swap on ssh.
+        Defined per source dataset
+        '''
+        raise NotImplementedError
+    
+    @abstractmethod
     def set_source_attrs(self):
         '''
         Abstract method for defining source specific metadata
         '''
         raise NotImplementedError
-
+    
     def make_ds(self) -> xr.Dataset:
         ds = xr.Dataset(
             data_vars=self.data,
@@ -108,17 +121,18 @@ class DailyFile(ABC):
         self.ds = self.drop_dupe_times(self.ds)
         
     def get_mss(self, mss_path: str):
-        s3 = s3fs.S3FileSystem(key=os.environ['AWS_ACCESS_KEY_ID'],
-                            secret=os.environ['AWS_SECRET_ACCESS_KEY'], 
-                            token=os.environ['AWS_SESSION_TOKEN'])
-        mss_file_like = s3.open(mss_path)
-        mss_interpolator = pickle.load(mss_file_like)
+        bucket = mss_path.split('s3://')[-1].split('/')[0]
+        key = mss_path.split(f'{bucket}/')[-1]
+        s3 = boto3.client('s3')
+        local_path = os.path.join('/tmp', os.path.basename(key))
+        if not os.path.exists(local_path):
+            logging.info('Downloading mss file')
+            s3.download_file(bucket, key, local_path)
+        logging.info('Pickle loading mss file...')
+        with open(local_path, 'rb') as f:
+            mss_interpolator = pickle.load(f)
+        logging.info('Pickle loading mss file...done')
         return mss_interpolator
-        
-    def mss_swap(self):
-        logging.info('Applying mss swap to ssh values...')
-        mss_corr_interponrads = self.mss.ev(self.ds.latitude, self.ds.longitude)
-        self.ds.ssh.values = self.ds.ssh.values + mss_corr_interponrads
         
     def make_ssh_smoothed(self):
         self.ds = ssh_smoothing(self.ds)
@@ -158,7 +172,10 @@ class DailyFile(ABC):
                                       'units': 'degrees_east'}
         
         # Time
-        self.ds['time'].attrs = {'long_name': 'time', 'standard_name': 'time'}
+        self.ds['time'].attrs = {'long_name': 'time', 
+                                 'standard_name': 'time',
+                                'REFTime': '1990-01-01 00:00:00',
+                                'comment': 'This string contains a time in the format yyyy-mm-dd HH:MM:SS to which all times in the time variable are referenced.'}
         
         # Cycle and pass
         self.ds['cycle'].attrs = {'long_name': 'cycle number', 'standard_name': 'cycle'}
@@ -172,10 +189,12 @@ class DailyFile(ABC):
                 'units': 'm', 
                 'coordinates': 'latitude longitude'
             }
-        self.ds['ssh'].attrs['long_name'] = 'sea surface height'
+        self.ds['ssh'].attrs['long_name'] = 'sea surface height relative to mean_sea_surface'
         self.ds['ssh'].attrs['standard_name'] = 'ssh'
-        self.ds['ssh_smoothed'].attrs['long_name'] = 'smoothed sea surface height'
+        self.ds['ssh'].attrs['mean_sea_surface'] = self.mss_name
+        self.ds['ssh_smoothed'].attrs['long_name'] = 'smoothed sea surface height relative to mean_sea_surface'
         self.ds['ssh_smoothed'].attrs['standard_name'] = 'ssh_smoothed'
+        self.ds['ssh'].attrs['mean_sea_surface'] = self.mss_name
         self.ds['dac'].attrs['long_name'] = 'dynamic atmospheric correction'
         self.ds['dac'].attrs['standard_name'] = 'dac'
         
@@ -235,8 +254,6 @@ class DailyFile(ABC):
             'geospatial_lon_max': '360LL',
             'time_coverage_start': str(self.ds.time.values[0])[:19] + 'Z',
             'time_coverage_end': str(self.ds.time.values[-1])[:19] + 'Z',
-            'REFTime': '1990-01-01 00:00:00',
-            'REFTime_Description': 'This string contains a time in the format yyyy-mm-dd HH:MM:SS to which all times in the time variable are referenced.'
         }
         
         for k, v in global_attrs.items():

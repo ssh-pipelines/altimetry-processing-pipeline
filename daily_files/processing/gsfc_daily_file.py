@@ -24,26 +24,27 @@ class GSFCDailyFile(DailyFile):
 
         self.source_mss = 'DTU15'
         self.target_mss = 'DTU21'
-        mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
-        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{mss_name}.pkl'
+        self.mss_name = f'{self.source_mss}_interp_to_{self.target_mss}'
+        mss_path: str = f's3://example-bucket/ref_files/mss_interpolations/{self.mss_name}.pkl'
 
         super().__init__(ssh, lats, lons, times, cycles, passes, mss_path, dac)
         
         self.make_daily_file_ds(date)
     
-    def compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> np.ndarray:
+    def compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> tuple[np.ndarray]:
         '''
         Computes passes using look up table that converts a reference_orbit and index value to pass number.
+        GSFC uses slightly different pass/cycle definitions. We need to increment cycle number in the ascending half below the equator
+        of a pass where pass==1
         '''
         logging.info('Computing pass values')
         df = pd.read_csv('daily_files/ref_files/complete_gsfc_pass_lut.csv', converters={'id': str}).set_index('id')
-        
         # Convert reference_orbit and index from GSFC file to 7 digit long, left-padded string
         ds_ids = [str(orbit).zfill(3)+str(index).zfill(4) for orbit, index in zip(ds.reference_orbit.values, ds['index'].values)]
-        passes = df.loc[ds_ids]['pass'].values
-        
-        if 254 in passes and 1 in passes:
-            cycles[(cycles==cycles[0]) & (passes==1)] += 1
+        passes = df.loc[ds_ids]['pass'].values        
+        # Use index where passes wrap back to 1 to select cycles values that require manual incrementing
+        index_of_wrap = np.where(passes[:-1] > passes[1:])[0][0] + 1
+        cycles[index_of_wrap:][(cycles[index_of_wrap:]==cycles[0]) & (passes[index_of_wrap:]==1)] += 1
         return cycles, passes
     
     def make_daily_file_ds(self, date: datetime):
@@ -54,14 +55,16 @@ class GSFCDailyFile(DailyFile):
         self.clean_date(date)
         if self.ds.time.size < 2:
             return
-        self.mss_swap()
+        try:
+            self.mss_swap()
+        except AttributeError:
+            logging.error('Missing MSS, unable to perform swap')
         self.make_ssh_smoothed()
         self.map_points_to_basin()
         self.apply_basin_to_nasa()
         self.set_metadata()
         self.set_source_attrs()
         
-    
     def gsfc_flag_splitting(self) -> np.ndarray:
         '''
         Breaks out individual GSFC flags from comprehensive flag
@@ -118,6 +121,11 @@ class GSFCDailyFile(DailyFile):
         for i, src_flag in enumerate(flag_list):
             key = f'flag_column_{i+1}'
             self.ds['gsfc_flag'].attrs[key] = src_flag
+            
+    def mss_swap(self):
+        logging.info('Applying mss swap to ssh values...')
+        mss_corr_interponrads = self.mss.ev(self.ds.latitude, self.ds.longitude)
+        self.ds.ssh.values = self.ds.ssh.values - mss_corr_interponrads
     
     def apply_basin_to_nasa(self):
         valid_array = np.where(self.ds.basin_flag != 55537, self.ds.nasa_flag, 1)

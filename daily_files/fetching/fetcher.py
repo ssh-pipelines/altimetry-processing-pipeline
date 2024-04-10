@@ -13,7 +13,3 @@ class Fetcher(ABC):
     @abstractmethod
     def fetch(self):
         pass
-    
-    @abstractmethod
-    def fetch_all(self):
-        pass

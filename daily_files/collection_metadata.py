@@ -1,15 +1,11 @@
+from dataclasses import dataclass
 from typing import Iterable
 
-
+@dataclass
 class CollectionMeta:
     source: str
     source_url: str
     reference: str
-
-    def __init__(self, source, source_url, reference) -> None:
-        self.source = source
-        self.source_url = source_url
-        self.reference = reference
 
 
 class AllCollections:

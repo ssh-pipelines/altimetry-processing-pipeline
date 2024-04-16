@@ -39,10 +39,18 @@ def make_windows(ssh_vals: np.ndarray) -> np.ndarray:
 
 def smooth(ssh_vals: np.ndarray) -> np.float64:
     '''
-    Mirror nans, compute smoothed value. Smoothed value is set to NaN if entire window is NaN
+    Interpolate NaNs, mirror NaNs, compute smoothed value. Smoothed value is set to NaN if entire window is NaN
     '''
+    if np.isnan(ssh_vals).all():
+        return np.nan
+    
     if np.isnan(ssh_vals).any():
-        ssh_vals[np.isnan(ssh_vals)[::-1]] = np.nan
+        nan_i = np.isnan(ssh_vals)
+        nnan_i = ~nan_i
+        ssh_vals[nan_i] = np.interp(nan_i.nonzero()[0], nnan_i.nonzero()[0], ssh_vals[nnan_i], left=np.nan, right=np.nan)
+        if np.isnan(ssh_vals).any():
+            ssh_vals[np.isnan(ssh_vals)[::-1]] = np.nan
+            
     if np.isnan(ssh_vals).all():
         return np.nan
     return smooth_point(ssh_vals)

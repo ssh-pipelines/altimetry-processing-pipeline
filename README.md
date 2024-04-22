@@ -2,7 +2,6 @@
 # I'll do this later. Probably.
 
 ## Stuff to do
-- Update Dockerfile to use Lambda base image
 - build_file_list should also account for cloud files
 - Parameters:
     - key1 (satellite or source, one of ['GSFC', 'S6', 'MERGED'])

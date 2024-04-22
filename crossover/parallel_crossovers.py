@@ -8,91 +8,7 @@ import multiprocessing as mp
 
 from xover_ssh import xover_ssh
 
-def logging_setup(basename):
-    # Create a custom logger
-    global logger
-    logger = logging.getLogger("my_logger")
-    logger.setLevel(logging.DEBUG)
-    # Create a file handler
-    global now
-    now = np.datetime64('now', 's')
-    # Convert numpy.datetime64 to a string in ISO 8601 format
-    now_str = str(now)
-    # Format: 'YYYYMMDD-HHMMSS'
-    # Since the string is in ISO 8601 format, it looks like 'YYYY-MM-DDTHH:MM:SS'
-    # We replace '-' and ':' with '', and 'T' with '-', to get the desired format
-    now_str = now_str.replace('-', '').replace(':', '').replace('T', '-')
-    # If you want to specifically format it to 'YYYYMMDD-HHMMSS' only
-    now_str = now_str[:8] + '-' + now_str[9:15]
-    log_base = basename+"-"+now_str
-    log_info = log_base+".out"
-    log_errors = log_base+".err"
-    # Create a file handler for debug and info messages
-    debug_info_handler = logging.FileHandler(log_info)
-    debug_info_handler.setLevel(logging.DEBUG)
-    # Create a file handler for warning, error, and critical messages
-    warning_error_handler = logging.FileHandler(log_errors)
-    warning_error_handler.setLevel(logging.WARNING)
-    # Create a stream handler (console)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
-    # Set a log format
-    log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    # Apply the format to all handlers
-    debug_info_handler.setFormatter(log_format)
-    warning_error_handler.setFormatter(log_format)
-    console_handler.setFormatter(log_format)
-    # Add the handlers to the logger
-    logger.addHandler(debug_info_handler)
-    logger.addHandler(warning_error_handler)
-    logger.addHandler(console_handler)
 
-def prettyprint_timespan(timespan: float) -> None:
-    """
-    Pretty-prints a timespan in years, weeks, days, hours, and seconds.
-    """
-    # Constants for time conversions
-    SECONDS_PER_MINUTE = 60
-    SECONDS_PER_HOUR = 3600
-    SECONDS_PER_DAY = 86400
-    SECONDS_PER_WEEK = 604800
-    SECONDS_PER_YEAR = 31556952
-
-    # Calculating years, weeks, days, hours
-    years = int(timespan // SECONDS_PER_YEAR)
-    remaining = timespan % SECONDS_PER_YEAR
-
-    weeks = int(remaining // SECONDS_PER_WEEK)
-    remaining = remaining % SECONDS_PER_WEEK
-
-    days = int(remaining // SECONDS_PER_DAY)
-    remaining = remaining % SECONDS_PER_DAY
-
-    hours = remaining / SECONDS_PER_HOUR
-    remaining = remaining % SECONDS_PER_HOUR
-
-    # Creating a list of time components
-    components = []
-    if years > 0:
-        components.append(f"{years} years")
-    if weeks > 0:
-        components.append(f"{weeks} weeks")
-    if days > 0:
-        components.append(f"{days} days")
-    if hours > 0:
-        components.append(f"{hours:.1f} hours")
-    else:
-        components.append(f"{remaining:.3f} seconds")
-    
-    # Joining the components with commas, and "and" for the last component
-    if len(components) > 1:
-        time_str = ", ".join(components[:-1]) + " and " + components[-1]
-    elif components:
-        time_str = components[0]
-    else:
-        time_str = "0 seconds"
-
-    print(f"The script took {time_str} to run.")
 
 def insistently_create(the_path):
     """
@@ -477,7 +393,8 @@ def search_day_for_crossovers(
     ds.to_netcdf(os.path.join(the_subdirectory,filename))
     #print(f"Saved {filename}")
 
-def main():
+
+def crossover_setup(event: dict):
     start_time = time.time()
     logger = "DISABLED"
 
@@ -514,10 +431,8 @@ def main():
                          'lon_key': 'longitude', 'lat_key': 'latitude', 'ssh_key': 'ssh_smoothed',
                          'cycle_key': 'cycle', 'pass_key': 'pass', 'flag_key': 'nasa_flag'}
 
-    key1 = 'S6'
+    key1 = event.get('source')
     key2 = key1
-    #key2 = 'GSFC'
-    #key2 = 'CMEMS'
     sat1 = all_sats[key1]
     sat2 = all_sats[key2]
 
@@ -529,16 +444,16 @@ def main():
     if sat1['shortname'] == sat2['shortname']:
         options['self_crossovers'] = True
         options['all_sat_names'] = sat1['shortname']
-        print(f"Looking for {options['all_sat_names']} self-crossovers...")
+        logging.info(f"Looking for {options['all_sat_names']} self-crossovers...")
     else:
         options['self_crossovers'] = False
         options['all_sat_names'] = sat1['shortname'] + ', ' + sat2['shortname']
-        print(f"Looking for crossovers between {options['all_sat_names'].replace(', ',' and ')}...")
+        logging.info(f"Looking for crossovers between {options['all_sat_names'].replace(', ',' and ')}...")
     
     options['crossover_files_path'] = os.path.join(options['crossover_files_path'],options['all_sat_names'].replace(', ','_'))
     insistently_create(options['crossover_files_path'])
 
-    print(f"Running {options['num_processes']} processes {options['running_desc']} from {options['first_day']} to {options['last_day']} at {options['sat_data_path'] = }, saving to {options['crossover_files_path'] = }")
+    logging.info(f"Running {options['running_desc']} from {options['first_day']} to {options['last_day']} at {options['sat_data_path'] = }, saving to {options['crossover_files_path'] = }")
 
     build_file_list(sat1, options['sat_data_path'])
     if options['self_crossovers']:
@@ -550,10 +465,10 @@ def main():
     options['first_available_day'] = max(sat1['file_dates'][0], sat2['file_dates'][0])
     options['last_available_day']  = min(sat1['file_dates'][-1], sat2['file_dates'][-1])
     if options['first_day'] < options['first_available_day']:
-        print(f"Warning: the requested first_day is before the first available date in file_dates. Changing first_day from {options['first_day']} to {options['first_available_day']}.")
+        logging.debug(f"Warning: the requested first_day is before the first available date in file_dates. Changing first_day from {options['first_day']} to {options['first_available_day']}.")
         options['first_day'] = options['first_available_day']
     if options['last_day'] > options['last_available_day']:
-        print(f"Warning: the requested last_day is after the last available date in file_dates. Changing last_day from {options['last_day']} to {options['last_available_day']}.")
+        logging.debug(f"Warning: the requested last_day is after the last available date in file_dates. Changing last_day from {options['last_day']} to {options['last_available_day']}.")
         options['last_day'] = options['last_available_day']
     all_days = np.arange(options['first_day'], options['last_day'], dtype='datetime64[D]')
 
@@ -588,14 +503,10 @@ def main():
     options['max_diff']  = np.timedelta64(options['cycle_ns'], 'ns')
 
     # Prepare a list of argument tuples for each day, then run the search_day_for_crossovers function in parallel.
-    args_list = [(day, logger, empty_crossover_data, None, sat1, sat2, options) for day in all_days]   
-    with mp.Pool(processes=options['num_processes']) as pool:
-        pool.starmap(search_day_for_crossovers, args_list)
+    args_list = [(day, logger, empty_crossover_data, None, sat1, sat2, options) for day in all_days]
+    for args in args_list:
+        search_day_for_crossovers(args)
     
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"The script took {elapsed_time:.3f} seconds to run.")
-    prettyprint_timespan(elapsed_time)
-
-if __name__ == '__main__':
-    main()

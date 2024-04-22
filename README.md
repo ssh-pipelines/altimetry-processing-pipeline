@@ -13,3 +13,5 @@
 - Check line 443 for running in the cloud
 - Update saving netcdf
     - need to account for local and cloud for where to save file and the uploading to bucket
+
+- Look at requirements.txt versions

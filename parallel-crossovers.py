@@ -116,7 +116,10 @@ def insistently_create(the_path):
     else:
         # If the directory doesn't exist, create it
         print(f"Creating output directory '{the_path}' because it doesn't exist.")
-        os.makedirs(the_path)
+        try:
+            os.makedirs(the_path)
+        except Exception as e:
+            print(f"Error creating directory '{the_path}': {e}")
 
 # Search for files and build a list of file dates for each satellite:
 def build_file_list(these_sat_data: dict, sat_data_path: str) -> None:
@@ -197,6 +200,8 @@ def init_and_fill_running_window(this_sat: dict, first_day_in_window: np.datetim
     these_filenames = [] #Empty list to store the filenames.
     these_histories = [] #Empty list to store the history attributes.
     these_product_generation_steps = [] #Empty list to store the product_generation_step attributes.
+    found_files = 0
+    found_points = 0
     for dayind in range(first_day_in_window_index, last_day_in_window_index + 1):
         if this_sat['source'] == 'new_podaac':
             sat_thisday = xr.open_dataset(this_sat['files'][dayind], mask_and_scale=False)
@@ -205,11 +210,19 @@ def init_and_fill_running_window(this_sat: dict, first_day_in_window: np.datetim
         else:
             raise ValueError(f"Invalid data source {this_sat['source'] = }")
         if sat_thisday.dims['time'] == 0: continue #Skip this file if it has no data.
+        else: found_points += sat_thisday.dims['time']
+        found_files += 1
         sat_these_days.append(sat_thisday)
         these_filenames.append(os.path.basename(this_sat['files'][dayind]))
         these_histories.append(sat_thisday.attrs['history'].split('Created on ')[1])
         these_product_generation_steps.append(sat_thisday.attrs['product_generation_step'])
         sat_thisday.close()
+    if found_files == 0:
+        print(f"No files found for {this_sat['shortname']} from {first_day_in_window} to {last_day_in_window}.")
+        return None
+    if found_points == 0:
+        print(f"No data found for {this_sat['shortname']} from {first_day_in_window} to {last_day_in_window}.")
+        return None
     sat_these_days = xr.concat(sat_these_days, dim='time')
     this_window['input_filenames'] = ', '.join(these_filenames)
     this_window['input_histories'] = ', '.join(these_histories)
@@ -294,6 +307,9 @@ def search_day_for_crossovers(
         first_day_in_window = this_day - np.timedelta64(options['window_size'] + options['window_padding'], 'D')
         last_day_in_window  = this_day + np.timedelta64(options['window_size'] + options['window_padding'], 'D')
         window2 = init_and_fill_running_window(sat2, first_day_in_window, last_day_in_window)
+    if window1 is None or window2 is None:
+        print(f"No data found for {np.datetime_as_string(this_day, unit='D')}.")
+        return
     # Loop through unique trackids in the first day of the running window for the first satellite, 
     # filtering to only include those where the start time is before the last time of the first day.
     trackid1_starting_today_indices = np.where(window1['trackid_start_times'] < next_day)[0]

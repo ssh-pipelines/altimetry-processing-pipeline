@@ -2,15 +2,16 @@
 # I'll do this later. Probably.
 
 ## Stuff to do
-- build_file_list should also account for cloud files
-- Parameters:
-    - key1 (satellite or source, one of ['GSFC', 'S6', 'MERGED'])
-    - date (this_day)
-- Lines 492 in parallel_crossovers to handle where this is running
-- Extract out main from parallel_crossovers into other script or repo
-- Break out file I/O into new function to account for both local and cloud streaming
-- Check line 443 for running in the cloud
-- Update saving netcdf
-    - need to account for local and cloud for where to save file and the uploading to bucket
+- TBD: Check on `window_length` attr. sat1 and sat2 can have variable windows if not self crossovers
+
+- make s3_utils for:
+    - getting list of file objects
+    - stream all file objects
+    - uploading xover file
+- add unittesting using local granules (might have to refactor some things)
 
 - Look at requirements.txt versions
+
+- Look at how single message failures are handled in batch SQS
+
+- Fix bug where init_and_fill_running_window finds no data and just returns - won't work downstream.

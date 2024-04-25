@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Crossover detection function, written by J. Willis based on a matlab 
 script, xover.m
@@ -7,10 +6,21 @@ and return time and ssh at crossover location for both passes as well.
 23 Dec 2023
 """
 
+from typing import Iterable, List, Tuple, Union
 import numpy as np
 from datetime import datetime
 
-def xover_ssh(cds1, cds2, pssh1, pssh2, pday1, pday2, kmcutoff=30.0):
+
+FloatPairList = Union[Tuple[float], Tuple[float, float]]
+XoverResult = Tuple[FloatPairList, FloatPairList, FloatPairList]
+
+def xover_ssh(cds1: np.ndarray, 
+              cds2: np.ndarray, 
+              pssh1: np.ndarray, 
+              pssh2: np.ndarray, 
+              pday1: np.ndarray, 
+              pday2: np.ndarray, 
+              kmcutoff=30.0) -> XoverResult:
     """
 	XOVER finds a crossover point between two passes (half orbits) of
 	one or two satellites and returns the coordinates of the crossover
@@ -332,12 +342,14 @@ def xover_ssh(cds1, cds2, pssh1, pssh2, pday1, pday2, kmcutoff=30.0):
     xind2=np.where(abs(np.diff(np.sign(dellat1)))==2)
     xind2=np.array(xind2) # make sure this is ndarray for testing
 
-    if np.size(xind2)==0: return [], [], []
+    if np.size(xind2)==0: 
+        return [], [], []
     xind2=np.append(xind2[0],xind2[0]+1)
     xind1=np.where(abs(np.diff(np.sign(dellat2)))==2)
     xind1=np.array(xind1) # make sure this is ndarray for testing
 
-    if np.size(xind1)==0: return [], [], []
+    if np.size(xind1)==0: 
+        return [], [], []
     xind1=np.append(xind1[0],xind1[0]+1)
     
     # now that we have the points, use formula for straight line to
@@ -414,14 +426,8 @@ def xover_ssh(cds1, cds2, pssh1, pssh2, pday1, pday2, kmcutoff=30.0):
     dst2=np.sqrt(((y2-y)*111)**2+((x2-x)*111*np.cos((y2/2+y/2)*np.pi/180))**2)
     dst3=np.sqrt(((y3-y)*111)**2+((x3-x)*111*np.cos((y3/2+y/2)*np.pi/180))**2)
     dst4=np.sqrt(((y4-y)*111)**2+((x4-x)*111*np.cos((y4/2+y/2)*np.pi/180))**2)
-
-    if dst1 > kmcutoff:
-        return [], [], []
-    if dst2 > kmcutoff:
-        return [], [], []
-    if dst3 > kmcutoff:
-        return [], [], []
-    if dst4 > kmcutoff:
+   
+    if any(dst > kmcutoff for dst in (dst1, dst2, dst3, dst4)):
         return [], [], []
     
     # just in case xcds needs to be unwrapped
@@ -432,6 +438,5 @@ def xover_ssh(cds1, cds2, pssh1, pssh2, pday1, pday2, kmcutoff=30.0):
         else:
             if xcds[0]>180:
                 xcds[0]=xcds[0]-360
-                
-    
+                    
     return xcds, xssh, xday

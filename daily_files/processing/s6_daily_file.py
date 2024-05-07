@@ -161,7 +161,7 @@ class S6DailyFile(DailyFile):
             source_flag_attrs[f'flag_column_{i}'] = src_flag
         for i, src_flag in enumerate(['range_ocean_nr_qual', 'surface_classification_flag', 'rad_water_vapor_qual', 'rain_flag'], 1):
             source_flag_attrs[f'flag_column_{i}_meaning'] = self.original_ds[src_flag].attrs['flag_meanings']
-        self.ds['source_flag'] = (('time', 'src_flag_dim'), source_flag)
+        self.ds['source_flag'] = (('time', 'src_flag_dim'), source_flag, source_flag_attrs)
 
         self.ds['median_filter_flag'] = (('time'), median_flag, {
             'standard_name': 'median_filter_flag',

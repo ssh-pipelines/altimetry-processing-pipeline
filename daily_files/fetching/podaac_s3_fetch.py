@@ -31,10 +31,13 @@ class PodaacS3Fetcher(Fetcher):
     granules: Iterable[CMRGranule]
     
     def __init__(self):
-        edl_secret = aws_manager.get_secret('EDL_auth')
-        self.ed_user = edl_secret.get('user')
-        self.ed_pass = edl_secret.get('password')
-        self.s3 = self.setup_s3()
+        try:
+            edl_secret = aws_manager.get_secret('EDL_auth')
+            self.ed_user = edl_secret.get('user')
+            self.ed_pass = edl_secret.get('password')
+            self.s3 = self.setup_s3()
+        except:
+            pass
         
     def cmr_query(self, concept_id: str, date: datetime) -> Iterable[CMRGranule]:
         return CMRQuery(concept_id, date).query()

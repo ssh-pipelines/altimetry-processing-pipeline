@@ -21,7 +21,7 @@ class S6Collections():
     S6_COLLECTIONS: Iterable[S6Collection] = [
             S6Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08', 'C2619443998-POCLOUD', 1),
             S6Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08_UNVALIDATED', 'C2619444006-POCLOUD', 2),
-            S6Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F', 'C1968980609-POCLOUD', 3),
+            S6Collection('JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F', 'C1968979561-POCLOUD', 3)
         ]
 
 class S6Fetch(PodaacS3Fetcher):
@@ -53,12 +53,13 @@ class S6Fetch(PodaacS3Fetcher):
         Query for multiple S6 collections and select granules based on collection
         priorities as defined in daily_files.fetching.s6_collections.S6_Collections
         '''
+        cycle_pass_pattern = '_\d{3}_\d{3}_'
         for collection in S6Collections.S6_COLLECTIONS:
             logging.info(f'Querying for collection {collection.shortname}')
             granules = self.cmr_query(collection.concept_id, self.date)
             for granule in granules:
                 # Extract cycle_pass from granule file name
-                cycle_pass = re.search('_\d{3}_\d{3}_', granule.title).group(0)[1:-1]
+                cycle_pass = re.search(cycle_pass_pattern, granule.title).group(0)[1:-1]
                 # Get current highest priority granule for this cycle_pass
                 queue_status = self.priority_granules.get(cycle_pass, (100, None))
                 # Update if current collection has higher priority
@@ -66,4 +67,4 @@ class S6Fetch(PodaacS3Fetcher):
                     self.priority_granules.update({cycle_pass: (collection.priority, granule)})
                     
         # Return the list of CMR_Granule objects
-        return [v[1] for k,v in self.priority_granules.items()]
+        return [granule for cycle_pass, (priority_val, granule) in sorted(self.priority_granules.items())]

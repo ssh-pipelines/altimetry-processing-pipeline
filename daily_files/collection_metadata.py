@@ -20,7 +20,7 @@ class AllCollections:
             "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08_UNVALIDATED",
             "https://doi.org/10.5067/S6AP4-2LRNUR-F08",
         ),
-        "C1968980609-POCLOUD": CollectionMeta(
+        "C1968979561-POCLOUD": CollectionMeta(
             "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography",
             "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F",
             "https://doi.org/10.5067/S6AP4-2LRST",

@@ -14,9 +14,9 @@ class GSFCDailyFile(DailyFile):
     def __init__(self, file_objs:Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
         self.date = date
         
-        opened_files = [xr.open_dataset(file_obj, engine='h5netcdf') for file_obj in file_objs]
-        cycles = np.concatenate([np.full_like(ds.ssha.values, ds.attrs["merged_cycle"]) for ds in opened_files])
-        self.og_ds = xr.concat(opened_files, dim='N_Records')
+        with [xr.open_dataset(file_obj, engine='h5netcdf') for file_obj in file_objs] as opened_files:
+            cycles = np.concatenate([np.full_like(ds.ssha.values, ds.attrs["merged_cycle"]) for ds in opened_files])
+            self.og_ds = xr.concat(opened_files, dim='N_Records')
     
         ssh: np.ndarray = self.og_ds.ssha.values / 1000 # Convert from mm
         lats: np.ndarray = self.og_ds.lat.values

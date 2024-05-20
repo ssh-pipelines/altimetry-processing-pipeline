@@ -111,6 +111,7 @@ def work(job: DailyFileJob):
     s3_output_path = f"daily_files/{job.satellite}/{job.date.year}/{filename}"
     aws_manager.upload_s3(out_path, job.DAILY_FILE_BUCKET, s3_output_path)
     logging.info("Job complete.")
+    daily_ds.close()
 
 
 def make_empty(job: DailyFileJob):

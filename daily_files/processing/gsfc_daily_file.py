@@ -72,10 +72,10 @@ class GSFCDailyFile(DailyFile):
         '''
         Ordering of steps to create daily file from GSFC granule
         '''
+        self.map_points_to_basin()
         self.make_nasa_flag()        
         self.clean_date(self.date)
         self.mss_swap()
-        self.map_points_to_basin()
         self.apply_basin_to_nasa()
         self.make_ssh_smoothed(self.date)
         self.set_metadata()
@@ -110,13 +110,17 @@ class GSFCDailyFile(DailyFile):
         all_flags = self.og_ds.flag.attrs['flag_meanings'].split()
         flag_list = [all_flags[i] for i in source_flag_index]
         
-        prelim_flag = ((self.og_ds.Surface_Type.values == 0) | 
-                       (self.og_ds.Surface_Type.values == 2)) & \
+        surf_type = self.og_ds.Surface_Type.values
+        ssh = self.ds.ssh.values
+        basin_flag = self.ds.basin_flag.values
+        lats = self.ds.latitude.values
+        
+        prelim_flag = ((surf_type == 0) | (surf_type == 2)) & \
                       (~flag_array[:, source_flag_index].any(axis=1)) & \
-                      (~np.isnan(self.ds.ssh))
+                      (~np.isnan(ssh)) & \
+                      (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2)))
 
         # Calculate rolling median and standard deviation
-        ssh = self.ds.ssh.values
         n_median = 15
         n_std = 95
         timestamps = np.arange(1, len(ssh)+1)
@@ -132,11 +136,11 @@ class GSFCDailyFile(DailyFile):
 
         median_flag = abs(ssh - median_interp) <= std_interp * 5
         
-        nasa_flag = ~(((self.og_ds.Surface_Type.values == 0) | 
-                       (self.og_ds.Surface_Type.values == 2)) & \
+        nasa_flag = ~(((surf_type == 0) | (surf_type == 2)) & \
                       (~flag_array[:, [1,2,3,5]].any(axis=1)) & \
-                      (~np.isnan(self.ds.ssh)) & \
-                      median_flag)
+                      (~np.isnan(ssh)) & \
+                      median_flag & \
+                      ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2)))
         
         source_flag = np.array(flag_array[:, source_flag_index]).astype('bool')
         

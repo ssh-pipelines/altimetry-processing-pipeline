@@ -75,11 +75,10 @@ class S6DailyFile(DailyFile):
         '''
         Ordering of steps to create daily file from GSFC granule
         '''
-        
+        self.map_points_to_basin()        
         self.make_nasa_flag()
         self.clean_date(self.date)
         self.mss_swap()
-        self.map_points_to_basin()        
         self.apply_basin_to_nasa()
         self.make_ssh_smoothed(self.date)
         self.set_metadata()
@@ -97,6 +96,8 @@ class S6DailyFile(DailyFile):
         s0 = self.original_ds.sig0_ocean_nr.values
         swh = self.original_ds.swh_ocean_nr.values
         ssh = self.original_ds.ssha_nr.values
+        basin_flag = self.ds.basin_flag.values
+        lats = self.ds.latitude.values
         
         n_median = 15
         n_std = 95
@@ -125,7 +126,12 @@ class S6DailyFile(DailyFile):
             | ((s0 >= p2.x) & (swh > swtrend3))
         )
 
-        prelim_flag = ((surfc==0) | (surfc==2)) & (kqual==0) & ((rain==0) | (rain==3) | (rain==5)) & (np.abs(ssh) < 5)
+        prelim_flag = ((surfc == 0) | (surfc == 2)) & \
+            (kqual == 0) & \
+            ((rain == 0) | (rain == 3) | (rain == 5)) & \
+            ((np.abs(ssh) < 5) & (basin_flag > 0) & (basin_flag < 1000)) & \
+            ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2))
+                        
         swp_flag = prelim_flag & ~sw_flag
         
         rolling_median = pd.Series(ssh[swp_flag]).rolling(n_median, center=True, min_periods=1).median().values
@@ -140,7 +146,16 @@ class S6DailyFile(DailyFile):
         std_interp = np.interp(timestamps, timestamps[swp_flag][outlier_index], rolling_std)
 
         median_flag = abs(dx) > std_interp * 5
-        nasa_flag = ~((~np.isnan(ssh)) & ((surfc==0) | (surfc==2)) & (kqual==0) & ((rain==0) | (rain==3) | (rain==5)) & (rqual==0) & (~median_flag))
+        nasa_flag = ~(
+            (~np.isnan(ssh)) &
+            ((surfc == 0) | (surfc == 2)) &
+            (kqual == 0) &
+            ((rain == 0) | (rain == 3) | (rain == 5)) &
+            (rqual == 0) &
+            (~median_flag) &
+            ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2))
+        )
+                                
         source_flag = np.array([kqual, surfc, rqual, rain], dtype=np.int8).T
 
         self.assign_flags(nasa_flag, median_flag, source_flag)

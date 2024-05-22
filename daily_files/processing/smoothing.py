@@ -70,7 +70,7 @@ def ssh_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     padded_df = df.reindex(np.arange(date, date + timedelta(1), dtype='datetime64[s]'))
 
     # Apply nasa_flag to ssh
-    padded_df.values[padded_df.flag.values != 0] = np.nan
+    padded_df.values[padded_df.flag.values.astype(bool)] = np.nan
 
     # Generate rolling windows
     windows = make_windows(padded_df.ssh.values)

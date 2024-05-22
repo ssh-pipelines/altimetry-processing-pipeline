@@ -88,19 +88,16 @@ class DailyFile(ABC):
         '''
         Drop times outside of date
         '''
-        ds = ds.where(~np.isnat(ds.time), drop=True)        
         today = str(date)[:10]
-        logging.debug(f'Subsetting data to {today}')
-        try:
-            ds = ds.sel(time=today)
-        except KeyError as e:
-            ds = ds.where(ds.time==today, drop=True)
+        # For reasons still to be discovered, the where() function is required
+        # before smoothing. 
+        ds = ds.where(~np.isnat(ds.time), drop=True)
+        ds = ds.sel(time=today)
         return ds
     
     def drop_dupe_times(self, ds: xr.Dataset) -> xr.Dataset:
         logging.debug('Dropping duplicate times')
-        ds = ds.drop_duplicates(dim='time')
-        return ds
+        return ds.drop_duplicates(dim='time')
     
     def filter_outliers(self, ds: xr.Dataset, limit: float = 2) -> xr.Dataset:
         '''

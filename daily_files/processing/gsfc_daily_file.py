@@ -74,15 +74,14 @@ class GSFCDailyFile(DailyFile):
         Ordering of steps to create daily file from GSFC granule
         '''
         self.map_points_to_basin()
-        self.make_nasa_flag()        
-        self.clean_date(self.date)
+        self.make_nasa_flag()     
+        self.clean_date(self.date)   
         self.mss_swap()
         self.apply_basin_to_nasa()
         self.make_ssh_smoothed(self.date)
         self.set_metadata()
         self.set_source_attrs()
 
-        
     def gsfc_flag_splitting(self) -> np.ndarray:
         '''
         Breaks out individual GSFC flags from comprehensive flag
@@ -145,10 +144,6 @@ class GSFCDailyFile(DailyFile):
         
         source_flag = np.array(flag_array[:, source_flag_index]).astype('bool')
         
-        # Assign flags to dataset
-        self.assign_flags(nasa_flag, median_flag, source_flag, all_flags, flag_list)
-        
-    def assign_flags(self, nasa_flag, median_flag, source_flag, all_flags, flag_list):
         # Assign nasa_flag to dataset
         self.ds['nasa_flag'] = (('time'), nasa_flag.data, {
             'flag_derivation': f'nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes an along-track ' \

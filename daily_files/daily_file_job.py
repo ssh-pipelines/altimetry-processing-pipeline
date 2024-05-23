@@ -69,11 +69,11 @@ def save_ds(ds: xr.Dataset, output_path: str):
         "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}
     }
     for var in ds.variables:
-        if var not in ["latitude", "longitude", "time", "basin_names"]:
+        if var not in ["latitude", "longitude", "time", "basin_names_table"]:
             encoding[var] = {"complevel": 5, "zlib": True}
         elif "lat" in var or "lon" in var:
             encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32"}
-        elif "basin_names" in var:
+        elif "basin_names_table" in var:
             encoding[var] = {
                 "complevel": 5,
                 "zlib": True,

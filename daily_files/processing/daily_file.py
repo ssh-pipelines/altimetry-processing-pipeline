@@ -91,8 +91,12 @@ class DailyFile(ABC):
         today = str(date)[:10]
         # For reasons still to be discovered, the where() function is required
         # before smoothing. 
+        
+        basin_table = ds.basin_names_table
+        ds = ds.drop_vars('basin_names_table')
         ds = ds.where(~np.isnat(ds.time), drop=True)
         ds = ds.sel(time=today)
+        ds['basin_names_table'] = basin_table
         return ds
     
     def drop_dupe_times(self, ds: xr.Dataset) -> xr.Dataset:
@@ -112,6 +116,7 @@ class DailyFile(ABC):
         '''
         logging.info('Performing subsetting by date and filtering outlier values')
         self.ds = self.date_subset(self.ds, date)
+        
         self.ds = self.drop_dupe_times(self.ds)
         
     def mss_interp(self, mss_lat: np.ndarray, mss_lon: np.ndarray, mss_diff: np.ndarray, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:

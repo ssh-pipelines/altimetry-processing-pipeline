@@ -1,12 +1,9 @@
-from io import BytesIO
-import io
+from io import TextIOWrapper
 import logging
 from typing import Iterable
 import boto3
-import json
-from botocore.exceptions import ClientError
 import os
-
+import s3fs
 
 class AWSManager:
     DAILY_FILE_BUCKET = "example-bucket"
@@ -27,6 +24,10 @@ class AWSManager:
             self._session = boto3.Session(aws_access_key_id=self._access_key,
                                         aws_secret_access_key=self._secret_key,
                                         aws_session_token=self._session_token)
+            self.fs = s3fs.S3FileSystem(anon=False,
+                                    key=self._access_key,
+                                    secret=self._secret_key,
+                                    token=self._session_token)
         except Exception as e:
             logging.error(e)
             
@@ -36,15 +37,14 @@ class AWSManager:
         objs = self.s3_client.list_objects_v2(Bucket=self.DAILY_FILE_BUCKET, Prefix=prefix)
         return [obj['Key'] for obj in objs.get('Contents', []) if 'Key' in obj and obj['Key'].endswith('.nc')]
             
-    def stream_s3(self, key: str) -> BytesIO:
-        s3_client = self.s3_client
-        resp = s3_client.get_object(Bucket=self.DAILY_FILE_BUCKET, Key=key)
-        stream = resp['Body'].read()
-        return stream
+    def stream_s3(self, src: str) -> TextIOWrapper:
+        if self.fs.exists(os.path.join(self.DAILY_FILE_BUCKET, src)):
+            return self.fs.open(os.path.join(self.DAILY_FILE_BUCKET, src))
+        raise RuntimeError(f'{src} does not exist!')
     
     def upload_s3(self, src: str, bucket: str, dest:str):
         s3_client = self.s3_client
-        logging.info('Uploading daily file to S3')
+        logging.info(f'Uploading {src} to {dest}')
         s3_client.upload_file(src, bucket, dest)
 
 aws_manager = AWSManager()

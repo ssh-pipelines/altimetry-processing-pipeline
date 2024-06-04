@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from typing import Union
+from typing import Iterable
 import numpy as np
 import xarray as xr
 
@@ -25,97 +25,71 @@ class Options():
 
 class SourceWindow():
     
-    def __init__(self, source: str, day: np.datetime64, window_start: np.datetime64, window_end: np.datetime64) -> None:
-        self.shortname = source
-        self.day = day
-        self.window_start = window_start
-        self.window_end = window_end
+    def __init__(self, df_version: str, source: str, day: np.datetime64, window_start: np.datetime64, window_end: np.datetime64) -> None:
+        self.df_version: str = df_version
+        self.shortname: str = source
+        self.day: np.datetime64 = day
+        self.window_start: np.datetime64 = window_start
+        self.window_end: np.datetime64 = window_end
         
     def set_filepaths(self):
-        # s3://example-bucket/daily_files/GSFC/{year}/filessssss.nc
         start_year = str(self.window_start.astype('datetime64[Y]')).split('-')[0]
         end_year = str(self.window_end.astype('datetime64[Y]')).split('-')[0]
-        years_set = list(set([start_year, end_year]))
+        unique_years = list(set([start_year, end_year]))
         all_keys = []
-        for year in years_set:    
-            prefix = os.path.join('daily_files', self.shortname, year)
+        for year in unique_years:    
+            prefix = os.path.join('daily_files', self.df_version, self.shortname, year)
             s3_keys = aws_manager.get_filepaths(prefix)
             all_keys.extend(s3_keys)
             
-        filtered_keys = list(filter(lambda x: date_from_fp(x['Key'])>= self.window_start and date_from_fp(x['Key']) <= self.window_end, all_keys))
+        filtered_keys = list(filter(lambda x: date_from_fp(x)>= self.window_start and 
+                                              date_from_fp(x) <= self.window_end,
+                                              all_keys))
         self.filepaths = filtered_keys
     
     def set_file_dates(self):
-        self.file_dates = [date_from_fp(fp) for fp in self.filepaths]
+        self.file_dates: Iterable[np.datetime64] = [date_from_fp(fp) for fp in self.filepaths]
         
     def stream_files(self):
         self.streams = [aws_manager.stream_s3(key) for key in self.filepaths]       
-    
+
     def init_and_fill_running_window(self):
         '''
         Initialize and fill a running window with satellite data loaded from disk.
         '''
-        logging.info('Initializing and filling data...')
         # Find indices for first_day_in_window and last_day_in_window
         first_day_in_window_index = find_closest_date_index(self.window_start, self.file_dates)
         last_day_in_window_index  = find_closest_date_index(self.window_end,  self.file_dates)
+        
+        window_indexes = range(first_day_in_window_index, last_day_in_window_index + 1)
 
-        #Fill the running window with data from disk:
-        sat_these_days = [] #Empty list to store the opened files.
-        these_filenames = [] #Empty list to store the filenames.
-        these_histories = [] #Empty list to store the history attributes.
-        these_product_generation_steps = [] #Empty list to store the product_generation_step attributes.
-        found_files = 0
-        found_points = 0
+        window_ds = xr.open_mfdataset([self.streams[dayind] for dayind in window_indexes], engine='h5netcdf', 
+                                      concat_dim='time', chunks={}, parallel=True, combine='nested')
+        window_ds = window_ds.dropna('time', subset=['ssh_smoothed'])
+
+        logging.info('Opening files complete')
         
-        for dayind in range(first_day_in_window_index, last_day_in_window_index + 1):
-            sat_thisday = xr.open_dataset(self.streams[dayind], engine='h5netcdf', mask_and_scale=False)
-            if sat_thisday.dims['time'] == 0: 
-                continue #Skip this file if it has no data.
-            else: 
-                found_points += sat_thisday.dims['time']
-            found_files += 1
-            
-            sat_these_days.append(sat_thisday)
-            these_filenames.append(os.path.basename(self.filepaths[dayind]))
-            these_histories.append(sat_thisday.attrs['history'].split('Created on ')[1])
-            these_product_generation_steps.append(sat_thisday.attrs['product_generation_step'])
-        
-            sat_thisday.close()
-            
-        if found_files == 0:
-            logging.info(f"No files found for {self.shortname} from {self.window_start} to {self.window_end}.")
-            return
-        if found_points == 0:
-            logging.info(f"No data found for {self.shortname} from {self.window_start} to {self.window_end}.")
-            return
-        ds = xr.concat(sat_these_days, dim='time')
-        logging.info("Loading and merging data...done")
-        
-        self.input_filenames = ', '.join(these_filenames)
-        self.input_histories = ', '.join(these_histories)
-        self.input_product_generation_steps = ', '.join(these_product_generation_steps)
-        
-        #Add this day's data (after filtering, standardizing key names, etc.) to the running window.
-        #Filter out default values:
-        ssh_fill_value = ds['ssh_smoothed'].attrs['_FillValue']
-        flag_filter = np.ones(ds['ssh_smoothed'].shape, dtype=bool)
-        
-        good_indices = np.where((ds['ssh_smoothed'].values != ssh_fill_value) & (flag_filter))[0]
-        self.time = ds['time'][good_indices].values
-        self.lon = ds['longitude'][good_indices].values.astype('float64')
-        self.lat = ds['latitude'][good_indices].values.astype('float64')
-        self.ssh = ds['ssh_smoothed'][good_indices].values.astype('float64')
-        self.trackid = ds['cycle'][good_indices].values.astype('int32')*10000 + ds['pass'][good_indices].values
+        self.time = window_ds['time'].values
+        self.lon = window_ds['longitude'].values.astype('float64')
+        self.lat = window_ds['latitude'].values.astype('float64')
+        self.ssh = window_ds['ssh_smoothed'].values.astype('float64')
+        self.trackid = window_ds['cycle'].values.astype('int32')*10000 + window_ds['pass'].values
+
+        self.input_filenames = ', '.join([os.path.basename(self.filepaths[dayind]) for dayind in window_indexes])
+        self.input_histories = window_ds.attrs['history'].split('Created on ')[1]
+        self.input_product_generation_steps = window_ds.attrs['product_generation_step']
 
         #Find unique trackids, cycles and passes in the first satellite's data in this window.
         self.unique_trackid = np.unique(self.trackid)
-        trackid_start_times_list = [np.min(self.time[self.trackid == this_unique_trackid]) for this_unique_trackid in self.unique_trackid]
-        self.trackid_start_times = np.array(trackid_start_times_list, dtype='datetime64[ns]')
+        
+        starts = []
+        self.track_masks = {}
+        for this_unique_trackid in self.unique_trackid:
+            starts.append(np.min(self.time[self.trackid == this_unique_trackid]))
+            self.track_masks[this_unique_trackid] = np.where(self.trackid == this_unique_trackid)[0]
+        
+        self.trackid_start_times = np.array(starts, dtype='datetime64[ns]')
 
-        #Save the track_masks (indices) for each unique trackid.
-        #Each unique trackid is a key in the track_masks dictionary, and the value is an array of indices.
-        self.track_masks = {this_unique_trackid: np.where(self.trackid == this_unique_trackid)[0] for this_unique_trackid in self.unique_trackid}
 
 def date_from_fp(fp: str) -> np.datetime64:
     date_pattern = re.compile(r'\d{8}')
@@ -129,28 +103,16 @@ def date_from_fp(fp: str) -> np.datetime64:
         raise RuntimeError(f'Unable to extract date from filename: {filename = }')    
     return date_obj
 
-def find_closest_date_index(date: np.datetime64, file_dates: list) -> Union[int, None]:
+def find_closest_date_index(date: np.datetime64, file_dates: Iterable[np.datetime64]) -> int:
     '''
     Find the index of the closest date to the given date in the file_dates list.
     '''
     # Convert file_dates to a numpy array of datetime64 if it's not already
     file_dates_np = np.array(file_dates)
-    # Attempt to find the index of the exact date
-    exact_match_indices = np.where(file_dates_np == date)[0]
-    if exact_match_indices.size > 0:
-        # Return the first exact match if it exists
-        return int(exact_match_indices[0])
-    else:
-        # If the date is not found, find the closest one
-        if file_dates_np.size == 0:
-            logging.error("Error: The file_dates list is empty.")
-            return None
-        else:
-            # Calculate the absolute difference between the target date and each date in file_dates
-            differences = np.abs(file_dates_np - date)
-            # Find the index of the smallest difference
-            closest_index = np.argmin(differences)
-            # Optionally, print a message about the closest date found
-            closest_date_str = np.datetime_as_string(file_dates_np[closest_index], unit='D')
-            logging.debug(f"Exact date not found. The closest date to {np.datetime_as_string(date, unit='D')} is {closest_date_str}.")
-            return int(closest_index)
+    
+    if file_dates_np.size == 0:
+        raise RuntimeError("Error: The file_dates list is empty.")
+    
+    differences = np.abs(file_dates_np - date)
+    closest_index = np.argmin(differences)    
+    return int(closest_index)

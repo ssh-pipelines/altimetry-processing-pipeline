@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta
 import pytz
 import xarray as xr
-from oerfit import oerfit
+from oer.oerfit import oerfit
 
 
 

@@ -3,8 +3,9 @@ import unittest
 from glob import glob
 
 import numpy as np
-from crossover.parallel_crossovers import crossover_setup
-from crossover.Crossover import Options, date_from_fp
+from crossover.parallel_crossovers import window_init, WINDOW_SIZE, WINDOW_PADDING
+from crossover.Crossover import date_from_fp
+
 
 class XoverTestCase(unittest.TestCase):
     
@@ -14,10 +15,8 @@ class XoverTestCase(unittest.TestCase):
         cls.source_1 = "GSFC"
         cls.source_2 = "GSFC"
         cls.df_version = "p1"
-        
-        cls.OPTIONS = Options(cls.source_1, cls.source_2)
-        
-        cls.source_window_1, cls.source_window_2 = crossover_setup(cls.day, cls.source_1, cls.source_2, cls.df_version)
+                
+        cls.source_window_1, cls.source_window_2 = window_init(cls.day, cls.source_1, cls.source_2, cls.df_version)
         
         cls.all_prefixes = []
         
@@ -28,10 +27,6 @@ class XoverTestCase(unittest.TestCase):
         for year in unique_years:    
             prefix = os.path.join('daily_files', cls.source_window_1.df_version, cls.source_window_1.shortname, year)
             cls.all_prefixes.append(prefix)
-            
-    def test_options(self):
-        self.assertTrue(self.OPTIONS.self_crossovers)
-        self.assertEqual(self.OPTIONS.window_size + self.OPTIONS.window_padding, 12)
         
     def test_valid_prefix(self):
         for prefix in self.all_prefixes:
@@ -42,4 +37,4 @@ class XoverTestCase(unittest.TestCase):
         filtered_keys = list(filter(lambda x: date_from_fp(x)>= self.source_window_1.window_start and 
                                               date_from_fp(x) <= self.source_window_1.window_end,
                                               filenames))
-        self.assertEqual(len(filtered_keys), self.OPTIONS.window_size + self.OPTIONS.window_padding + 1)
+        self.assertEqual(len(filtered_keys), WINDOW_SIZE + WINDOW_PADDING + 1)

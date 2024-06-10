@@ -5,7 +5,7 @@ import unittest
 from glob import glob
 
 import numpy as np
-from crossover.Crossover import Options
+from crossover.Crossover import date_from_fp
 from crossover.parallel_crossovers import window_init, search_day_for_crossovers
 from crossover.utils.log_config import configure_logging
 
@@ -26,7 +26,7 @@ class XoverTestCase(unittest.TestCase):
         for i, source_window in enumerate([cls.source_window_1, cls.source_window_2], 1):
             logging.info(f'Initializing and filling data for window {i}...')
             source_window.filepaths = sorted(glob('tests/test_granules/GSFC/*.nc'))
-            source_window.set_file_dates()
+            source_window.file_dates = [date_from_fp(fp) for fp in source_window.filepaths]
             source_window.streams = sorted(glob('tests/test_granules/GSFC/*.nc'))
             source_window.init_and_fill_running_window()    
         

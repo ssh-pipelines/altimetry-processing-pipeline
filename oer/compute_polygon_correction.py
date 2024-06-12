@@ -54,12 +54,12 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, satellite: str):
 
     # case of no data in this day, make a polynomial that's all zeros
     if len(iilimit) == 0:
+        logging.warning(f'No data for {satellite} {date}')
         tbrk = np.array(range(-3, 28))
         coef = np.zeros((4, len(tbrk) - 1))
         rms_sig = np.zeros(len(tbrk) - 1)
         rms_res = np.zeros(len(tbrk) - 1)
         nint = np.zeros(len(tbrk) - 1)
-        print(f'No data for {date}')
     else:
         # make list of passes in this time window & find min/max times for them
         cplist, iitrack = np.unique(trackid[iilimit], return_index=True)

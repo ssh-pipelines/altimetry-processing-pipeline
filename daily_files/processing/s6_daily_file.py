@@ -14,6 +14,9 @@ from daily_files.collection_metadata import AllCollections
 
 class S6DailyFile(DailyFile):
     
+    # Offset from GSFC in meters
+    ABSOLUTE_OFFSET = 0.02665 
+    
     def __init__(self, file_objs:Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
         self.date = date
         
@@ -23,7 +26,7 @@ class S6DailyFile(DailyFile):
         self.original_ds = ds
         self.collection_ids = collection_ids
         
-        ssh: np.ndarray = ds.ssha_nr.values
+        ssh: np.ndarray = ds.ssha_nr.values + self.ABSOLUTE_OFFSET
         lats: np.ndarray = ds.latitude.values
         lons: np.ndarray = ds.longitude.values
         times: np.ndarray = ds.time.values
@@ -214,4 +217,4 @@ class S6DailyFile(DailyFile):
         self.ds.attrs['geospatial_lat_min'] = "-66.15LL"
         self.ds.attrs['geospatial_lat_max'] = "66.15LL"
         self.ds.attrs['mean_sea_surface'] = self.target_mss
-        self.ds.attrs['absolute_offset_applied'] = 0
+        self.ds.attrs['absolute_offset_applied'] = self.ABSOLUTE_OFFSET

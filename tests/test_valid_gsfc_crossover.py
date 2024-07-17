@@ -4,7 +4,6 @@ import unittest
 from glob import glob
 
 import numpy as np
-from crossover.Crossover import date_from_fp
 from crossover.parallel_crossovers import CrossoverProcessor
 
 class XoverTestCase(unittest.TestCase):
@@ -26,12 +25,13 @@ class XoverTestCase(unittest.TestCase):
         processor = CrossoverProcessor(cls.day, cls.source, cls.df_version)
         
         processor.source_window.filepaths = sorted(glob('tests/test_granules/GSFC/*.nc'))
-        processor.source_window.file_dates = [date_from_fp(fp) for fp in processor.source_window.filepaths]
+        processor.source_window.file_dates = [processor.source_window.date_from_fp(fp) for fp in processor.source_window.filepaths]
         processor.source_window.streams = sorted(glob('tests/test_granules/GSFC/*.nc'))
         processor.source_window.init_and_fill_running_window()  
         cls.source_window = processor.source_window
         cls.ds = processor.search_day_for_crossovers()
-
+        local_path = processor.save_to_netcdf(cls.ds)
+        print(local_path)
         # Calculate the maximum memory used
         end_memory = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         max_memory_mb = end_memory / (1024 * 1024 )  # Convert to megabytes

@@ -204,7 +204,7 @@ class CrossoverProcessor:
         filename = f'xovers_{self.source}-{np.datetime_as_string(self.day)}.nc'
         local_output_path = os.path.join('/tmp', filename)
         logging.info(f'Saving netcdf to {local_output_path}')
-        ds.to_netcdf(local_output_path)
+        ds.to_netcdf(local_output_path, engine='h5netcdf')
         return local_output_path
     
     def upload_xover(self, local_path):

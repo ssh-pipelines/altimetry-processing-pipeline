@@ -1,6 +1,6 @@
 #build command: docker build -t crossovers-app .
 #run command: docker run -it --rm --name my-running-app -v $(pwd):/usr/src/app crossovers-app
-FROM public.ecr.aws/lambda/python:3.9
+FROM public.ecr.aws/lambda/python:3.11
 
 # Copy the requirements.txt file into the container at /usr/src/app
 COPY requirements.txt .

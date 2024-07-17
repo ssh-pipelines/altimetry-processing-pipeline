@@ -71,7 +71,7 @@ class CrossoverProcessor:
         self.source_window: SourceWindow = self.window_init()
 
     def window_init(self) -> SourceWindow:
-        logging.info(f"Looking for {self.source} self-crossovers...")
+        logging.info(f"Looking for {self.source} {self.day} self-crossovers...")
         
         window_start = self.day
         window_end = self.day + np.timedelta64(WINDOW_SIZE + WINDOW_PADDING, 'D')
@@ -91,11 +91,12 @@ class CrossoverProcessor:
     def create_or_search_xovers(self) -> xr.Dataset:
         if not self.initialize_and_fill_data():
             ds = self.create_dataset(CrossoverData.create_empty())
-        try:
-            ds = self.search_day_for_crossovers()
-        except Exception as e:
-            logging.error(f"Error searching for crossovers. Making empty xover instead. {e}")
-            ds = self.create_dataset(CrossoverData.create_empty())
+        else:
+            try:
+                ds = self.search_day_for_crossovers()
+            except Exception as e:
+                logging.error(f"Error searching for crossovers. Making empty xover instead. {e}")
+                ds = self.create_dataset(CrossoverData.create_empty())
         return ds
     
     def search_day_for_crossovers(self) -> xr.Dataset:

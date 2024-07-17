@@ -1,6 +1,2 @@
-# ignore ALL .out or .err files
-*.out
-*.err
 *.DS_Store
-*.ipynb_checkpoints
 __pycache__

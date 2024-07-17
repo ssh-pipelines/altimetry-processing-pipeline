@@ -1,27 +1,40 @@
 import json
 import logging
+from typing import Tuple
 import numpy as np
-from crossover.parallel_crossovers import compute_crossovers
+from crossover.parallel_crossovers import CrossoverProcessor
+
+def parse_params(params: dict) -> Tuple[np.datetime64, str, str]:
+    try:
+        date = np.datetime64(params.get('date'))
+    except:
+        raise ValueError(f'Unable to parse date.')
+    source = params.get('source')
+    df_version = params.get('df_version')
+    
+    if None in [date, source, df_version]:
+        raise ValueError(f'Missing job parameters: {df_version = },{source = },{date = }')
+    return date, source, df_version
 
 def handler(event, context):
+    logging.root.handlers = []
+    logging.basicConfig(
+        level='INFO',
+        format='[%(levelname)s] %(asctime)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+    
     if 'Records' in event:
         for record in event['Records']:
             message_body = json.loads(record['body'])
-            day = np.datetime64(message_body.get('date'))
-            source_1 = message_body.get('source_1')
-            source_2 = message_body.get('source_2', source_1)
-            daily_file_version = message_body.get('df_version')
-            
-            if not all([source_1, source_2, day]):
-                logging.exception(f'Missing job parameters: {daily_file_version = },{source_1 = },{source_2 = },{day = }')
+            try:
+                date, source, daily_file_version = parse_params(message_body)
+            except ValueError as e:
+                logging.error(e)
                 continue
-            compute_crossovers(day, source_1, source_2, daily_file_version)
+            processor = CrossoverProcessor(date, source, daily_file_version)
+            processor.run()
     else:
-        day = np.datetime64(event.get('date'))
-        source_1 = event.get('source_1')
-        source_2 = event.get('source_2', source_1)
-        daily_file_version = event.get('df_version')
-        
-        if not all([source_1, source_2, day]):
-            raise AttributeError(f'Missing job parameters: {daily_file_version = },{source_1 = },{source_2 = },{day = }')
-        compute_crossovers(day, source_1, source_2, daily_file_version)
+        date, source, daily_file_version = parse_params(event)
+        processor = CrossoverProcessor(date, source, daily_file_version)
+        processor.run()

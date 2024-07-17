@@ -37,10 +37,11 @@ class AWSManager:
         objs = self.s3_client.list_objects_v2(Bucket=self.DAILY_FILE_BUCKET, Prefix=prefix)
         return [obj['Key'] for obj in objs.get('Contents', []) if 'Key' in obj and obj['Key'].endswith('.nc')]
             
+    def check_exists(self, src: str) -> bool:
+        return self.fs.exists(os.path.join(self.DAILY_FILE_BUCKET, src))
+    
     def stream_s3(self, src: str) -> TextIOWrapper:
-        if self.fs.exists(os.path.join(self.DAILY_FILE_BUCKET, src)):
-            return self.fs.open(os.path.join(self.DAILY_FILE_BUCKET, src))
-        raise RuntimeError(f'{src} does not exist!')
+        return self.fs.open(os.path.join(self.DAILY_FILE_BUCKET, src))
     
     def upload_s3(self, src: str, bucket: str, dest:str):
         s3_client = self.s3_client

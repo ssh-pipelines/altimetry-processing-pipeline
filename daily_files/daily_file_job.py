@@ -108,7 +108,7 @@ def work(job: DailyFileJob):
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
-    s3_output_path = f"daily_files/{job.satellite}/{job.date.year}/{filename}"
+    s3_output_path = f"daily_files/p1/{job.satellite}/{job.date.year}/{filename}"
     aws_manager.upload_s3(out_path, job.DAILY_FILE_BUCKET, s3_output_path)
     logging.info("Job complete.")
     daily_ds.close()

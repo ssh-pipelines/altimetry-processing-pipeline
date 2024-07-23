@@ -78,6 +78,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
                 "complevel": 5,
                 "zlib": True,
                 "char_dim_name": "basin_name_len",
+                "dtype": '|S33'
             }
 
         if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
@@ -89,6 +90,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
         if any(x in var for x in ["ssh", "dac"]):
             encoding[var]["dtype"] = "float64"
             encoding[var]["_FillValue"] = np.finfo(np.float64).max
+
     logging.info(f"Saving netCDF to {output_path}")
     ds.to_netcdf(output_path, encoding=encoding)
 

@@ -1,4 +1,6 @@
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
+from io import TextIOWrapper
+import re
 from typing import Iterable, Tuple
 import numpy as np
 import xarray as xr
@@ -7,7 +9,6 @@ import logging
 from datetime import datetime, UTC
 
 from crossover.xover_ssh import xover_ssh
-from crossover.Crossover import SourceWindow
 from crossover.utils.aws_utils import aws_manager
 
 
@@ -32,7 +33,7 @@ class CrossoverData:
     pass2: Iterable[int]
 
     @classmethod
-    def create_empty(cls) -> "CrossoverData":
+    def init(cls) -> "CrossoverData":
         return cls(
             time1=[],
             time2=[],
@@ -63,145 +64,154 @@ class CrossoverData:
             value = getattr(self, field.name)
             setattr(self, field.name, value[sorted_indices])
 
-class CrossoverProcessor:
+class Crossover:
+    time: np.ndarray
+    longitude: np.ndarray
+    latitude: np.ndarray
+    ssh: np.ndarray
+    trackids: np.ndarray
+    unique_trackids: np.ndarray
+    starts: np.ndarray
+    
     def __init__(self, day: np.datetime64, source: str, df_version: str):
-        self.day = day
-        self.source = source
-        self.df_version = df_version
-        self.source_window: SourceWindow = self.window_init()
-
-    def window_init(self) -> SourceWindow:
-        logging.info(f"Looking for {self.source} {self.day} self-crossovers...")
+        self.day: np.datetime64 = day
+        self.next_day: np.datetime64 = self.day + np.timedelta64(1, 'D')
+        self.source: str = source
+        self.df_version: str = df_version
+        self.window_start: np.datetime64 = day
+        self.window_end: np.datetime64 = day + np.timedelta64(WINDOW_SIZE + WINDOW_PADDING, 'D')
         
-        window_start = self.day
-        window_end = self.day + np.timedelta64(WINDOW_SIZE + WINDOW_PADDING, 'D')
-        return SourceWindow(self.df_version, self.source, self.day, window_start, window_end)
+    def _valid_date(self, filepath: str) -> bool:
+        date = self._date_from_filename(os.path.basename(filepath))
+        return self.window_start <= date <= self.window_end
+        
+    def stream_files(self) -> Iterable[TextIOWrapper]:
+        start_year = str(self.window_start.astype('datetime64[Y]'))
+        end_year = str(self.window_end.astype('datetime64[Y]'))
+        
+        all_keys = []
+        
+        for year in list({start_year, end_year}):
+            prefix = os.path.join('daily_files', self.df_version, self.source, year)
+            s3_keys = aws_manager.get_filepaths(prefix)
+            for fp in s3_keys:
+                if self._valid_date(fp):
+                    all_keys.append(fp)
+        
+        streams = []
+        for key in all_keys:
+            if aws_manager.check_exists(key):
+                streams.append(aws_manager.stream_s3(key))
+            else:
+                logging.warning(f'Unable to stream {key} as it does not exist')
+        return streams
     
-    def initialize_and_fill_data(self) -> bool:
-        logging.info(f'Initializing and filling data for window...')
-        self.source_window.set_filepaths_and_dates()
-        self.source_window.stream_files()
-        if len(self.source_window.streams) > 0:
-            self.source_window.init_and_fill_running_window()
-            return True
-        else:
-            logging.info(f'No valid data found in {self.source_window.shortname} window {self.source_window.window_start} to {self.source_window.window_end}.')
-            return False
+    def extract_and_set_data(self):
+        window_ds = xr.open_mfdataset(self.streams, engine='h5netcdf', concat_dim='time', chunks={}, 
+                              parallel=True, combine='nested')
+        window_ds = window_ds.dropna('time', subset=['ssh_smoothed']).sortby('time')
+        
+        self.time = window_ds['time'].values
+        self.longitude = window_ds['longitude'].values.astype('float64')
+        self.latitude = window_ds['latitude'].values.astype('float64')
+        self.ssh = window_ds['ssh_smoothed'].values.astype('float64')
+
+        self.trackids = window_ds['cycle'].values.astype('int32')*10000 + window_ds['pass'].values
+        self.unique_trackids = np.unique(self.trackids)
+        self.starts = np.array([np.min(self.time[self.trackids == track_id]) for track_id in self.unique_trackids], dtype='datetime64[ns]')
+        
+    @staticmethod
+    def _date_from_filename(filename: str) -> np.datetime64:        
+        match = re.compile(r'\d{8}').search(filename)        
+        date_str = match.group()
+        date_obj = datetime.strptime(date_str, '%Y%m%d')
+        return np.datetime64(date_obj)
+
     
-    def create_or_search_xovers(self) -> xr.Dataset:
-        if not self.initialize_and_fill_data():
-            ds = self.create_dataset(CrossoverData.create_empty())
-        else:
-            try:
-                ds = self.search_day_for_crossovers()
-            except Exception as e:
-                logging.error(f"Error searching for crossovers. Making empty xover instead. {e}")
-                ds = self.create_dataset(CrossoverData.create_empty())
-        return ds
-    
-    def search_day_for_crossovers(self) -> xr.Dataset:
-        crossover_data = CrossoverData.create_empty()
+    def search_day_for_crossovers(self):
         logging.info(f"Processing {np.datetime_as_string(self.day, unit='D')}")
-        next_day = self.day + np.timedelta64(1, 'D')
-
-        for i, trackid1 in enumerate(self.source_window.unique_trackid[self.source_window.trackid_start_times < next_day]):
-            time1, lonlat1, ssh1 = self.get_data_at_track(trackid1)
-            trackid2_possible_crossovers = self.find_possible_trackids(trackid1, i)
-            
-            for trackid2 in trackid2_possible_crossovers:
-                time2, lonlat2, ssh2 = self.get_data_at_track(trackid2)
-
-                if len(time1) > 1 and len(time2) > 1:
-                    xcoords, xssh, xtime = xover_ssh(lonlat1, lonlat2, ssh1, ssh2, time1, time2)
-
-                    if np.size(xcoords) == 0:
-                        continue
-
-                    crossover_data.ssh1.append(xssh[0])
-                    crossover_data.ssh2.append(xssh[1])
-                    crossover_data.time1.append(EPOCH + np.timedelta64(int(xtime[0]), 'ns'))
-                    crossover_data.time2.append(EPOCH + np.timedelta64(int(xtime[1]), 'ns'))
-                    crossover_data.lon.append(xcoords[0])
-                    crossover_data.lat.append(xcoords[1])
-                    crossover_data.cycle1.append(trackid1 // 10000)
-                    crossover_data.cycle2.append(trackid2 // 10000)
-                    crossover_data.pass1.append(trackid1 % 10000)
-                    crossover_data.pass2.append(trackid2 % 10000)
-
-        crossover_data.filter_and_sort(next_day)
-        return self.create_dataset(crossover_data)
-    
-    def get_data_at_track(self, trackid: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        track_mask = self.source_window.track_masks[trackid]
-        time = (self.source_window.time[track_mask] - EPOCH).astype('timedelta64[ns]').astype('float64')
-        lonlat = np.column_stack((self.source_window.lon[track_mask], self.source_window.lat[track_mask]))
-        ssh = self.source_window.ssh[track_mask]
-        return time, lonlat, ssh
-
-    def find_possible_trackids(self, trackid1: int, i: int) -> np.ndarray:
-        different_cycles = np.abs(trackid1 - self.source_window.unique_trackid) > 1
-        opposite_passes = (trackid1 % 2) != (self.source_window.unique_trackid % 2)
-        within_window = (
-            (self.source_window.trackid_start_times - self.source_window.trackid_start_times[i] <= MAX_DIFF) &
-            (self.source_window.trackid_start_times - self.source_window.trackid_start_times[i] > ZERO_DIFF)
-        )
         
-        return self.source_window.unique_trackid[different_cycles & opposite_passes & within_window]
+        # Loop through unique track ids that start on day of interest
+        for i, track_1 in enumerate(self.unique_trackids[self.starts < self.next_day]):
+            time_1, lonlat_1, ssh_1 = self.get_track_data(track_1)
+            if time_1.size <= 1:
+                continue
+            
+            # Determine possible crossover tracks
+            different_cycles = np.abs(track_1 - self.unique_trackids) > 1
+            opposite_passes = (track_1 % 2) != (self.unique_trackids % 2)
+            starts_diff = self.starts - self.starts[i]
+            within_window = (starts_diff <= MAX_DIFF) & (starts_diff > ZERO_DIFF)
+            possible_tracks = self.unique_trackids[different_cycles & opposite_passes & within_window]
+            
+            for track_2 in possible_tracks:
+                time_2, lonlat_2, ssh_2 = self.get_track_data(track_2)
+                
+                if time_2.size <= 1:
+                    continue
+                
+                xcoords, xssh, xtime = xover_ssh(lonlat_1, lonlat_2, ssh_1, ssh_2, time_1, time_2)
     
-    def create_dataset(self, crossover_data: CrossoverData) -> xr.Dataset:
+                if np.size(xcoords) == 0:
+                    continue
+                
+                self.crossover_data.ssh1.append(xssh[0])
+                self.crossover_data.ssh2.append(xssh[1])
+                self.crossover_data.time1.append(EPOCH + np.timedelta64(int(xtime[0]), 'ns'))
+                self.crossover_data.time2.append(EPOCH + np.timedelta64(int(xtime[1]), 'ns'))
+                self.crossover_data.lon.append(xcoords[0])
+                self.crossover_data.lat.append(xcoords[1])
+                self.crossover_data.cycle1.append(track_1 // 10000)
+                self.crossover_data.cycle2.append(track_2 // 10000)
+                self.crossover_data.pass1.append(track_1 % 10000)
+                self.crossover_data.pass2.append(track_2 % 10000)
+        
+        if len(self.crossover_data.time1) > 0:
+            self.crossover_data.filter_and_sort(self.next_day)
+    
+    def get_track_data(self, track_id: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        '''
+        Masks time, lonlat, and ssh arrays by track_id
+        '''
+        track_mask = self.trackids == track_id
+        masked_time = (self.time[track_mask]  - EPOCH).astype('timedelta64[ns]').astype('float64')
+        masked_lonlat = np.column_stack((self.longitude[track_mask], self.latitude[track_mask]))
+        masked_ssh = self.ssh[track_mask]
+        return masked_time, masked_lonlat, masked_ssh
+    
+    def create_dataset(self) -> xr.Dataset:
+        '''
+        Creates xarray Dataset object from crossover data
+        '''
         ds = xr.Dataset(
-            data_vars={
-                "time2": ('time1', crossover_data.time2,
-                    {"long_name": "Time of crossover in later pass"},
-                ),
-                "lon": ('time1', crossover_data.lon,
-                    {"units": "degrees", "long_name": "Crossover longitude"},
-                ),
-                "lat": ('time1', crossover_data.lat,
-                    {"units": "degrees", "long_name": "Crossover latitude"},
-                ),
-                "ssh1": ('time1', crossover_data.ssh1,
-                    {"units": "m", "long_name": "SSH at crossover in earlier pass"},
-                ),
-                "ssh2": ('time1', crossover_data.ssh2,
-                    {"units": "m", "long_name": "SSH at crossover in later pass"},
-                ),
-                "cycle1": ('time1', crossover_data.cycle1,
-                    {"units": "N/A", "long_name": "Cycle number of earlier pass"},
-                ),
-                "cycle2": ('time1', crossover_data.cycle2,
-                    {"units": "N/A", "long_name": "Cycle number of later pass"},
-                ),
-                "pass1": ('time1', crossover_data.pass1,
-                    {"units": "N/A", "long_name": "Pass number of earlier pass"},
-                ),
-                "pass2": ('time1', crossover_data.pass2,
-                    {"units": "N/A", "long_name": "Pass number of later pass"},
-                ),
-            },
-            coords={
-                'time1': ('time1', crossover_data.time1,
-                    {"long_name": "Time of crossover in earlier pass"},
-                )
-            },
+            data_vars= {k:('time1', v) for k,v in asdict(self.crossover_data).items() if k != 'time1'},
+            coords={'time1': ('time1', self.crossover_data.time1)},
             attrs={
-                "title": f'{self.source_window.shortname} self-crossovers',
-                "subtitle": f"within {WINDOW_SIZE} days",
-                "window_length": f"{(self.source_window.window_end - self.source_window.window_start).astype('int32')} days (nominal: {WINDOW_SIZE} days + {WINDOW_PADDING} days padding)",
+                "title": f'{self.source} self-crossovers {self.day}',
+                "window_length": f"{(self.window_end - self.window_start).astype('int32')} days (nominal: {WINDOW_SIZE} days + {WINDOW_PADDING} days padding)",
                 "created_on": datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%S'),
-                "input_filenames": self.source_window.input_filenames,
-                "input_histories": self.source_window.input_histories,
-                "input_product_generation_steps": self.source_window.input_product_generation_steps,
-                "satellite_names": self.source_window.shortname
+                "input_product_generation_steps": self.df_version[-1],
+                "satellite_names": self.source
             }
-        )
+        )  
+        ds["time2"].attrs = {"long_name": "Time of crossover in later pass"}
+        ds["lon"].attrs = {"units": "degrees", "long_name": "Crossover longitude"}
+        ds["lat"].attrs = {"units": "degrees", "long_name": "Crossover latitude"}
+        ds["ssh1"].attrs = {"units": "m", "long_name": "SSH at crossover in earlier pass"}
+        ds["ssh2"].attrs = {"units": "m", "long_name": "SSH at crossover in later pass"}
+        ds["cycle1"].attrs = {"units": "N/A", "long_name": "Cycle number of earlier pass"}
+        ds["cycle2"].attrs = {"units": "N/A", "long_name": "Cycle number of later pass"}
+        ds["pass1"].attrs = {"units": "N/A", "long_name": "Pass number of earlier pass"}
+        ds["pass2"].attrs = {"units": "N/A", "long_name": "Pass number of later pass"}
 
         ds['time1'].encoding['units'] = f"seconds since {EPOCH}"
         ds['time2'].encoding['units'] = f"seconds since {EPOCH}"
-        logging.info(f"Processing {np.datetime_as_string(self.day, unit='D')} complete")
         return ds
         
     def save_to_netcdf(self, ds: xr.Dataset) -> str:
+        '''
+        Saves xarray Dataset object as local netcdf and returns local path
+        '''
         filename = f'xovers_{self.source}-{np.datetime_as_string(self.day)}.nc'
         local_output_path = os.path.join('/tmp', filename)
         logging.info(f'Saving netcdf to {local_output_path}')
@@ -209,11 +219,35 @@ class CrossoverProcessor:
         return local_output_path
     
     def upload_xover(self, local_path):
+        '''
+        Uploads crossover netCDF to bucket
+        '''
         filename = os.path.basename(local_path)
         s3_output_path = os.path.join('crossovers', self.df_version, self.source, np.datetime_as_string(self.day, unit='Y'), filename)
         aws_manager.upload_s3(local_path, aws_manager.DAILY_FILE_BUCKET, s3_output_path)
         
     def run(self):
-        ds = self.create_or_search_xovers()
+        logging.info(f"Looking for {self.source} {self.day} self-crossovers...")
+        '''
+        1. Stream files in window
+        2. Open stream via xarray
+        3. Initialize arrays
+        4. Big processing loop to find xovers
+        5. Save and upload netcdf
+        
+        
+        What's missing: handling daily files with no data or entire windows with no data. 
+        Need to make empty crossover.
+        '''
+        # Initialize empty data class
+        self.crossover_data = CrossoverData.init()
+        
+        self.streams = self.stream_files()
+        if len(self.streams) > 0:
+            self.extract_and_set_data()
+            self.search_day_for_crossovers()
+            
+        ds = self.create_dataset()        
         local_path = self.save_to_netcdf(ds)
         self.upload_xover(local_path)
+        logging.info(f"Processing {self.source} {self.day} complete")

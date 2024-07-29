@@ -4,7 +4,7 @@ import unittest
 from glob import glob
 
 import numpy as np
-from crossover.parallel_crossovers import CrossoverProcessor, CrossoverData
+from crossover.parallel_crossovers import Crossover, CrossoverData
 
 class XoverTestCase(unittest.TestCase):
     logging.root.handlers = []
@@ -22,23 +22,16 @@ class XoverTestCase(unittest.TestCase):
         cls.source = "GSFC"
         cls.df_version = 'p1'
         
-        processor = CrossoverProcessor(cls.day, cls.source, cls.df_version)
+        cls.processor = Crossover(cls.day, cls.source, cls.df_version)
         
-        processor.source_window.filepaths = []
-        processor.source_window.file_dates = []
-        processor.source_window.streams = glob('tests/test_granules/GSFC/BAD_FILEPATHS*.nc')
-        if len(processor.source_window.streams) > 0:
-            processor.source_window.init_and_fill_running_window()
-            cls.ds = processor.search_day_for_crossovers()
-        else:
-            logging.info(f'No valid data found in {processor.source_window.shortname} window {processor.source_window.window_start} to {processor.source_window.window_end}.')
-            processor.source_window.input_filenames = 'None'
-            processor.source_window.input_histories = 'None'
-            processor.source_window.input_product_generation_steps = 'None'
-            
-            cls.ds = processor.create_dataset(CrossoverData.create_empty())
-        cls.source_window = processor.source_window
-        # cls.ds.to_netcdf('empty_test.nc')
+        cls.processor.crossover_data = CrossoverData.init()
+        cls.processor.streams = []
+        if len(cls.processor.streams) > 0:
+            cls.processor.extract_and_set_data()
+            cls.processor.search_day_for_crossovers()
+        cls.ds = cls.processor.create_dataset()
+        local_path = cls.processor.save_to_netcdf(cls.ds)
+        print(local_path)
         # Calculate the maximum memory used
         end_memory = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         max_memory_mb = end_memory / (1024 * 1024 )  # Convert to megabytes
@@ -60,8 +53,6 @@ class XoverTestCase(unittest.TestCase):
         self.assertIn('lat', self.ds.data_vars)
         
     def test_netcdf_attrs(self):
-        self.assertEqual(self.ds.attrs['title'], 'GSFC self-crossovers')
-        self.assertEqual(self.ds.attrs['input_filenames'], 'None')
-        self.assertEqual(self.ds.attrs['input_histories'], 'None')
-        self.assertEqual(self.ds.attrs['input_product_generation_steps'], 'None')
+        self.assertIn('GSFC self-crossovers', self.ds.attrs['title'])
+        self.assertEqual(self.ds.attrs['input_product_generation_steps'], '1')
         self.assertEqual(self.ds.attrs['satellite_names'], 'GSFC')

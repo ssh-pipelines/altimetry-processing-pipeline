@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import logging
+import numpy as np
 import xarray as xr
 import os
 from glob import glob
@@ -22,30 +23,26 @@ class OerCorrection:
         self.daily_file_filename = f'{satellite}-alt_ssh{date.strftime("%Y%m%d")}.nc'
         self.window_len: int = 10  # set window, since xover files "look forward" in time
         self.window_pad: int = 1  # padding to avoid edge effects at window end
-        self.setup_logging(log_level)
+        logging.info(f'Starting job for {self.satellite} {self.date}')
+        
 
-    def setup_logging(self, log_level: str):
-        logging.root.handlers = []
-        logging.basicConfig(
-            level=log_level,
-            format='[%(levelname)s] %(asctime)s - %(message)s',
-            handlers=[logging.StreamHandler()]
-        )
-
-    def save_ds(self, ds: xr.Dataset, local_filename: str) -> str:
+    def save_ds(self, ds: xr.Dataset, local_filename: str, encoding: dict=None) -> str:
         '''
         Save xarray dataset as netCDF to /tmp
         '''
-        out_path = os.path.join('/tmp', local_filename)    
-        ds.to_netcdf(out_path)
+        out_path = os.path.join('/tmp', local_filename)
+        if encoding:
+            ds.to_netcdf(out_path, engine='h5netcdf', encoding=encoding)
+        else:
+            ds.to_netcdf(out_path, engine='h5netcdf')
         return out_path
 
     def fetch_xovers(self, window_start: datetime, window_end: datetime) -> xr.Dataset:
         date_range = list(rrule(DAILY, dtstart=window_start, until=window_end))
         streams = []
         for d in date_range:
-            key = os.path.join(f's3://example-bucket/crossovers/p1/{self.satellite}', 
-                               str(d.year), f'xovers_{self.satellite}-{d.strftime("%Y-%m-%d")}.nc')
+            filename = f'xovers_{self.satellite}-{d.strftime("%Y-%m-%d")}.nc'
+            key = os.path.join('s3://example-bucket/crossovers/p1/', self.satellite, str(d.year), filename)
             if self.s3_utils.key_exists(key):
                 stream = self.s3_utils.stream_s3(key)
                 streams.append(stream)
@@ -53,11 +50,12 @@ class OerCorrection:
                 logging.warning(f'Unable to stream {key} as it does not exist')
         if len(streams) == 0:
             raise RuntimeError('Unable to open any crossover files!')
+        logging.info(f'Openining {len(streams)} xover files.')
         try:
-            ds =  xr.open_mfdataset(streams, decode_times=False)
+            ds =  xr.open_mfdataset(streams, concat_dim='time1', combine='nested', decode_times=False)
         except ValueError:
             # If all xovers are empty, just open one
-            ds =  xr.open_mfdataset(streams[0], decode_times=False)
+            ds =  xr.open_mfdataset(streams[0], concat_dim='time1', combine='nested', decode_times=False)
         return ds
 
     def fetch_daily_file(self) -> xr.Dataset:
@@ -75,7 +73,7 @@ class OerCorrection:
         window_start = max(self.date - timedelta(self.window_len) - timedelta(self.window_pad), datetime(1992, 9, 25))
         window_end = self.date + timedelta(self.window_pad)
         
-        xover_ds = self.fetch_xovers(window_start, window_end, self.satellite)
+        xover_ds = self.fetch_xovers(window_start, window_end)
         
         polygon_ds = create_polygon(xover_ds, self.date, self.satellite)
         
@@ -98,10 +96,42 @@ class OerCorrection:
 
     def apply_oer(self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset) -> xr.Dataset:
         ds = apply_correction(daily_file_ds, correction_ds)
+
         if 'time' in ds['basin_names_table'].dims:
-            ds['basin_names_table'] = ds['basin_names_table'].isel(time=0)
+            if ds['basin_names_table'].time.size > 0:
+                ds['basin_names_table'] = ds['basin_names_table'].isel(time=0)
+            else:
+                ds['basin_names_table'] = ds['basin_names_table'].squeeze('time')
+                
+        ds = ds.set_coords(["latitude", "longitude"])
+        encoding = {
+            "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}
+        }
+        for var in ds.variables:
+            if var not in ["latitude", "longitude", "time", "basin_names_table"]:
+                encoding[var] = {"complevel": 5, "zlib": True}
+            elif "lat" in var or "lon" in var:
+                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32"}
+            elif "basin_names_table" in var:
+                encoding[var] = {
+                    "complevel": 5,
+                    "zlib": True,
+                    "char_dim_name": "basin_name_len",
+                    "dtype": '|S33'
+                }
+
+            if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
+                encoding[var]["dtype"] = "int8"
+                encoding[var]["_FillValue"] = np.iinfo(np.int8).max
+            if any(x in var for x in ["basin_flag", "pass", "cycle"]):
+                encoding[var]["dtype"] = "int32"
+                encoding[var]["_FillValue"] = np.iinfo(np.int32).max
+            if any(x in var for x in ["ssh", "dac", "oer"]):
+                encoding[var]["dtype"] = "float64"
+                encoding[var]["_FillValue"] = np.finfo(np.float64).max
+
         # Save the correction and upload to S3
-        out_path = self.save_ds(ds, self.daily_file_filename)
+        out_path = self.save_ds(ds, self.daily_file_filename, encoding)
         target_path = os.path.join('s3://example-bucket/daily_files/p2', self.satellite, str(self.date.year), self.daily_file_filename)
         self.s3_utils.upload_s3(out_path, target_path)    
         return ds

@@ -1,9 +1,6 @@
 from io import TextIOWrapper
-import logging
-from typing import Iterable
 import boto3
 import s3fs
-from s3fs import S3FileSystem
 import os
 
 

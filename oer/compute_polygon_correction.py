@@ -22,14 +22,14 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, satellite: str):
     ref_timestamp = datetime(1990, 1, 1, tzinfo=pytz.UTC).timestamp()
     cur_timestamp = date.replace(tzinfo=pytz.UTC).timestamp()
 
-    cycle1 = xover_ds.cycle1.values
-    cycle2 = xover_ds.cycle2.values
-    pass1 = xover_ds.pass1.values
-    pass2 = xover_ds.pass2.values
-    psec1 = np.float64(xover_ds.time1.values + ref_timestamp)
-    psec2 = np.float64(xover_ds.time2.values + ref_timestamp)
-    ssh1 = xover_ds.ssh1.values
-    ssh2 = xover_ds.ssh2.values
+    cycle1 = xover_ds['cycle1'].values
+    cycle2 = xover_ds['cycle2'].values
+    pass1 = xover_ds['pass1'].values
+    pass2 = xover_ds['pass2'].values
+    psec1 = np.float64(xover_ds['time1'].values + ref_timestamp)
+    psec2 = np.float64(xover_ds['time2'].values + ref_timestamp)
+    ssh1 = xover_ds['ssh1'].values
+    ssh2 = xover_ds['ssh2'].values
     xcds = np.array([xover_ds['lon'].values, xover_ds['lat'].values]).T
 
     # compute trackid from passnum & cyc
@@ -123,10 +123,10 @@ def evaluate_correction(polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date:
     logging.info('Evaluating correction')
     
     # load coefs and tbreaks from polynomial file
-    pp = PPoly(polygon_ds.coef.values, polygon_ds.tbrk.values)
+    pp = PPoly(polygon_ds['coef'].values, polygon_ds['tbrk'].values)
 
     # compute hours since start of this day
-    ssh_time = daily_file_ds.time.values
+    ssh_time = daily_file_ds['time'].values
     hours_since_start = (ssh_time - np.datetime64(date)).astype('timedelta64[s]').astype(int) / 3600
 
     # compute orbit error reduction, as additive correction to ssh
@@ -142,14 +142,14 @@ def evaluate_correction(polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date:
             })
         },
         coords={
-            'time': ('time', daily_file_ds.time.data, daily_file_ds.time.attrs)
+            'time': ('time', daily_file_ds['time'].data, daily_file_ds['time'].attrs)
         },
         attrs={
             "title": f'{satellite} Orbit Error Reduction, interpolated onto ssh',
             "subtitle": f'created for {satellite}-alt_ssh{date.strftime("%Y%m%d")}.nc'
         }
     )
-    ds.time.encoding['units'] = daily_file_ds.time.encoding['units']
+    ds['time'].encoding['units'] = daily_file_ds['time'].encoding['units']
     return ds
 
 def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
@@ -161,20 +161,23 @@ def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
     '''
     logging.info('Applying correction')
     
-    if len(correction_ds.time) != len(daily_file_ds.time):
+    if len(correction_ds['time']) != len(daily_file_ds['time']):
         raise ValueError(f'Unable to apply correction. Differing sizes between correction and daily file.')
 
-    daily_file_ds.ssh.values += correction_ds.oer.values
-    daily_file_ds.ssh.attrs['orbit_error_correction'] = 'oer variable added to reduce orbit error'
-    daily_file_ds.ssh.attrs['valid_min'] = np.nanmin(daily_file_ds.ssh.values)
-    daily_file_ds.ssh.attrs['valid_max'] = np.nanmax(daily_file_ds.ssh.values)
+    if len(daily_file_ds['time']) > 0:
+
+        daily_file_ds['ssh'].values += correction_ds['oer'].values
+        daily_file_ds['ssh'].attrs['valid_min'] = np.nanmin(daily_file_ds['ssh'].values)
+        daily_file_ds['ssh'].attrs['valid_max'] = np.nanmax(daily_file_ds['ssh'].values)
     
-    daily_file_ds.ssh_smoothed.values += correction_ds.oer.values
-    daily_file_ds.ssh_smoothed.attrs['orbit_error_correction'] = 'oer variable added to reduce orbit error'
-    daily_file_ds.ssh_smoothed.attrs['valid_min'] = np.nanmin(daily_file_ds.ssh_smoothed.values)
-    daily_file_ds.ssh_smoothed.attrs['valid_max'] = np.nanmax(daily_file_ds.ssh_smoothed.values)
-    
-    daily_file_ds['oer'] = correction_ds.oer
+        daily_file_ds['ssh_smoothed'].values += correction_ds['oer'].values
+        daily_file_ds['ssh_smoothed'].attrs['valid_min'] = np.nanmin(daily_file_ds['ssh_smoothed'].values)
+        daily_file_ds['ssh_smoothed'].attrs['valid_max'] = np.nanmax(daily_file_ds['ssh_smoothed'].values)
+
+    daily_file_ds['ssh'].attrs['orbit_error_correction'] = 'oer variable added to reduce orbit error'
+    daily_file_ds['ssh_smoothed'].attrs['orbit_error_correction'] = 'oer variable added to reduce orbit error'
+
+    daily_file_ds['oer'] = correction_ds['oer']
     
     daily_file_ds.attrs['product_generation_step'] = "2"
     daily_file_ds.attrs['history'] = f'Created on {datetime.now(tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S")}'

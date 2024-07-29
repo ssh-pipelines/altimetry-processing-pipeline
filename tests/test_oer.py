@@ -45,8 +45,12 @@ class OerTestCase(unittest.TestCase):
     
         # Apply correction to daily file
         cls.corrected_ds = apply_correction(cls.daily_file_ds, cls.correction_ds)
+        
         if 'time' in cls.corrected_ds['basin_names_table'].dims:
-            cls.corrected_ds['basin_names_table'] = cls.corrected_ds['basin_names_table'].isel(time=0)
+            if cls.corrected_ds['basin_names_table'].time.size > 0:
+                cls.corrected_ds['basin_names_table'] = cls.corrected_ds['basin_names_table'].isel(time=0)
+            else:
+                cls.corrected_ds['basin_names_table'] = cls.corrected_ds['basin_names_table'].squeeze('time')
 
     def test_polygon(self):
         self.assertIn('N_order', self.polygon_ds.dims)

@@ -5,7 +5,7 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 import s3fs
-import xarray as xr
+import netCDF4 as nc
 
 GSFC_START = date(1992, 9, 25)
 S6_START = date(2022, 3, 29)
@@ -22,7 +22,7 @@ class Finalizer:
         )
 
         self.bad_pass_df: pd.DataFrame = self._load_bad_passes()
-        self.input_dates: dict = self._make_input_dates(start_date, end_date)
+        self.input_dates: dict[np.datetime64, str] = self._make_input_dates(start_date, end_date)
 
     def _load_bad_passes(self) -> pd.DataFrame:
         stream = self.fs.open("s3://example-bucket/aux_files/bad_pass_list.csv")
@@ -44,40 +44,44 @@ class Finalizer:
         }
         return filtered_record
 
-    def stream_daily_file(self, path) -> xr.Dataset:
+    def get_daily_file(self, path) -> str:
         if self.fs.exists(path):
-            return self.fs.open(path)
+            local_path = os.path.join("/tmp", os.path.basename(path))
+            self.fs.get(path, local_path)
+            return local_path
         raise FileNotFoundError(f"{path} not found")
 
     def upload_df(self, local_path: str, dst_path: str):
         self.fs.upload(local_path, dst_path)
 
     def process(self):
+        logging.info(f"Processing {len(self.input_dates.keys())} daily files.")
         for df_date, source in self.input_dates.items():
             year = str(df_date.astype(object).year)
             filename = f'{source}-alt_ssh{str(df_date).replace("-","")}.nc'
+            logging.info(f"Processing {filename}")
             src_s3_path = os.path.join("s3://example-bucket/daily_files/p2", source, year, filename)
 
             try:
-                stream_data = self.stream_daily_file(src_s3_path)
+                local_filepath = self.get_daily_file(src_s3_path)
             except FileNotFoundError as e:
                 logging.info(e)
                 continue
 
-            ds = xr.open_dataset(stream_data)
+            ds = nc.Dataset(local_filepath, "r+")
 
-            ds.attrs["flagged_passes"] = "N/A"
-            ds.attrs["pass_flag_notes"] = (
+            ds.flagged_passes = "N/A"
+            ds.pass_flag_notes = (
                 "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are too large relative to self crossovers, "
                 "computed using data from a 20-day window.  To be flagged, there must be at least 'pass_flag_mean_num' crossover points for a pass "
                 "and the absolute value of its mean crossover difference is larger than 'pass_flag_mean_threshold' (meters), or when it has at least 'pass_flag_rms_num' "
                 "crossover points with RMS larger than 'pass_flag_rms_threshold' (meters). Passes that have been flagged are stored in the 'flagged_passes' attribute "
                 "as comma separated cycle/pass"
             )
-            ds.attrs["pass_flag_mean_num"] = 15
-            ds.attrs["pass_flag_rms_num"] = 25
-            ds.attrs["pass_flag_mean_threshold"] = 0.1
-            ds.attrs["pass_flag_rms_threshold"] = 0.27
+            ds.pass_flag_mean_num = 15
+            ds.pass_flag_rms_num = 25
+            ds.pass_flag_mean_threshold = 0.1
+            ds.pass_flag_rms_threshold = 0.27
 
             bad_pass_slice = self.bad_pass_df[
                 (self.bad_pass_df["source"] == source) & (self.bad_pass_df["date"] == str(date))
@@ -85,48 +89,40 @@ class Finalizer:
             if not bad_pass_slice.empty:
                 ds = apply_bad_pass(ds, bad_pass_slice)
 
-            ds.attrs["product_generation_step"] = "3"
-            ds.attrs["history"] = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")
+            ds.product_generation_step = "3"
+            ds.history = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")
+
+            ds.close()
 
             dst_filename = filename.replace(source, "NASA")
             dst_s3_path = os.path.join("s3://example-bucket/daily_files/p3", year, dst_filename)
-            local_path = os.path.join("/tmp", dst_filename)
 
-            encoding = {"time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}}
-            for var in ds.variables:
-                if var not in ["latitude", "longitude", "time", "basin_names_table"]:
-                    encoding[var] = {"complevel": 5, "zlib": True}
-                elif "lat" in var or "lon" in var:
-                    encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32"}
-                elif "basin_names_table" in var:
-                    encoding[var] = {"complevel": 5, "zlib": True, "char_dim_name": "basin_name_len", "dtype": "|S33"}
-
-                if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
-                    encoding[var]["dtype"] = "int8"
-                    encoding[var]["_FillValue"] = np.iinfo(np.int8).max
-                if any(x in var for x in ["basin_flag", "pass", "cycle"]):
-                    encoding[var]["dtype"] = "int32"
-                    encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-                if any(x in var for x in ["ssh", "dac"]):
-                    encoding[var]["dtype"] = "float64"
-                    encoding[var]["_FillValue"] = np.finfo(np.float64).max
-
-            ds.to_netcdf(local_path, encoding=encoding)
-            self.upload_df(local_path, dst_s3_path)
+            try:
+                self.upload_df(local_filepath, dst_s3_path)
+                os.remove(local_filepath)
+            except Exception as e:
+                logging.exception(e)
+                return
 
 
-def apply_bad_pass(ds: xr.Dataset, bad_pass_slice: pd.DataFrame) -> xr.Dataset:
+def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
     """
     Set nasa_flag values to 1 where there are identified bad passes
     """
+    # Get cycle and pass variables from the dataset
+    cycle_var = ds.variables["cycle"][:].astype(int)
+    pass_var = ds.variables["pass"][:].astype(int)
 
-    ds["nasa_flag"] = ds["nasa_flag"].where(
-        ~(
-            (ds["cycle"].isin(bad_pass_slice["cycle"].astype(int)))
-            & (ds["pass"].isin(bad_pass_slice["pass"].astype(int)))
-        ),
-        1,
-    )
+    # Convert bad_pass_slice cycles and passes to numpy arrays for comparison
+    bad_cycles = df["cycle"].astype(int).to_numpy()
+    bad_passes = df["pass"].astype(int).to_numpy()
 
-    ds.attrs["flagged_passes"] = ", ".join(bad_pass_slice[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), 1))
+    # Mask where cycle and pass match those in the bad_pass_slice
+    mask = np.isin(cycle_var, bad_cycles) & np.isin(pass_var, bad_passes)
+
+    # Set nasa_flag to 1 where the mask is True
+    ds.variables["nasa_flag"][mask] = 1
+
+    # Update the 'flagged_passes' attribute in the dataset
+    ds.flagged_passes = ", ".join(df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1))
     return ds

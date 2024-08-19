@@ -8,8 +8,9 @@ import s3fs
 import netCDF4 as nc
 
 GSFC_START = date(1992, 9, 25)
-S6_START = date(2022, 3, 29)
+S6_START = date(2024, 1, 10)
 
+S6_ABSOLUTE_OFFSET = 0.02293837  # Offset from GSFC in meters
 
 class Finalizer:
     def __init__(self, start_date: date = S6_START, end_date: date = date.today()):
@@ -91,7 +92,23 @@ class Finalizer:
 
             ds.product_generation_step = "3"
             ds.history = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")
-
+            
+            if source == 'S6':
+                # Remove any previously applied offset
+                try:
+                    if ds.absolute_offset_applied:
+                        ds.variables["ssh"][:] = ds.variables["ssh"][:] - float(ds.absolute_offset_applied)
+                        ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] - float(ds.absolute_offset_applied)
+                except AttributeError:
+                    pass
+                     
+                ds.variables["ssh"][:] = ds.variables["ssh"][:] + S6_ABSOLUTE_OFFSET
+                ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] + S6_ABSOLUTE_OFFSET
+                
+                ds.absolute_offset_applied = S6_ABSOLUTE_OFFSET
+            elif source == 'GSFC':
+                ds.absolute_offset_applied = 0
+                
             ds.close()
 
             dst_filename = filename.replace(source, "NASA")
@@ -125,4 +142,11 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
 
     # Update the 'flagged_passes' attribute in the dataset
     ds.flagged_passes = ", ".join(df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1))
+    
+    # Reapply nasa_flag to ssh_smoothed
+    ssh_smoothed = ds.variables['ssh_smoothed'][:]
+    nasa_flag = ds.variables['nasa_flag'][:]
+    ssh_smoothed[nasa_flag == 1] = np.nan
+    ds.variables['ssh_smoothed'][:] = ssh_smoothed
+    
     return ds

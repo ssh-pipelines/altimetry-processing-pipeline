@@ -1,1 +1,0 @@
-# nasa-ssh-pipeline

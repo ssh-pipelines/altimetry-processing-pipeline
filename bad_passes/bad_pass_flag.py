@@ -9,8 +9,6 @@ import numpy as np
 import pandas as pd
 import s3fs
 
-XOVER_DATA = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-
 
 class XoverProcessor:
     def __init__(self, source: str, start_date: str = None, end_date: str = None):
@@ -57,10 +55,14 @@ class XoverProcessor:
         tmpdate = filename.split("_")[-1].split(".")[0][-10:]
         return datetime.strptime(tmpdate, "%Y-%m-%d")
 
-    def load_all_data(self, files: Iterable[str]) -> XOVER_DATA:
+    def load_all_data(self, files: Iterable[str]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         logging.info("Loading all data...")
+        
+        # Init np arrays with sufficient size
         total_size = len(files) * 2000
         cycle1, cycle2, pass1, pass2, psec1, psec2, ssh1, ssh2 = (np.empty(total_size) for _ in range(8))
+        
+        # Populate arrays
         index = 0
         for file in files:
             with self.fs.open(file, "rb") as f:
@@ -77,17 +79,24 @@ class XoverProcessor:
                 psec1[index : index + size] = nc_file["time1"][:] + self.ref_tstamp
                 psec2[index : index + size] = nc_file["time2"][:] + self.ref_tstamp
             index += size
+            
+        # Crop arrays
+        cycle1 = cycle1[:index]
+        cycle2 = cycle2[:index]
+        pass1 = pass1[:index]
+        pass2 = pass2[:index]
+        psec1 = psec1[:index]
+        psec2 = psec2[:index]
+        ssh1 = ssh1[:index]
+        ssh2 = ssh2[:index]
+        
+        dssh0 = ssh1 - ssh2
+        dssh = np.concatenate((dssh0, -dssh0))
+        psec = np.concatenate((psec1, psec2))
+        trackid = np.concatenate((cycle1 * 10000 + pass1, cycle2 * 10000 + pass2))
+        
         logging.info("Loading data complete")
-        return (
-            cycle1[:index],
-            cycle2[:index],
-            pass1[:index],
-            pass2[:index],
-            psec1[:index],
-            psec2[:index],
-            ssh1[:index],
-            ssh2[:index],
-        )
+        return dssh, psec, trackid
 
     def identify_bad_passes(
         self, trackid: np.ndarray, dssh: np.ndarray, psec: np.ndarray, currentdate: float
@@ -116,13 +125,7 @@ class XoverProcessor:
         dates_to_drop = []
         bad_tid_list = []
 
-        cycle1, cycle2, pass1, pass2, psec1, psec2, ssh1, ssh2 = self.load_all_data(self.files)
-
-        trackid = np.concatenate((cycle1 * 10000 + pass1, cycle2 * 10000 + pass2))
-
-        dssh0 = ssh1 - ssh2
-        dssh = np.concatenate((dssh0, -dssh0))
-        psec = np.concatenate((psec1, psec2))
+        dssh, psec, trackid = self.load_all_data(self.files)
 
         starttime = time.time()
 

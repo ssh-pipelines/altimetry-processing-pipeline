@@ -5,8 +5,7 @@ from typing import Iterable
 import numpy as np
 import xarray as xr
 
-from daily_files.utils.logconfig import configure_logging
-from daily_files.utils.aws_utils import aws_manager
+from utilities.aws_utils import aws_manager
 
 from daily_files.fetching.fetcher import Fetcher
 from daily_files.fetching.cmr_query import CMRGranule
@@ -43,8 +42,8 @@ class DailyFileJob:
         try:
             fetcher = cls.SOURCE_MAPPINGS[source]["fetcher"]
             logging.debug(f"Using {fetcher} fetcher")
-        except:
-            raise SourceNotSupported
+        except Exception:
+            raise SourceNotSupported(f"{source} is not currently supported")
         return fetcher
 
     @classmethod
@@ -52,8 +51,8 @@ class DailyFileJob:
         try:
             processor = cls.SOURCE_MAPPINGS[source]["processor"]
             logging.debug(f"Using {processor} processor")
-        except:
-            raise SourceNotSupported
+        except Exception:
+            raise SourceNotSupported(f"{source} is not currently supported")
         return processor
 
     def fetch_granules(self):
@@ -63,7 +62,6 @@ class DailyFileJob:
 
 
 def save_ds(ds: xr.Dataset, output_path: str):
-    logging.info(f"Setting netCDF encoding")
     ds = ds.set_coords(["latitude", "longitude"])
     encoding = {
         "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}
@@ -78,7 +76,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
                 "complevel": 5,
                 "zlib": True,
                 "char_dim_name": "basin_name_len",
-                "dtype": '|S33'
+                "dtype": "|S33",
             }
 
         if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
@@ -110,18 +108,23 @@ def work(job: DailyFileJob):
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
-    s3_output_path = f"daily_files/p1/{job.satellite}/{job.date.year}/{filename}"
-    aws_manager.upload_s3(out_path, job.DAILY_FILE_BUCKET, s3_output_path)
+    s3_output_path = os.path.join(
+        job.DAILY_FILE_BUCKET,
+        "daily_files",
+        job.satellite,
+        str(job.date.year),
+        filename,
+    )
+    aws_manager.upload_obj(out_path, s3_output_path)
     logging.info("Job complete.")
     daily_ds.close()
 
 
 def make_empty(job: DailyFileJob):
-    '''
+    """
     In the event no data is found we still want an empty daily file with the expected metadata.
-    '''
-    logging.info(
-        f"No {job.source} data found for {job.date}. Using template file.")
+    """
+    logging.info(f"No {job.source} data found for {job.date}. Using template file.")
     daily_ds = xr.open_dataset(
         os.path.join(
             "daily_files",
@@ -139,24 +142,18 @@ def make_empty(job: DailyFileJob):
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
-    s3_output_path = f"daily_files/{job.satellite}/{job.date.year}/{filename}"
-    aws_manager.upload_s3(out_path, job.DAILY_FILE_BUCKET, s3_output_path)
+    s3_output_path = os.path.join(
+        job.DAILY_FILE_BUCKET,
+        "daily_files",
+        job.satellite,
+        str(job.date.year),
+        filename,
+    )
+    aws_manager.upload_obj(out_path, s3_output_path)
     logging.info("Job complete.")
 
 
-def start_job(event: dict):
-    date = event.get("date")
-    source: str = event.get("source")
-    satellite = event.get("satellite")
-
-    if None in [date, source, satellite]:
-        raise RuntimeError(
-            "One of date, source, or satellite job parameters missing. Job failure."
-        )
-
-    configure_logging(file_timestamp=False,
-                      log_level=event.get("log_level", "INFO"))
-
+def start_job(date: str, source: str, satellite: str):
     daily_file_job = DailyFileJob(date, source, satellite)
     daily_file_job.fetch_granules()
     if len(daily_file_job.granules) > 0:

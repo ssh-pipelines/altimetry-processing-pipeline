@@ -4,29 +4,27 @@ from datetime import date, datetime
 
 import numpy as np
 import pandas as pd
-import s3fs
 import netCDF4 as nc
+
+from utilities.aws_utils import aws_manager
 
 GSFC_START = date(1992, 9, 25)
 S6_START = date(2024, 1, 10)
 
 S6_ABSOLUTE_OFFSET = 0.02293837  # Offset from GSFC in meters
 
+
 class Finalizer:
     def __init__(self, start_date: date = S6_START, end_date: date = date.today()):
-        _access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-        _secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        _session_token = os.environ.get("AWS_SESSION_TOKEN")
-
-        self.fs: s3fs.S3FileSystem = s3fs.S3FileSystem(
-            anon=False, key=_access_key, secret=_secret_key, token=_session_token
+        self.bad_pass_df: pd.DataFrame = self._load_bad_passes()
+        self.input_dates: dict[np.datetime64, str] = self._make_input_dates(
+            start_date, end_date
         )
 
-        self.bad_pass_df: pd.DataFrame = self._load_bad_passes()
-        self.input_dates: dict[np.datetime64, str] = self._make_input_dates(start_date, end_date)
-
     def _load_bad_passes(self) -> pd.DataFrame:
-        stream = self.fs.open("s3://example-bucket/aux_files/bad_pass_list.csv")
+        stream = aws_manager.fs.open(
+            "s3://example-bucket/aux_files/bad_pass_list.csv"
+        )
         return pd.read_csv(stream)
 
     @staticmethod
@@ -41,19 +39,21 @@ class Finalizer:
 
         # Filter for provided date range
         filtered_record = {
-            k: total_record[k] for k in total_record.keys() & np.arange(start_date, end_date, dtype="datetime64[D]")
+            k: total_record[k]
+            for k in total_record.keys()
+            & np.arange(start_date, end_date, dtype="datetime64[D]")
         }
         return filtered_record
 
     def get_daily_file(self, path) -> str:
-        if self.fs.exists(path):
+        if aws_manager.fs.exists(path):
             local_path = os.path.join("/tmp", os.path.basename(path))
-            self.fs.get(path, local_path)
+            aws_manager.fs.get(path, local_path)
             return local_path
         raise FileNotFoundError(f"{path} not found")
 
     def upload_df(self, local_path: str, dst_path: str):
-        self.fs.upload(local_path, dst_path)
+        aws_manager.fs.upload(local_path, dst_path)
 
     def process(self):
         logging.info(f"Processing {len(self.input_dates.keys())} daily files.")
@@ -61,7 +61,9 @@ class Finalizer:
             year = str(df_date.astype(object).year)
             filename = f'{source}-alt_ssh{str(df_date).replace("-","")}.nc'
             logging.info(f"Processing {filename}")
-            src_s3_path = os.path.join("s3://example-bucket/daily_files/p2", source, year, filename)
+            src_s3_path = os.path.join(
+                "s3://example-bucket/daily_files/p2", source, year, filename
+            )
 
             try:
                 local_filepath = self.get_daily_file(src_s3_path)
@@ -85,34 +87,43 @@ class Finalizer:
             ds.pass_flag_rms_threshold = 0.27
 
             bad_pass_slice = self.bad_pass_df[
-                (self.bad_pass_df["source"] == source) & (self.bad_pass_df["date"] == str(date))
+                (self.bad_pass_df["source"] == source)
+                & (self.bad_pass_df["date"] == str(date))
             ]
             if not bad_pass_slice.empty:
                 ds = apply_bad_pass(ds, bad_pass_slice)
 
             ds.product_generation_step = "3"
             ds.history = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")
-            
-            if source == 'S6':
+
+            if source == "S6":
                 # Remove any previously applied offset
                 try:
                     if ds.absolute_offset_applied:
-                        ds.variables["ssh"][:] = ds.variables["ssh"][:] - float(ds.absolute_offset_applied)
-                        ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] - float(ds.absolute_offset_applied)
+                        ds.variables["ssh"][:] = ds.variables["ssh"][:] - float(
+                            ds.absolute_offset_applied
+                        )
+                        ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][
+                            :
+                        ] - float(ds.absolute_offset_applied)
                 except AttributeError:
                     pass
-                     
+
                 ds.variables["ssh"][:] = ds.variables["ssh"][:] + S6_ABSOLUTE_OFFSET
-                ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] + S6_ABSOLUTE_OFFSET
-                
+                ds.variables["ssh_smoothed"][:] = (
+                    ds.variables["ssh_smoothed"][:] + S6_ABSOLUTE_OFFSET
+                )
+
                 ds.absolute_offset_applied = S6_ABSOLUTE_OFFSET
-            elif source == 'GSFC':
+            elif source == "GSFC":
                 ds.absolute_offset_applied = 0
-                
+
             ds.close()
 
             dst_filename = filename.replace(source, "NASA")
-            dst_s3_path = os.path.join("s3://example-bucket/daily_files/p3", year, dst_filename)
+            dst_s3_path = os.path.join(
+                "s3://example-bucket/daily_files/p3", year, dst_filename
+            )
 
             try:
                 self.upload_df(local_filepath, dst_s3_path)
@@ -141,12 +152,14 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
     ds.variables["nasa_flag"][mask] = 1
 
     # Update the 'flagged_passes' attribute in the dataset
-    ds.flagged_passes = ", ".join(df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1))
-    
+    ds.flagged_passes = ", ".join(
+        df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1)
+    )
+
     # Reapply nasa_flag to ssh_smoothed
-    ssh_smoothed = ds.variables['ssh_smoothed'][:]
-    nasa_flag = ds.variables['nasa_flag'][:]
+    ssh_smoothed = ds.variables["ssh_smoothed"][:]
+    nasa_flag = ds.variables["nasa_flag"][:]
     ssh_smoothed[nasa_flag == 1] = np.nan
-    ds.variables['ssh_smoothed'][:] = ssh_smoothed
-    
+    ds.variables["ssh_smoothed"][:] = ssh_smoothed
+
     return ds

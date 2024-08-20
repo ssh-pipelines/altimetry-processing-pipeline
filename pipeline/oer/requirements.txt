@@ -4,6 +4,6 @@ boto3
 netcdf4
 h5netcdf
 h5py
-scipy
+scipy==1.14.0
 s3fs
 dask

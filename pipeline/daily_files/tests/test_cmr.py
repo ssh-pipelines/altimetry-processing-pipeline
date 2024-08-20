@@ -5,18 +5,18 @@ from daily_files.fetching.cmr_query import CMRQuery, CMRGranule
 from daily_files.utils.logconfig import configure_logging
 
 
-class EndToEndCMRQueryTestCase(unittest.TestCase):   
+class EndToEndCMRQueryTestCase(unittest.TestCase):
     granules: Iterable[CMRGranule]
     concept_id: str
-    
+
     @classmethod
     def setUpClass(cls) -> None:
-        configure_logging(False, 'INFO', True)
-        
-        gsfc_concept_id = 'C2204129664-POCLOUD'
-        date = datetime(2021,12,29)
+        configure_logging(False, "INFO", True)
+
+        gsfc_concept_id = "C2204129664-POCLOUD"
+        date = datetime(2021, 12, 29)
         cmr_query = CMRQuery(gsfc_concept_id, date)
-        
+
         cls.concept_id = gsfc_concept_id
         cls.date = date
         cls.granules = cmr_query.query()
@@ -27,7 +27,7 @@ class EndToEndCMRQueryTestCase(unittest.TestCase):
     def test_correct_collection(self):
         for granule in self.granules:
             self.assertEqual(self.concept_id, granule.collection_id)
-            
+
     def test_s3_url(self):
         for granule in self.granules:
-            self.assertTrue(granule.s3_url.startswith('s3://'))
+            self.assertTrue(granule.s3_url.startswith("s3://"))

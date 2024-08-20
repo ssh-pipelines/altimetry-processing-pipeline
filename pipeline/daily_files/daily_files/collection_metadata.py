@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterable
 
+
 @dataclass
 class CollectionMeta:
     source: str

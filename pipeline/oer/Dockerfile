@@ -1,16 +1,19 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-COPY ./oer/requirements.txt .
+COPY pipeline/oer/requirements.txt .
 
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
-COPY ./utilites ${LAMBDA_TASK_ROOT}/utilities
-RUN pip install -e ${LAMBDA_TASK_ROOT}/utilities
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-# Copy other files from the local directory
-COPY ./oer/oer ${LAMBDA_TASK_ROOT}/oer
-COPY ./oer/app.py .
+COPY utilities/ utilities/
+COPY setup.py setup.py
+
+RUN python -m pip install .
+
+COPY pipeline/oer/oer oer/
+COPY pipeline/oer/app.py .
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/oer"
 

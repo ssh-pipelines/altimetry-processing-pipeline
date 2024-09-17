@@ -1,15 +1,19 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-COPY ./xover/requirements.txt .
+COPY pipeline/xover/requirements.txt .
 
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
-COPY ./utilites ${LAMBDA_TASK_ROOT}/utilities
-RUN pip install -e ${LAMBDA_TASK_ROOT}/utilities
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-COPY ./xover/crossover ${LAMBDA_TASK_ROOT}/crossover
-COPY ./xover/app.py .
+COPY utilities/ utilities/
+COPY setup.py setup.py
+
+RUN python -m pip install .
+
+COPY pipeline/xover/crossover crossover/
+COPY pipeline/xover/app.py .
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/crossover"
 

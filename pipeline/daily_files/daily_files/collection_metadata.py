@@ -26,9 +26,9 @@ class AllCollections:
             "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F",
             "https://doi.org/10.5067/S6AP4-2LRST",
         ),
-        "C2204129664-POCLOUD": CollectionMeta(
-            "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 5.1",
-            "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V51",
-            "https://doi.org/10.5067/ALTUG-TJ151",
+        "C2901523432-POCLOUD": CollectionMeta(
+            "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 5.2",
+            "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V52",
+            "https://doi.org/10.5067/ALTUG-TJ152",
         ),
     }

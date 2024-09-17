@@ -24,16 +24,12 @@ class OerCorrection:
     def __init__(self, source: str, date: datetime) -> None:
         self.source: str = source
         self.date: datetime = date
-        self.daily_file_filename = f'{source}-alt_ssh{date.strftime("%Y%m%d")}.nc'
-        self.window_len: int = (
-            10  # set window, since xover files "look forward" in time
-        )
+        self.daily_file_filename = f'{source}-SSH_alt_ref_at_v1_{date.strftime("%Y%m%d")}.nc'
+        self.window_len: int = 10  # set window, since xover files "look forward" in time
         self.window_pad: int = 1  # padding to avoid edge effects at window end
         logging.info(f"Starting job for {self.source} {self.date}")
 
-    def save_ds(
-        self, ds: xr.Dataset, local_filename: str, encoding: dict = None
-    ) -> str:
+    def save_ds(self, ds: xr.Dataset, local_filename: str, encoding: dict = None) -> str:
         """
         Save xarray dataset as netCDF to /tmp
         """
@@ -64,14 +60,10 @@ class OerCorrection:
             raise RuntimeError("Unable to open any crossover files!")
         logging.info(f"Openining {len(streams)} xover files.")
         try:
-            ds = xr.open_mfdataset(
-                streams, concat_dim="time1", combine="nested", decode_times=False
-            )
+            ds = xr.open_mfdataset(streams, concat_dim="time1", combine="nested", decode_times=False)
         except ValueError:
             # If all xovers are empty, just open one
-            ds = xr.open_mfdataset(
-                streams[0], concat_dim="time1", combine="nested", decode_times=False
-            )
+            ds = xr.open_mfdataset(streams[0], concat_dim="time1", combine="nested", decode_times=False)
         return ds
 
     def fetch_daily_file(self) -> xr.Dataset:
@@ -102,9 +94,7 @@ class OerCorrection:
         polygon_ds = create_polygon(xover_ds, self.date, self.source)
 
         # Save the polygon as netCDF and upload to S3
-        polygon_filename = (
-            f'oerpoly_{self.source}_{self.date.strftime("%Y-%m-%d")}.nc'
-        )
+        polygon_filename = f'oerpoly_{self.source}_{self.date.strftime("%Y-%m-%d")}.nc'
         out_path = self.save_ds(polygon_ds, polygon_filename)
         target_path = os.path.join(
             "s3://example-bucket/oer",
@@ -115,17 +105,11 @@ class OerCorrection:
         aws_manager.upload_obj(out_path, target_path)
         return polygon_ds
 
-    def make_correction(
-        self, polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset
-    ) -> xr.Dataset:
-        correction_ds = evaluate_correction(
-            polygon_ds, daily_file_ds, self.date, self.source
-        )
+    def make_correction(self, polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset) -> xr.Dataset:
+        correction_ds = evaluate_correction(polygon_ds, daily_file_ds, self.date, self.source)
 
         # Save the correction and upload to S3
-        correction_filename = (
-            f'oer_correction_{self.source}_{self.date.strftime("%Y-%m-%d")}.nc'
-        )
+        correction_filename = f'oer_correction_{self.source}_{self.date.strftime("%Y-%m-%d")}.nc'
         out_path = self.save_ds(correction_ds, correction_filename)
         target_path = os.path.join(
             "s3://example-bucket/oer",
@@ -136,9 +120,7 @@ class OerCorrection:
         aws_manager.upload_obj(out_path, target_path)
         return correction_ds
 
-    def apply_oer(
-        self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset
-    ) -> xr.Dataset:
+    def apply_oer(self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset) -> xr.Dataset:
         ds = apply_correction(daily_file_ds, correction_ds)
 
         if "time" in ds["basin_names_table"].dims:
@@ -148,14 +130,12 @@ class OerCorrection:
                 ds["basin_names_table"] = ds["basin_names_table"].squeeze("time")
 
         ds = ds.set_coords(["latitude", "longitude"])
-        encoding = {
-            "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}
-        }
+        encoding = {"time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}}
         for var in ds.variables:
             if var not in ["latitude", "longitude", "time", "basin_names_table"]:
                 encoding[var] = {"complevel": 5, "zlib": True}
             elif "lat" in var or "lon" in var:
-                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32"}
+                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", "_FillValue": None}
             elif "basin_names_table" in var:
                 encoding[var] = {
                     "complevel": 5,
@@ -164,9 +144,7 @@ class OerCorrection:
                     "dtype": "|S33",
                 }
 
-            if any(
-                x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]
-            ):
+            if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
                 encoding[var]["dtype"] = "int8"
                 encoding[var]["_FillValue"] = np.iinfo(np.int8).max
             if any(x in var for x in ["basin_flag", "pass", "cycle"]):

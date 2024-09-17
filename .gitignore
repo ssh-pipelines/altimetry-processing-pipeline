@@ -1,7 +1,8 @@
 __pycache__
-.DS_Store
 .ruff_cache
 *.DS_Store
 *.ipynb_checkpoints
 __pycache__
-*test_granules
+*test*granules
+*.egg*
+build

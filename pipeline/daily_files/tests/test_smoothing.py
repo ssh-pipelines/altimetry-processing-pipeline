@@ -29,13 +29,6 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
         arr[np.isnan(arr)[::-1]] = np.nan
         self.assertEqual(arr.all(), arr.all())
 
-    # def test_windows(self):
-    #     padded_df = pad_df(self.og_ds)
-    #     windows = make_windows(padded_df.ssh.values)
-    #     for window in windows:
-    #         if (len(window) != 19):
-    #             self.assertTrue((window.index.values <= np.datetime64('2020-01-01', 's')).all() | (window.index.values >= np.datetime64('2020-01-01T00:01:00', 's')).all())
-
     def test_no_nans(self):
         arr = np.full(19, 1, dtype="float32")
         smoothed_val = smooth(arr)
@@ -56,3 +49,17 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         smoothed_val = smooth(arr)
         self.assertAlmostEqual(8.56348, smoothed_val, 4)
+        
+    def test_case_1(self):
+        arr = np.array([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,  
+                        1.89804412, 
+                        np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
+        smoothed_val = smooth(arr)
+        self.assertIs(np.nan, smoothed_val)
+
+    def test_case_2(self):
+        arr = np.array([-0.17185227, -0.09885015, -0.00343418, 0.08667804, 0.26273039, np.nan, np.nan, np.nan, np.nan, 
+                        np.nan, 
+                        np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 1.89804412, np.nan, np.nan])
+        smoothed_val = smooth(arr)
+        self.assertAlmostEqual(0.94406, smoothed_val, 4)

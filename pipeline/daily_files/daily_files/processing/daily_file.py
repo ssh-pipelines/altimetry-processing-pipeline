@@ -18,6 +18,7 @@ class DailyFile(ABC):
     - Longitude
     - Cycle
     - Pass
+    - Dac
     - Time
 
     Individual subclasses will implement:
@@ -85,7 +86,7 @@ class DailyFile(ABC):
 
     def make_ds(self) -> xr.Dataset:
         ds = xr.Dataset(data_vars=self.data, coords=dict(time=self.time))
-        ds.time.encoding["units"] = "seconds since 1990-01-01"
+        ds["time"].encoding["units"] = "seconds since 1990-01-01"
         ds = ds.sortby("time")
         return ds
 
@@ -97,9 +98,9 @@ class DailyFile(ABC):
         # For reasons still to be discovered, the where() function is required
         # before smoothing.
 
-        basin_table = ds.basin_names_table
+        basin_table = ds["basin_names_table"]
         ds = ds.drop_vars("basin_names_table")
-        ds = ds.where(~np.isnat(ds.time), drop=True)
+        ds = ds.where(~np.isnat(ds["time"]), drop=True)
         ds = ds.sel(time=today)
         ds["basin_names_table"] = basin_table
         return ds
@@ -112,7 +113,7 @@ class DailyFile(ABC):
         """
         Removes values that exceed limit. Not currently used.
         """
-        ds = ds.where(np.abs(ds.ssh) < limit, drop=True)
+        ds = ds.where(np.abs(ds["ssh"]) < limit, drop=True)
         return ds
 
     def clean_date(self, date: datetime):
@@ -121,7 +122,6 @@ class DailyFile(ABC):
         """
         logging.info("Performing subsetting by date and filtering outlier values")
         self.ds = self.date_subset(self.ds, date)
-
         self.ds = self.drop_dupe_times(self.ds)
 
     def mss_interp(
@@ -170,24 +170,22 @@ class DailyFile(ABC):
     def get_mss_values(self, mss_path: str) -> np.ndarray:
         with xr.open_dataset(mss_path) as mss_ds:
             # Load arrays into memory
-            mss_lat = mss_ds.lat.values
-            mss_lon = mss_ds.lon.values
-            mss_diff = mss_ds.mssdiff.values
+            mss_lat = mss_ds["lat"].values
+            mss_lon = mss_ds["lon"].values
+            mss_diff = mss_ds["mssdiff"].values
             mss_swapped_values = self.mss_interp(
                 mss_lat,
                 mss_lon,
                 mss_diff,
-                self.ds.latitude.values,
-                self.ds.longitude.values,
+                self.ds["latitude"].values,
+                self.ds["longitude"].values,
             )
         return mss_swapped_values
 
     def make_ssh_smoothed(self, date: datetime):
         self.ds = ssh_smoothing(self.ds, date)
 
-    def make_lonlat_points(
-        self, lats: np.ndarray, lons: np.ndarray
-    ) -> gpd.GeoDataFrame:
+    def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """
         Convert lat lon values to shapely Point objects and wrap
         as georeferenced GeoDataFrame.
@@ -202,11 +200,9 @@ class DailyFile(ABC):
         """ """
         logging.info("Mapping data points to their respective basin")
 
-        poly_df = gpd.read_file(
-            "daily_files/ref_files/basin/new_basin_lake_polygons.shp"
-        )
+        poly_df = gpd.read_file("daily_files/ref_files/basin/new_basin_lake_polygons.shp")
 
-        if len(self.ds.time) == 0:
+        if len(self.ds["time"]) == 0:
             self.ds["ssh_smoothed"] = (("time"), np.array([], dtype="float64"))
             self.ds["basin_flag"] = (("time"), np.array([], dtype="int32"))
             poly_df["feature_id"] = poly_df["feature_id"].astype(str).str.ljust(4, " ")
@@ -218,9 +214,7 @@ class DailyFile(ABC):
             )
             return
 
-        points_df = self.make_lonlat_points(
-            self.ds.latitude.values, self.ds.longitude.values
-        )
+        points_df = self.make_lonlat_points(self.ds["latitude"].values, self.ds["longitude"].values)
         join_df = gpd.sjoin(points_df, poly_df, how="left", predicate="within")
         self.ds["basin_flag"] = (
             ("time"),
@@ -232,7 +226,9 @@ class DailyFile(ABC):
         self.ds["basin_names_table"] = (("basin_name_dim"), basin_table.astype("S33"))
 
     def apply_basin_to_nasa(self):
-        self.ds.nasa_flag.values[self.ds.basin_flag == 0] = 1
+        self.ds["nasa_flag"].values[
+            ((self.ds["basin_flag"] == 0) | (self.ds["basin_flag"] == 1003) | (self.ds["basin_flag"] == 190))
+        ] = 1
 
     def set_var_attrs(self):
         attributes = {
@@ -255,22 +251,22 @@ class DailyFile(ABC):
                     "to which all times in the time variable are referenced."
                 ),
             },
-            "cycle": {"long_name": "cycle number", "standard_name": "cycle"},
-            "pass": {"long_name": "pass number", "standard_name": "pass"},
+            "cycle": {"long_name": "Satellite cycle number"},
+            "pass": {"long_name": "Satellite pass number"},
             "ssh": {
-                "long_name": "sea surface height relative to mean_sea_surface",
-                "standard_name": "ssh",
+                "long_name": "Sea surface height relative to mean_sea_surface",
+                "standard_name": "sea_surface_height",
                 "mean_sea_surface": self.target_mss,
                 "description": "Use nasa_flag = 0 to select valid data points from this variable",
                 "units": "m",
                 "coordinates": "latitude longitude",
             },
             "ssh_smoothed": {
-                "long_name": "smoothed sea surface height relative to mean_sea_surface",
-                "standard_name": "ssh_smoothed",
+                "long_name": "Smoothed sea surface height relative to mean_sea_surface",
+                "standard_name": "sea_surface_height",
                 "mean_sea_surface": self.target_mss,
                 "description": (
-                    "smoothed sea surface height values computed using a 19 point filter. "
+                    "Smoothed sea surface height values computed using a 19 point filter. "
                     "nasa_flag is applied prior to filter and should not be used to remove points from this field."
                 ),
                 "units": "m",
@@ -278,32 +274,33 @@ class DailyFile(ABC):
             },
             "dac": {
                 "long_name": "dynamic atmospheric correction",
-                "standard_name": "dac",
+                "standard_name": "dynamic_atmospheric_correction",
                 "comment": "Additive correction applied to ssh to remove atmospheric effects.  Subtract this field from ssh or ssh_smoothed to un-apply this correction.",
                 "units": "m",
                 "coordinates": "latitude longitude",
             },
             "basin_flag": {
-                "long_name": "basin ID number mapping each observation to a geographic basin",
-                "standard_name": "basin_flag",
+                "long_name": "Basin ID number mapping each observation to a geographic basin",
+                "standard_name": "region",
+                "flag_meanings": "See basin_names_table for basin ID to basin name mapping",
                 "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
             },
             "basin_names_table": {
                 "long_name": "Table mapping basin ID numbers to basin names",
-                "standard_name": "basin_names_table",
                 "description": "Values are comma separated string of the form feature id,feature name",
                 "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
                 "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
             },
             "nasa_flag": {
-                "long_name": "nasa ssh quality flag",
-                "standard_name": "nasa_flag",
+                "long_name": "NASA SSH quality flag",
+                "standard_name": "quality_flag",
+                "flag_values": "0, 1",
                 "flag_meanings": "good bad",
-                "description": "Quality flag to be used for ssh, not for ssh_smoothed. nasa_flag is set to 0 for data that should be retained, and 1 for data that should be removed.",
+                "description": "Quality flag to be used for ssh, not for ssh_smoothed.",
             },
         }
 
-        if len(self.ds.time) > 0:
+        if len(self.ds["time"]) > 0:
             for ssh_var in ["ssh", "ssh_smoothed", "dac"]:
                 attributes[ssh_var]["valid_min"] = np.nanmin(self.ds[ssh_var])
                 attributes[ssh_var]["valid_max"] = np.nanmax(self.ds[ssh_var])
@@ -319,7 +316,7 @@ class DailyFile(ABC):
         """
         global_attrs = {
             "Conventions": "CF-1.7",
-            "title": "Standardized Along-Track Sea Surface Height",
+            "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1",
             "summary": "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in mean_sea_surface. Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in studies and applications requiring climate-quality observations without additional adjustments or filtering.",
             "institution": "NASA/Jet Propulsion Laboratory",
             "source": "",  # Source specific
@@ -329,14 +326,16 @@ class DailyFile(ABC):
             "mean_sea_surface": "",
             # 'Metadata_Conventions': "Unidata Dataset Discovery v1.0",
             # 'standard_name_vocabulary': "CF Standard Name Table v29",
+            "granule_id": "",
             "id": "PODAAC-EXAMPLE-DATA",
             # 'naming_authority': "org.nasa.podaac",
             "project": "NASA-SSH",
             "processing_level": "Level 2",
             "product_generation_step": "1",
+            "product_short_name": "NASA_SSH_REF_ALONGTRACK_V1",
             "acknowledgement": "This data is provided by NASAs PO.DAAC.",
             # 'license': "Public Domain",
-            "product_version": "2401",
+            "product_version": "V1",
             "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
             "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
             "platform": "Satellite",
@@ -351,12 +350,8 @@ class DailyFile(ABC):
             "geospatial_lat_max": "",  # Source specific
             "geospatial_lon_min": "0LL",
             "geospatial_lon_max": "360LL",
-            "time_coverage_start": str(self.ds.time.values[0])[:19] + "Z"
-            if len(self.ds.time) > 0
-            else "N/A",
-            "time_coverage_end": str(self.ds.time.values[-1])[:19] + "Z"
-            if len(self.ds.time) > 0
-            else "N/A",
+            "time_coverage_start": str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
+            "time_coverage_end": str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
         }
 
         for k, v in global_attrs.items():
@@ -366,7 +361,7 @@ class DailyFile(ABC):
         self.set_var_attrs()
         self.set_global_attrs()
 
-        if len(self.ds.time) == 0:
+        if len(self.ds["time"]) == 0:
             for var in self.ds.variables:
                 if "time" in self.ds[var].coords:
                     self.ds[var].attrs["comment"] = "No data for this date"

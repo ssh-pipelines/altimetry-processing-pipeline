@@ -187,7 +187,7 @@ def evaluate_correction(
         },
         attrs={
             "title": f"{source} Orbit Error Reduction, interpolated onto ssh",
-            "subtitle": f'created for {source}-alt_ssh{date.strftime("%Y%m%d")}.nc',
+            "subtitle": f'created for {source}-SSH_alt_ref_at_v1_{date.strftime("%Y%m%d")}.nc',
         },
     )
     ds["time"].encoding["units"] = daily_file_ds["time"].encoding["units"]

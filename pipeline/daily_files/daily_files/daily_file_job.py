@@ -27,8 +27,6 @@ class DailyFileJob:
         "S6": {"fetcher": S6Fetch, "processor": S6DailyFile},
     }
 
-    DAILY_FILE_BUCKET = "example-bucket"
-
     def __init__(self, date: str, source: str, satellite: str):
         logging.info(f"Starting {source} job for {date}")
         self.date: datetime = datetime.strptime(date, "%Y-%m-%d")
@@ -42,7 +40,7 @@ class DailyFileJob:
         try:
             fetcher = cls.SOURCE_MAPPINGS[source]["fetcher"]
             logging.debug(f"Using {fetcher} fetcher")
-        except Exception:
+        except KeyError:
             raise SourceNotSupported(f"{source} is not currently supported")
         return fetcher
 
@@ -51,7 +49,7 @@ class DailyFileJob:
         try:
             processor = cls.SOURCE_MAPPINGS[source]["processor"]
             logging.debug(f"Using {processor} processor")
-        except Exception:
+        except KeyError:
             raise SourceNotSupported(f"{source} is not currently supported")
         return processor
 
@@ -64,13 +62,13 @@ class DailyFileJob:
 def save_ds(ds: xr.Dataset, output_path: str):
     ds = ds.set_coords(["latitude", "longitude"])
     encoding = {
-        "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}
+        "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", '_FillValue': None}
     }
     for var in ds.variables:
         if var not in ["latitude", "longitude", "time", "basin_names_table"]:
             encoding[var] = {"complevel": 5, "zlib": True}
         elif "lat" in var or "lon" in var:
-            encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32"}
+            encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", '_FillValue': None}
         elif "basin_names_table" in var:
             encoding[var] = {
                 "complevel": 5,
@@ -103,14 +101,13 @@ def work(job: DailyFileJob):
     daily_ds.attrs["source_files"] = ", ".join(
         [granule.title for granule in job.granules]
     )
-
-    filename = f'{job.satellite}-alt_ssh{str(job.date)[:10].replace("-","")}.nc'
+    
+    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
     s3_output_path = os.path.join(
-        job.DAILY_FILE_BUCKET,
-        "daily_files",
+        "s3://example-bucket/daily_files/p1",
         job.satellite,
         str(job.date.year),
         filename,
@@ -137,14 +134,16 @@ def make_empty(job: DailyFileJob):
         f"Created on {datetime.now().isoformat(timespec='seconds')}"
     )
     daily_ds.attrs["source_files"] = ""
-
-    filename = f'{job.satellite}-alt_ssh{str(job.date)[:10].replace("-","")}.nc'
+    daily_ds.attrs["time_coverage_start"] = job.date.strftime('%Y-%m-%dT00:00:00Z')
+    daily_ds.attrs["time_coverage_start"] = job.date.strftime('%Y-%m-%dT23:59:59Z')
+    daily_ds.attrs["comment"] = "No data available from source"
+    
+    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
     s3_output_path = os.path.join(
-        job.DAILY_FILE_BUCKET,
-        "daily_files",
+        "s3://example-bucket/daily_files/p1",
         job.satellite,
         str(job.date.year),
         filename,

@@ -1,8 +1,10 @@
 from typing import Iterable
+import boto3
+import os
 import unittest
+from unittest import mock
 from datetime import datetime
 from daily_files.fetching.cmr_query import CMRQuery, CMRGranule
-from daily_files.utils.logconfig import configure_logging
 
 
 class EndToEndCMRQueryTestCase(unittest.TestCase):
@@ -11,11 +13,19 @@ class EndToEndCMRQueryTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        configure_logging(False, "INFO", True)
+        gsfc_concept_id = "C2901523432-POCLOUD"
+        date = datetime(2023, 1, 1)
 
-        gsfc_concept_id = "C2204129664-POCLOUD"
-        date = datetime(2021, 12, 29)
-        cmr_query = CMRQuery(gsfc_concept_id, date)
+        session = boto3.Session(profile_name="s6")
+        credentials = session.get_credentials()
+        aws_env_vars = {
+            "AWS_ACCESS_KEY_ID": credentials.access_key,
+            "AWS_SECRET_ACCESS_KEY": credentials.secret_key,
+            "AWS_SESSION_TOKEN": credentials.token,
+        }
+
+        with mock.patch.dict(os.environ, aws_env_vars):
+            cmr_query = CMRQuery(gsfc_concept_id, date)
 
         cls.concept_id = gsfc_concept_id
         cls.date = date

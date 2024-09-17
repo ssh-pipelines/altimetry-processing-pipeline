@@ -1,14 +1,19 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-COPY ./finalizer/requirements.txt .
+COPY pipeline/finalizer/requirements.txt .
 
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
 
-COPY ./utilites ${LAMBDA_TASK_ROOT}/utilities
-RUN pip install -e ${LAMBDA_TASK_ROOT}/utilities
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-COPY ./finalizer/finalization ${LAMBDA_TASK_ROOT}/finalization
-COPY ./finalizer/app.py .
+COPY utilities/ utilities/
+COPY setup.py setup.py
+
+RUN python -m pip install .
+
+COPY pipeline/finalizer/finalization finalization/
+COPY pipeline/finalizer/app.py .
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/finalization"
 

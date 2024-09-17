@@ -34,9 +34,9 @@ def handler(event, context):
                 )
     # Handle direct Lambda invocations
     else:
-        date = message_body.get("date")
-        source: str = message_body.get("source")
-        satellite = message_body.get("satellite")
+        date = event.get("date")
+        source: str = event.get("source")
+        satellite = event.get("satellite")
 
         try:
             if None in [date, source, satellite]:

@@ -13,9 +13,7 @@ def parse_params(params: dict) -> Tuple[datetime, str]:
         raise ValueError(f"Unable to parse date: {e}")
     source = params.get("source")
     if None in [date, source]:
-        raise ValueError(
-            f"Unable to get date {date} or source {source} from message."
-        )
+        raise ValueError(f"Unable to get date {date} or source {source} from message.")
     return date, source
 
 
@@ -26,8 +24,7 @@ def handler(event, context):
         format="[%(levelname)s] %(asctime)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
-    
-    
+
     # Handle messages from SQS
     if "Records" in event:
         for record in event["Records"]:
@@ -35,13 +32,13 @@ def handler(event, context):
             try:
                 date, source = parse_params(message_body)
             except ValueError as e:
-                logging.exception(f"Error processing {source} {date}: {e}")
+                logging.exception(f"Error processing params: {e}")
                 continue
             try:
                 oer_job = OerCorrection(source, date)
                 oer_job.run()
             except Exception as e:
-                logging.exception(f"Error processing {source} {date}: {e}")
+                logging.exception(f"Error processing params: {e}")
                 continue
     # Handle direct Lambda invocations
     else:

@@ -9,13 +9,10 @@ import numpy as np
 from datetime import datetime
 
 from daily_files.processing.daily_file import DailyFile
-from daily_files.collection_metadata import AllCollections
+from daily_files.collection_metadata import AllCollections, CollectionMeta
 
 
 class S6DailyFile(DailyFile):
-    # Offset from GSFC in meters
-    ABSOLUTE_OFFSET = 0.02665
-
     def __init__(
         self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]
     ):
@@ -27,13 +24,13 @@ class S6DailyFile(DailyFile):
         self.original_ds = ds
         self.collection_ids = collection_ids
 
-        ssh: np.ndarray = ds.ssha_nr.values + self.ABSOLUTE_OFFSET
-        lats: np.ndarray = ds.latitude.values
-        lons: np.ndarray = ds.longitude.values
-        times: np.ndarray = ds.time.values
-        cycles: np.ndarray = ds.cycle.values
-        passes: np.ndarray = ds.passes.values
-        dac: np.ndarray = ds.dac.values
+        ssh: np.ndarray = ds["ssha_nr"].values
+        lats: np.ndarray = ds["latitude"].values
+        lons: np.ndarray = ds["longitude"].values
+        times: np.ndarray = ds["time"].values
+        cycles: np.ndarray = ds["cycle"].values
+        passes: np.ndarray = ds["passes"].values
+        dac: np.ndarray = ds["dac"].values
 
         self.source_mss = "DTU18"
         self.target_mss = "DTU21"
@@ -99,11 +96,11 @@ class S6DailyFile(DailyFile):
         }
         merged_ds["cycle"] = (
             ("time"),
-            np.full(merged_ds.time.values.shape, ds.cycle_number),
+            np.full(merged_ds["time"].values.shape, ds.cycle_number),
         )
         merged_ds["passes"] = (
             ("time"),
-            np.full(merged_ds.time.values.shape, ds.pass_number),
+            np.full(merged_ds["time"].values.shape, ds.pass_number),
         )
         return xr.decode_cf(merged_ds)
 
@@ -123,15 +120,15 @@ class S6DailyFile(DailyFile):
     def make_nasa_flag(self):
         """ """
         logging.info("Making nasa_flag...")
-        kqual = self.original_ds.range_ocean_nr_qual.values
-        surfc = self.original_ds.surface_classification_flag.values
-        rqual = self.original_ds.rad_water_vapor_qual.values
-        rain = self.original_ds.rain_flag.values
-        s0 = self.original_ds.sig0_ocean_nr.values
-        swh = self.original_ds.swh_ocean_nr.values
-        ssh = self.original_ds.ssha_nr.values
-        basin_flag = self.ds.basin_flag.values
-        lats = self.ds.latitude.values
+        kqual = self.original_ds["range_ocean_nr_qual"].values
+        surfc = self.original_ds["surface_classification_flag"].values
+        rqual = self.original_ds["rad_water_vapor_qual"].values
+        rain = self.original_ds["rain_flag"].values
+        s0 = self.original_ds["sig0_ocean_nr"].values
+        swh = self.original_ds["swh_ocean_nr"].values
+        ssh = self.original_ds["ssha_nr"].values
+        basin_flag = self.ds["basin_flag"].values
+        lats = self.ds["latitude"].values
 
         n_median = 15
         n_std = 95
@@ -229,10 +226,13 @@ class S6DailyFile(DailyFile):
         )
 
         source_flag_attrs = {
-            "standard_name": "source_data_flag",
-            "long_name": "source data flag",
-            "comment": "S6 flags used to calculate nasa_flag",
+            "standard_name": "quality_flag",
+            "long_name": "Source data flag",
+            "comment": "S6 flags used to calculate nasa_flag. See documentation for more details.",
         }
+        source_flag_attrs["flag_values"] = "0, 1"
+        source_flag_attrs["flag_meanings"] = "good bad"
+        
         for i, src_flag in enumerate(
             [
                 "range_ocean_nr_qual",
@@ -243,18 +243,7 @@ class S6DailyFile(DailyFile):
             1,
         ):
             source_flag_attrs[f"flag_column_{i}"] = src_flag
-        for i, src_flag in enumerate(
-            [
-                "range_ocean_nr_qual",
-                "surface_classification_flag",
-                "rad_water_vapor_qual",
-                "rain_flag",
-            ],
-            1,
-        ):
-            source_flag_attrs[f"flag_column_{i}_meaning"] = self.original_ds[
-                src_flag
-            ].attrs["flag_meanings"]
+        
         self.ds["source_flag"] = (
             ("time", "src_flag_dim"),
             source_flag,
@@ -265,23 +254,25 @@ class S6DailyFile(DailyFile):
             ("time"),
             median_flag,
             {
-                "standard_name": "median_filter_flag",
+                "standard_name": "quality_flag",
                 "long_name": "median filter flag",
                 "comment": "flag set to 0 for good data, 1 for data that fail a 5 standard deviation filter relative to a 15-point along-track median. See documentation for details.",
+                "flag_values": "0, 1",
+                "flag_meanings": "good bad"
             },
         )
 
     def mss_swap(self):
         logging.info("Applying mss swap to ssh values...")
-        if len(self.ds.time) == 0:
+        if len(self.ds["time"]) == 0:
             logging.debug("Empty data arrays, skipping mss swapping")
             return
         mss_path = os.path.join("daily_files", "ref_files", "mss_diffs", self.mss_name)
         mss_swapped_values = self.get_mss_values(mss_path)
-        self.ds.ssh.values = (
-            self.ds.ssh.values
-            + self.ds.mean_sea_surface_sol1
-            - self.ds.mean_sea_surface_sol2
+        self.ds["ssh"].values = (
+            self.ds["ssh"].values
+            + self.ds["mean_sea_surface_sol1"]
+            - self.ds["mean_sea_surface_sol2"]
             + mss_swapped_values
         )
         self.ds = self.ds.drop_vars(["mean_sea_surface_sol1", "mean_sea_surface_sol2"])
@@ -295,7 +286,7 @@ class S6DailyFile(DailyFile):
         references = set()
 
         for collection_id in self.collection_ids:
-            collection_meta = AllCollections.collections[collection_id]
+            collection_meta: CollectionMeta = AllCollections.collections[collection_id]
             sources.add(collection_meta.source)
             source_urls.add(collection_meta.source_url)
             references.add(collection_meta.reference)
@@ -306,4 +297,3 @@ class S6DailyFile(DailyFile):
         self.ds.attrs["geospatial_lat_min"] = "-66.15LL"
         self.ds.attrs["geospatial_lat_max"] = "66.15LL"
         self.ds.attrs["mean_sea_surface"] = self.target_mss
-        self.ds.attrs["absolute_offset_applied"] = self.ABSOLUTE_OFFSET

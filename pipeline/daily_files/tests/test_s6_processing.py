@@ -29,7 +29,7 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
         [op.close() for op in opened_paths]
 
         og_ds = daily_file_job.original_ds.where(
-            ~np.isnat(daily_file_job.original_ds.time), drop=True
+            ~np.isnat(daily_file_job.original_ds["time"]), drop=True
         )
         today = str(datetime(2023, 12, 17))[:10]
         og_ds = og_ds.sel(time=today)
@@ -41,10 +41,10 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
 
     def test_file_date_coverage(self):
         self.assertGreaterEqual(
-            self.daily_ds.time.values.min(), np.datetime64("2023-12-17")
+            self.daily_ds["time"].values.min(), np.datetime64("2023-12-17")
         )
         self.assertLessEqual(
-            self.daily_ds.time.values.max(), np.datetime64("2023-12-17T23:59:59")
+            self.daily_ds["time"].values.max(), np.datetime64("2023-12-17T23:59:59")
         )
 
     def test_source_attr(self):

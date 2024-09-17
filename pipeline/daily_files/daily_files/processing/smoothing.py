@@ -43,12 +43,15 @@ def smooth(ssh_vals: np.ndarray) -> np.float64:
     """
     Interpolate NaNs, mirror NaNs, compute smoothed value. Smoothed value is set to NaN if entire window is NaN
     """
-    if np.isnan(ssh_vals).all():
+    # Point is NaN'd if all window to left and right are NaNs regardless of point value
+    if np.isnan(ssh_vals[:9]).all() and np.isnan(ssh_vals[10:]).all():
         return np.nan
-
+    
+    # If any NaNs we need to interpolate
     if np.isnan(ssh_vals).any():
         nan_i = np.isnan(ssh_vals)
         nnan_i = ~nan_i
+        
         ssh_vals[nan_i] = np.interp(
             nan_i.nonzero()[0],
             nnan_i.nonzero()[0],
@@ -56,11 +59,15 @@ def smooth(ssh_vals: np.ndarray) -> np.float64:
             left=np.nan,
             right=np.nan,
         )
+        
+        # Any remaining NaNs get mirrored across window
         if np.isnan(ssh_vals).any():
             ssh_vals[np.isnan(ssh_vals)[::-1]] = np.nan
 
-    if np.isnan(ssh_vals).all():
-        return np.nan
+        # Again check for all NaNs in left and right of window
+        if np.isnan(ssh_vals[:9]).all() and np.isnan(ssh_vals[10:]).all():
+            return np.nan
+        
     return smooth_point(ssh_vals)
 
 
@@ -75,9 +82,7 @@ def ssh_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     FILTER_WEIGHTS = create_filter("reference")
 
     # Pad ssh values with NaNs
-    df = pd.DataFrame(
-        {"ssh": ds.ssh.values, "flag": ds.nasa_flag.values}, ds.time.values
-    )
+    df = pd.DataFrame({"ssh": ds["ssh"].values, "flag": ds["nasa_flag"].values}, ds["time"].values)
     padded_df = df.reindex(np.arange(date, date + timedelta(1), dtype="datetime64[s]"))
 
     # Apply nasa_flag to ssh
@@ -90,9 +95,7 @@ def ssh_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     smoothed_vals = np.apply_along_axis(smooth, axis=1, arr=windows)
 
     # Index smoothed values to full day and then select original time values
-    ssh_smoothed = pd.Series(smoothed_vals, index=padded_df.index)[
-        pd.DatetimeIndex(ds.time.values)
-    ]
+    ssh_smoothed = pd.Series(smoothed_vals, index=padded_df.index)[pd.DatetimeIndex(ds["time"].values)]
     ds["ssh_smoothed"] = (("time"), ssh_smoothed.values.astype("float64"))
 
     return ds

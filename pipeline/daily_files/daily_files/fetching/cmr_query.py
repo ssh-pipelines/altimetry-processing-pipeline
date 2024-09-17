@@ -1,8 +1,11 @@
+import base64
 from datetime import datetime, timedelta
 import logging
 import time
 from typing import Iterable
 from cmr import GranuleQuery
+from utilities.aws_utils import aws_manager
+import requests
 
 
 class S3NotFound(Exception):
@@ -44,6 +47,22 @@ class CMRQuery:
         self.end_date: datetime = (
             self.start_date + timedelta(days=1) - timedelta(seconds=1)
         )
+        self.token = self._get_edl_token()
+
+    def _get_edl_token(self) -> str:
+        edl_secret = aws_manager.get_secret("EDL_auth")
+        username = edl_secret.get("user")
+        password = edl_secret.get("password")
+        encoded_auth = base64.b64encode(f"{username}:{password}".encode()).decode(
+            "ascii"
+        )
+
+        resp = requests.post(
+            "https://urs.earthdata.nasa.gov/api/users/find_or_create_token",
+            headers={"Authorization": f"Basic {encoded_auth}"},
+        )
+        token = resp.json()["access_token"]
+        return token
 
     def granule_query_with_wait(self):
         api = GranuleQuery()
@@ -53,7 +72,8 @@ class CMRQuery:
             time.sleep(attempt * 15)
             try:
                 query_results = (
-                    api.concept_id(self.concept_id)
+                    api.bearer_token(self.token)
+                    .concept_id(self.concept_id)
                     .provider("POCLOUD")
                     .temporal(self.start_date, self.end_date)
                     .get_all()
@@ -68,13 +88,15 @@ class CMRQuery:
         api = GranuleQuery()
         try:
             query_results = (
-                api.concept_id(self.concept_id)
+                api.bearer_token(self.token)
+                .concept_id(self.concept_id)
                 .provider("POCLOUD")
                 .temporal(self.start_date, self.end_date)
                 .get_all()
             )
         except RuntimeError:
             query_results = self.granule_query_with_wait()
+
         cmr_granules = [CMRGranule(result) for result in query_results]
         logging.info(f"Found {len(cmr_granules)} granule(s) from CMR query")
         return cmr_granules

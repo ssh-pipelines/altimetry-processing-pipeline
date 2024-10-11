@@ -69,13 +69,6 @@ def save_ds(ds: xr.Dataset, output_path: str):
             encoding[var] = {"complevel": 5, "zlib": True}
         elif "lat" in var or "lon" in var:
             encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", '_FillValue': None}
-        elif "basin_names_table" in var:
-            encoding[var] = {
-                "complevel": 5,
-                "zlib": True,
-                "char_dim_name": "basin_name_len",
-                "dtype": "|S33",
-            }
 
         if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
             encoding[var]["dtype"] = "int8"

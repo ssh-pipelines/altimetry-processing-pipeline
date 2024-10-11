@@ -98,12 +98,29 @@ class GSFCDailyFile(DailyFile):
         max_bits = int(np.ceil(np.log2(flag.max())))
         binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
         return binary_representation
+    
+    def manual_outliers(self, ssh: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        """
+        Manual method for catching known bad values
+        """
+        # 1995-06-07 
+        if self.date == datetime(1995,6,7):
+            outliers = prelim_flag & (lat >= 20) & (lat <= 25) & (ssh < -1)
+        
+        # 2001-06-26
+        elif self.date == datetime(2001,6,26):
+            outliers = prelim_flag & (lat >= -25) & (lat <= -15) & (ssh < -1)
+        
+        else:
+            outliers = np.full_like(ssh, False, dtype=bool)
+        return outliers
 
     def make_nasa_flag(self):
         """
         Makes nasa_flag, median_filter_flag, source_flag.
 
         GSFC flags:
+        0: Neighboring cycle
         1: Radiometer_Observation_is_Suspect
         2: Attitude_Out_of_Range
         3: Sigma0_Ku_Band_Out_of_Range
@@ -133,6 +150,8 @@ class GSFCDailyFile(DailyFile):
             & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2)))
         )
 
+        outliers = self.manual_outliers(ssh, prelim_flag, lats)
+
         # Calculate rolling median and standard deviation
         n_median = 15
         n_std = 95
@@ -156,7 +175,9 @@ class GSFCDailyFile(DailyFile):
             & median_flag
             & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2))
         )
-
+        
+        nasa_flag[outliers] = 1
+        
         source_flag = np.array(flag_array).astype("bool")
 
         all_flag_meanings = re.split(r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"])
@@ -177,6 +198,7 @@ class GSFCDailyFile(DailyFile):
             "standard_name": "quality_flag",
             "long_name": "Source data flag",
             "comment": "GSFC flags used to calculate nasa_flag. See documentation for more details.",
+            "coverage_content_type": "auxiliaryInformation"
         }
         for i, src_flag in enumerate(all_flag_meanings, 1):
             source_flag_attrs[f"flag_column_{i}"] = src_flag
@@ -200,6 +222,7 @@ class GSFCDailyFile(DailyFile):
                 "to a 15-point along-track median. See documentation for details.",
                 "flag_values": "0, 1",
                 "flag_meanings": "good bad",
+                "coverage_content_type": "auxiliaryInformation"
             },
         )
 

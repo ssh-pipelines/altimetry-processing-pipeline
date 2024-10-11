@@ -69,7 +69,7 @@ class CMRQuery:
         max_retries = 3
         attempt = 1
         while attempt <= max_retries:
-            time.sleep(attempt * 15)
+            time.sleep(15)
             try:
                 query_results = (
                     api.bearer_token(self.token)
@@ -82,7 +82,7 @@ class CMRQuery:
             except RuntimeError:
                 attempt += 1
         logging.error("Unable to query CMR")
-        raise RuntimeError
+        raise RuntimeError("Unable to query CMR")
 
     def query(self) -> Iterable[CMRGranule]:
         api = GranuleQuery()

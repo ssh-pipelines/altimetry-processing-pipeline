@@ -50,8 +50,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     # pick times for spline fit: first find all passes with data
     # within 2 hour window before & after the current day.
     iilimit = np.where(
-        (psec >= cur_timestamp - pgon_t_margin)
-        & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
+        (psec >= cur_timestamp - pgon_t_margin) & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
     )[0]
 
     # case of no data in this day, make a polynomial that's all zeros
@@ -71,9 +70,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
         maxtime = max(phours[trackid == np.max(cplist)])
 
         # find list of data in this time window & abs(dssh) < ssh_max_error
-        iitoday = np.where(
-            (phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error)
-        )[0]
+        iitoday = np.where((phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error))[0]
 
         # sort index by time
         ii = np.argsort(phours[iitoday])
@@ -83,9 +80,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
         hpmin = np.arange(-5, mintime, 0.3)
         hpmax = np.arange(maxtime, 29, 0.3)
         phours_pad = np.concatenate((hpmin, phours[iitoday], hpmax))
-        dssh_pad = np.concatenate(
-            (np.zeros_like(hpmin), dssh[iitoday], np.zeros_like(hpmax))
-        )
+        dssh_pad = np.concatenate((np.zeros_like(hpmin), dssh[iitoday], np.zeros_like(hpmax)))
         trackid_pad = np.concatenate(
             (
                 np.full_like(hpmin, trackid[iitoday[0]]),
@@ -112,10 +107,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
                 ["N_breaks"],
                 tbrk,
                 {
-                    "units": "Hours since "
-                    + datetime.strftime(
-                        date.replace(tzinfo=pytz.UTC), "%Y-%m-%d %H:%M:%S %Z"
-                    ),
+                    "units": "Hours since " + datetime.strftime(date.replace(tzinfo=pytz.UTC), "%Y-%m-%d %H:%M:%S %Z"),
                     "long_name": "Breaks in cubic spline",
                 },
             ),
@@ -152,9 +144,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     return ds
 
 
-def evaluate_correction(
-    polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date: datetime, source: str
-):
+def evaluate_correction(polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date: datetime, source: str):
     logging.info("Evaluating correction")
 
     # load coefs and tbreaks from polynomial file
@@ -162,9 +152,7 @@ def evaluate_correction(
 
     # compute hours since start of this day
     ssh_time = daily_file_ds["time"].values
-    hours_since_start = (ssh_time - np.datetime64(date)).astype(
-        "timedelta64[s]"
-    ).astype(int) / 3600
+    hours_since_start = (ssh_time - np.datetime64(date)).astype("timedelta64[s]").astype(int) / 3600
 
     # compute orbit error reduction, as additive correction to ssh
     oer = -1 * pp(hours_since_start)
@@ -176,15 +164,14 @@ def evaluate_correction(
                 ["time"],
                 oer,
                 {
-                    "units": "meters",
+                    "units": "m",
                     "long_name": "Orbit error reduction",
-                    "comment": "add this variable to ssh and ssh_smoothed to reduce orbit error",
+                    "comment": "Add this variable to ssh and ssh_smoothed to reduce orbit error",
+                    "coverage_content_type": "auxiliaryInformation",
                 },
             )
         },
-        coords={
-            "time": ("time", daily_file_ds["time"].data, daily_file_ds["time"].attrs)
-        },
+        coords={"time": ("time", daily_file_ds["time"].data, daily_file_ds["time"].attrs)},
         attrs={
             "title": f"{source} Orbit Error Reduction, interpolated onto ssh",
             "subtitle": f'created for {source}-SSH_alt_ref_at_v1_{date.strftime("%Y%m%d")}.nc',
@@ -204,9 +191,9 @@ def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
     logging.info("Applying correction")
 
     if len(correction_ds["time"]) != len(daily_file_ds["time"]):
-        raise ValueError(
-            "Unable to apply correction. Differing sizes between correction and daily file."
-        )
+        raise ValueError("Unable to apply correction. Differing sizes between correction and daily file.")
+
+    daily_file_ds["oer"] = correction_ds["oer"]
 
     if len(daily_file_ds["time"]) > 0:
         daily_file_ds["ssh"].values += correction_ds["oer"].values
@@ -214,25 +201,16 @@ def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
         daily_file_ds["ssh"].attrs["valid_max"] = np.nanmax(daily_file_ds["ssh"].values)
 
         daily_file_ds["ssh_smoothed"].values += correction_ds["oer"].values
-        daily_file_ds["ssh_smoothed"].attrs["valid_min"] = np.nanmin(
-            daily_file_ds["ssh_smoothed"].values
-        )
-        daily_file_ds["ssh_smoothed"].attrs["valid_max"] = np.nanmax(
-            daily_file_ds["ssh_smoothed"].values
-        )
+        daily_file_ds["ssh_smoothed"].attrs["valid_min"] = np.nanmin(daily_file_ds["ssh_smoothed"].values)
+        daily_file_ds["ssh_smoothed"].attrs["valid_max"] = np.nanmax(daily_file_ds["ssh_smoothed"].values)
 
-    daily_file_ds["ssh"].attrs["orbit_error_correction"] = (
-        "oer variable added to reduce orbit error"
-    )
-    daily_file_ds["ssh_smoothed"].attrs["orbit_error_correction"] = (
-        "oer variable added to reduce orbit error"
-    )
+        daily_file_ds["oer"].attrs["valid_min"] = np.nanmin(daily_file_ds["oer"].values)
+        daily_file_ds["oer"].attrs["valid_max"] = np.nanmax(daily_file_ds["oer"].values)
 
-    daily_file_ds["oer"] = correction_ds["oer"]
+    daily_file_ds["ssh"].attrs["orbit_error_correction"] = "oer variable added to reduce orbit error"
+    daily_file_ds["ssh_smoothed"].attrs["orbit_error_correction"] = "oer variable added to reduce orbit error"
 
     daily_file_ds.attrs["product_generation_step"] = "2"
-    daily_file_ds.attrs["history"] = (
-        f'Created on {datetime.now(tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S")}'
-    )
+    daily_file_ds.attrs["history"] = f'Created on {datetime.now(tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S")}'
 
     return daily_file_ds

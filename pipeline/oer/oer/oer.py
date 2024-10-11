@@ -130,19 +130,14 @@ class OerCorrection:
                 ds["basin_names_table"] = ds["basin_names_table"].squeeze("time")
 
         ds = ds.set_coords(["latitude", "longitude"])
-        encoding = {"time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64"}}
+        encoding = {
+            "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", '_FillValue': None}
+        }
         for var in ds.variables:
             if var not in ["latitude", "longitude", "time", "basin_names_table"]:
                 encoding[var] = {"complevel": 5, "zlib": True}
             elif "lat" in var or "lon" in var:
-                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", "_FillValue": None}
-            elif "basin_names_table" in var:
-                encoding[var] = {
-                    "complevel": 5,
-                    "zlib": True,
-                    "char_dim_name": "basin_name_len",
-                    "dtype": "|S33",
-                }
+                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", '_FillValue': None}
 
             if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
                 encoding[var]["dtype"] = "int8"

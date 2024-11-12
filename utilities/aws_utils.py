@@ -4,6 +4,7 @@ import os
 import s3fs
 import boto3
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Attr
 
 
 class AWSManager:
@@ -29,6 +30,10 @@ class AWSManager:
             aws_session_token=self._session_token,
         )
 
+        self._dynamodb = self._session.resource("dynamodb")
+        self._msg_table = self._dynamodb.Table("nasa-ssh-pipeline")
+        self._job_table = self._dynamodb.Table("nasa-ssh-pipeline-jobs")
+
     def key_exists(self, key: str) -> bool:
         return self.fs.exists(key)
 
@@ -41,15 +46,38 @@ class AWSManager:
     def upload_obj(self, src: str, dest: str):
         self.fs.put(src, dest)
 
+    def get_running_job(self):
+        response = self._job_table.scan(FilterExpression=Attr("Status").is_in(["Running"]))
+        items = response.get("Items", [])
+
+        if items:
+            # Find the most recent job based on StartTime
+            most_recent_job = max(items, key=lambda x: x["StartTime"])
+            return most_recent_job
+
+    def update_stage(self, stage: str, job_params: str, status: str):
+        job_id = self.get_running_job().get("JobId")
+        if not job_id:
+            raise RuntimeError("No job running.")
+
+        stage_params = f"{job_id}_{job_params}"
+        stage_job_id = f"{stage_params}_{job_id}"
+
+        self._msg_table.update_item(
+            Key={"Stage": stage, "StageJobId": stage_job_id},
+            UpdateExpression="SET #s = :status",
+            ExpressionAttributeNames={"#s": "Status"},
+            ExpressionAttributeValues={":status": status},
+            ReturnValues="UPDATED_NEW",
+        )
+
     def get_secret(self, secret_name: str) -> dict:
         """
         Retrieves secret from SecretsManager
         """
         sm_client = self._session.client(service_name="secretsmanager")
         try:
-            secret_str = sm_client.get_secret_value(SecretId=secret_name)[
-                "SecretString"
-            ]
+            secret_str = sm_client.get_secret_value(SecretId=secret_name)["SecretString"]
         except ClientError as e:
             raise e
         try:

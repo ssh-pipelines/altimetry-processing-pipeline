@@ -19,9 +19,7 @@ class PodaacS3Creds:
         Retrieve temporary Podaac S3 credentials. If credentials are outdated, need to run credential update Lambda
         which is intentionally handled external to this code in order to avoid race conditions.
         """
-        curr_expiration = datetime.strptime(
-            self.current_pds3_auth["expiration"], "%Y-%m-%d %H:%M:%S+00:00"
-        )
+        curr_expiration = datetime.strptime(self.current_pds3_auth["expiration"], "%Y-%m-%d %H:%M:%S+00:00")
         if curr_expiration < datetime.now():
             raise RuntimeError(
                 f"Podaac creds expire at {curr_expiration} which is less than {datetime.now()}. Need to obtain new credentials..."

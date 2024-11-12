@@ -13,9 +13,7 @@ from daily_files.collection_metadata import AllCollections, CollectionMeta
 
 
 class S6DailyFile(DailyFile):
-    def __init__(
-        self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]
-    ):
+    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
         self.date = date
 
         logging.info(f"Opening {len(file_objs)} files")
@@ -24,7 +22,7 @@ class S6DailyFile(DailyFile):
         self.original_ds = ds
         self.collection_ids = collection_ids
 
-        ssh: np.ndarray = ds["ssha_nr"].values
+        ssha: np.ndarray = ds["ssha_nr"].values
         lats: np.ndarray = ds["latitude"].values
         lons: np.ndarray = ds["longitude"].values
         times: np.ndarray = ds["time"].values
@@ -36,7 +34,7 @@ class S6DailyFile(DailyFile):
         self.target_mss = "DTU21"
         self.mss_name = f"{self.source_mss}_minus_{self.target_mss}.nc"
 
-        super().__init__(ssh, lats, lons, times, cycles, passes, dac)
+        super().__init__(ssha, lats, lons, times, cycles, passes, dac)
         self.ds["mean_sea_surface_sol1"] = (
             ("time"),
             self.original_ds["mean_sea_surface_sol1"].values,
@@ -66,18 +64,14 @@ class S6DailyFile(DailyFile):
         ]:
             nc_var = ds.groups["data_01"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {
-                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
-            }
+            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
         for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
             nc_var = ds.groups["data_01"].groups["ku"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {
-                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
-            }
+            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
@@ -89,11 +83,7 @@ class S6DailyFile(DailyFile):
             for k, v in ds.groups["data_01"].variables["time"].__dict__.items()
             if k != "scale_factor" and k != "add_offset"
         }
-        merged_ds.attrs = {
-            k: v
-            for k, v in ds.__dict__.items()
-            if k != "scale_factor" and k != "add_offset"
-        }
+        merged_ds.attrs = {k: v for k, v in ds.__dict__.items() if k != "scale_factor" and k != "add_offset"}
         merged_ds["cycle"] = (
             ("time"),
             np.full(merged_ds["time"].values.shape, ds.cycle_number),
@@ -113,7 +103,7 @@ class S6DailyFile(DailyFile):
         self.clean_date(self.date)
         self.mss_swap()
         self.apply_basin_to_nasa()
-        self.make_ssh_smoothed(self.date)
+        self.make_ssha_smoothed(self.date)
         self.set_metadata()
         self.set_source_attrs()
 
@@ -126,13 +116,13 @@ class S6DailyFile(DailyFile):
         rain = self.original_ds["rain_flag"].values
         s0 = self.original_ds["sig0_ocean_nr"].values
         swh = self.original_ds["swh_ocean_nr"].values
-        ssh = self.original_ds["ssha_nr"].values
+        ssha = self.original_ds["ssha_nr"].values
         basin_flag = self.ds["basin_flag"].values
         lats = self.ds["latitude"].values
 
         n_median = 15
         n_std = 95
-        timestamps = np.array(range(1, len(ssh) + 1))
+        timestamps = np.array(range(1, len(ssha) + 1))
 
         @dataclass
         class Point:
@@ -161,51 +151,32 @@ class S6DailyFile(DailyFile):
             ((surfc == 0) | (surfc == 2))
             & (kqual == 0)
             & ((rain == 0) | (rain == 3) | (rain == 5))
-            & ((np.abs(ssh) < 5) & (basin_flag > 0) & (basin_flag < 1000))
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssh) > 1.2)
-            )
+            & ((np.abs(ssha) < 5) & (basin_flag > 0) & (basin_flag < 1000))
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
         swp_flag = prelim_flag & ~sw_flag
 
-        rolling_median = (
-            pd.Series(ssh[swp_flag])
-            .rolling(n_median, center=True, min_periods=1)
-            .median()
-            .values
-        )
-        dx_median = ssh[swp_flag] - rolling_median
+        rolling_median = pd.Series(ssha[swp_flag]).rolling(n_median, center=True, min_periods=1).median().values
+        dx_median = ssha[swp_flag] - rolling_median
 
         outlier_index = np.abs(dx_median) < 2
-        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(
-            n_std, center=True, min_periods=1
-        )
+        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(n_std, center=True, min_periods=1)
         rolling_std = np.clip(np.sqrt(pd_roll.median().values), 0.02, None)
 
         median_interp = np.interp(timestamps, timestamps[swp_flag], rolling_median)
-        dx = ssh - median_interp
-        std_interp = np.interp(
-            timestamps, timestamps[swp_flag][outlier_index], rolling_std
-        )
+        dx = ssha - median_interp
+        std_interp = np.interp(timestamps, timestamps[swp_flag][outlier_index], rolling_std)
 
         median_flag = abs(dx) > std_interp * 5
         nasa_flag = ~(
-            (~np.isnan(ssh))
+            (~np.isnan(ssha))
             & ((surfc == 0) | (surfc == 2))
             & (kqual == 0)
             & ((rain == 0) | (rain == 3) | (rain == 5))
             & (rqual == 0)
             & (~median_flag)
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssh) > 1.2)
-            )
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
         source_flag = np.array([kqual, surfc, rqual, rain], dtype=np.int8).T
@@ -230,9 +201,9 @@ class S6DailyFile(DailyFile):
             "long_name": "Source data flag",
             "comment": "S6 flags used to calculate nasa_flag. See documentation for more details.",
         }
-        source_flag_attrs["flag_values"] = "0, 1"
+        source_flag_attrs["flag_values"] = np.array([0, 1], dtype=np.int8)
         source_flag_attrs["flag_meanings"] = "good bad"
-        
+
         for i, src_flag in enumerate(
             [
                 "range_ocean_nr_qual",
@@ -243,7 +214,7 @@ class S6DailyFile(DailyFile):
             1,
         ):
             source_flag_attrs[f"flag_column_{i}"] = src_flag
-        
+
         self.ds["source_flag"] = (
             ("time", "src_flag_dim"),
             source_flag,
@@ -257,20 +228,20 @@ class S6DailyFile(DailyFile):
                 "standard_name": "quality_flag",
                 "long_name": "median filter flag",
                 "comment": "flag set to 0 for good data, 1 for data that fail a 5 standard deviation filter relative to a 15-point along-track median. See documentation for details.",
-                "flag_values": "0, 1",
-                "flag_meanings": "good bad"
+                "flag_values": np.array([0, 1], dtype=np.int8),
+                "flag_meanings": "good bad",
             },
         )
 
     def mss_swap(self):
-        logging.info("Applying mss swap to ssh values...")
+        logging.info("Applying mss swap to ssha values...")
         if len(self.ds["time"]) == 0:
             logging.debug("Empty data arrays, skipping mss swapping")
             return
         mss_path = os.path.join("daily_files", "ref_files", "mss_diffs", self.mss_name)
         mss_swapped_values = self.get_mss_values(mss_path)
-        self.ds["ssh"].values = (
-            self.ds["ssh"].values
+        self.ds["ssha"].values = (
+            self.ds["ssha"].values
             + self.ds["mean_sea_surface_sol1"]
             - self.ds["mean_sea_surface_sol2"]
             + mss_swapped_values
@@ -294,6 +265,4 @@ class S6DailyFile(DailyFile):
         self.ds.attrs["source"] = ", and ".join(sorted(sources))
         self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
         self.ds.attrs["references"] = ", and ".join(sorted(references))
-        self.ds.attrs["geospatial_lat_min"] = "-66.15LL"
-        self.ds.attrs["geospatial_lat_max"] = "66.15LL"
         self.ds.attrs["mean_sea_surface"] = self.target_mss

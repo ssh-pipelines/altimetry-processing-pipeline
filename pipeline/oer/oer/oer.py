@@ -35,7 +35,7 @@ class OerCorrection:
         """
         out_path = os.path.join("/tmp", local_filename)
         if encoding:
-            ds.to_netcdf(out_path, engine="h5netcdf", encoding=encoding)
+            ds.to_netcdf(out_path, encoding=encoding)
         else:
             ds.to_netcdf(out_path, engine="h5netcdf")
         return out_path
@@ -130,14 +130,12 @@ class OerCorrection:
                 ds["basin_names_table"] = ds["basin_names_table"].squeeze("time")
 
         ds = ds.set_coords(["latitude", "longitude"])
-        encoding = {
-            "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", '_FillValue': None}
-        }
+        encoding = {"time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", "_FillValue": None}}
         for var in ds.variables:
             if var not in ["latitude", "longitude", "time", "basin_names_table"]:
                 encoding[var] = {"complevel": 5, "zlib": True}
             elif "lat" in var or "lon" in var:
-                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", '_FillValue': None}
+                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", "_FillValue": None}
 
             if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
                 encoding[var]["dtype"] = "int8"
@@ -145,7 +143,7 @@ class OerCorrection:
             if any(x in var for x in ["basin_flag", "pass", "cycle"]):
                 encoding[var]["dtype"] = "int32"
                 encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-            if any(x in var for x in ["ssh", "dac", "oer"]):
+            if any(x in var for x in ["ssha", "dac", "oer"]):
                 encoding[var]["dtype"] = "float64"
                 encoding[var]["_FillValue"] = np.finfo(np.float64).max
 

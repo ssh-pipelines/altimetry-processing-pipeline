@@ -19,9 +19,7 @@ class S6Collection:
 
 class S6Collections:
     S6_COLLECTIONS: Iterable[S6Collection] = [
-        S6Collection(
-            "JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08", "C2619443998-POCLOUD", 1
-        ),
+        S6Collection("JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08", "C2619443998-POCLOUD", 1),
         S6Collection(
             "JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08_UNVALIDATED",
             "C2619444006-POCLOUD",
@@ -70,14 +68,7 @@ class S6Fetch(PodaacS3Fetcher):
                 queue_status = self.priority_granules.get(cycle_pass, (100, None))
                 # Update if current collection has higher priority
                 if queue_status[0] > collection.priority:
-                    self.priority_granules.update(
-                        {cycle_pass: (collection.priority, granule)}
-                    )
+                    self.priority_granules.update({cycle_pass: (collection.priority, granule)})
 
         # Return the list of CMR_Granule objects
-        return [
-            granule
-            for cycle_pass, (priority_val, granule) in sorted(
-                self.priority_granules.items()
-            )
-        ]
+        return [granule for cycle_pass, (priority_val, granule) in sorted(self.priority_granules.items())]

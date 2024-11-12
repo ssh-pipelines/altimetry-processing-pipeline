@@ -20,11 +20,11 @@ class GSFCDailyFile(DailyFile):
         self.og_ds = xr.concat(opened_files, dim="N_Records")
         opened_files = []
 
-        ssh: np.ndarray = self.og_ds["ssha"].values / 1000  # Convert from mm
+        ssha: np.ndarray = self.og_ds["ssha"].values / 1000  # Convert from mm
         lats: np.ndarray = self.og_ds["lat"].values
         lons: np.ndarray = self.og_ds["lon"].values
         times: np.ndarray = self.og_ds["time"].values
-        dac: np.ndarray = self.compute_dac(np.unique(cycles), ssh)
+        dac: np.ndarray = self.compute_dac(np.unique(cycles), ssha)
         cycles, passes = self.compute_cycles_passes(self.og_ds, cycles)
         self.collection_ids = collection_ids
 
@@ -32,7 +32,7 @@ class GSFCDailyFile(DailyFile):
         self.target_mss = "DTU21"
         self.mss_name = f"{self.source_mss}_minus_{self.target_mss}.nc"
 
-        super().__init__(ssh, lats, lons, times, cycles, passes, dac)
+        super().__init__(ssha, lats, lons, times, cycles, passes, dac)
 
         self.make_daily_file_ds()
 
@@ -57,25 +57,25 @@ class GSFCDailyFile(DailyFile):
         cycles[index_of_wrap:][(cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)] += 1
         return cycles, passes
 
-    def compute_dac(self, unique_cycles: np.ndarray, ssh: np.ndarray) -> np.ndarray:
+    def compute_dac(self, unique_cycles: np.ndarray, ssha: np.ndarray) -> np.ndarray:
         """
-        Loads corresponding NOIB cycle file(s) and subtracts "ssha_noib" from our ssh values
+        Loads corresponding NOIB cycle file(s) and subtracts "ssha_noib" from our ssha values
         """
         all_obj_ds = []
-        for cycle_num in unique_cycles:
-            logging.info(f"Streaming cycle {cycle_num}")
-            noib_filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V5_2.nc"
-
-            src = os.path.join("s3://", "example-bucket", "aux_files", "GSFC_NOIB", noib_filename)
-            try:
+        try:
+            for cycle_num in unique_cycles:
+                logging.info(f"Streaming cycle {cycle_num}")
+                noib_filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V5_2.nc"
+                src = os.path.join("s3://", "example-bucket", "aux_files", "GSFC_NOIB", noib_filename)
                 obj = aws_manager.stream_obj(src)
-            except Exception as e:
-                raise RuntimeError(f"Unable to stream {src}: {e}")
-            obj_ds = xr.open_dataset(obj, engine="h5netcdf")
-            all_obj_ds.append(obj_ds)
-        noib_ds: xr.Dataset = xr.concat(all_obj_ds, dim="N_Records")
-        ssha_noib = noib_ds["ssha_noib"].values / 1000
-        return ssha_noib - ssh
+                obj_ds = xr.open_dataset(obj, engine="h5netcdf")
+                all_obj_ds.append(obj_ds)
+            noib_ds: xr.Dataset = xr.concat(all_obj_ds, dim="N_Records")
+            ssha_noib = noib_ds["ssha_noib"].values / 1000
+        except Exception as e:
+            logging.error(e)
+            ssha_noib = np.full_like(ssha, 0)
+        return ssha_noib - ssha
 
     def make_daily_file_ds(self):
         """
@@ -86,7 +86,7 @@ class GSFCDailyFile(DailyFile):
         self.clean_date(self.date)
         self.mss_swap()
         self.apply_basin_to_nasa()
-        self.make_ssh_smoothed(self.date)
+        self.make_ssha_smoothed(self.date)
         self.set_metadata()
         self.set_source_attrs()
 
@@ -98,21 +98,21 @@ class GSFCDailyFile(DailyFile):
         max_bits = int(np.ceil(np.log2(flag.max())))
         binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
         return binary_representation
-    
-    def manual_outliers(self, ssh: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
+
+    def manual_outliers(self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
         """
         Manual method for catching known bad values
         """
-        # 1995-06-07 
-        if self.date == datetime(1995,6,7):
-            outliers = prelim_flag & (lat >= 20) & (lat <= 25) & (ssh < -1)
-        
+        # 1995-06-07
+        if self.date == datetime(1995, 6, 7):
+            outliers = prelim_flag & (lat >= 20) & (lat <= 25) & (ssha < -1)
+
         # 2001-06-26
-        elif self.date == datetime(2001,6,26):
-            outliers = prelim_flag & (lat >= -25) & (lat <= -15) & (ssh < -1)
-        
+        elif self.date == datetime(2001, 6, 26):
+            outliers = prelim_flag & (lat >= -25) & (lat <= -15) & (ssha < -1)
+
         else:
-            outliers = np.full_like(ssh, False, dtype=bool)
+            outliers = np.full_like(ssha, False, dtype=bool)
         return outliers
 
     def make_nasa_flag(self):
@@ -133,10 +133,10 @@ class GSFCDailyFile(DailyFile):
         flag_array = self.gsfc_flag_splitting()
 
         surf_type = self.og_ds["Surface_Type"].values
-        ssh = self.ds["ssh"].values
+        ssha = self.ds["ssha"].values
         basin_flag = self.ds["basin_flag"].values
         lats = self.ds["latitude"].values
-        
+
         # Cycle 583 has incorrect "neighbor" flag values so we won't use it
         if 583 in np.unique(self.ds["cycle"].astype(int)):
             src_flag_indices = [1, 2, 3, 4, 5, 9]
@@ -146,19 +146,19 @@ class GSFCDailyFile(DailyFile):
         prelim_flag = (
             ((surf_type == 0) | (surf_type == 2))
             & (~flag_array[:, src_flag_indices].any(axis=1))
-            & (~np.isnan(ssh))
-            & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2)))
+            & (~np.isnan(ssha))
+            & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2)))
         )
 
-        outliers = self.manual_outliers(ssh, prelim_flag, lats)
+        outliers = self.manual_outliers(ssha, prelim_flag, lats)
 
         # Calculate rolling median and standard deviation
         n_median = 15
         n_std = 95
-        timestamps = np.arange(1, len(ssh) + 1)
+        timestamps = np.arange(1, len(ssha) + 1)
 
-        rolling_median = pd.Series(ssh[prelim_flag]).rolling(n_median, center=True, min_periods=1).median().values
-        dx = ssh[prelim_flag] - rolling_median
+        rolling_median = pd.Series(ssha[prelim_flag]).rolling(n_median, center=True, min_periods=1).median().values
+        dx = ssha[prelim_flag] - rolling_median
 
         dx_median = pd.Series(np.square(dx)).rolling(n_std, center=True, min_periods=1).median().values
         rolling_std = np.clip(np.sqrt(dx_median), 0.05, None)
@@ -166,18 +166,18 @@ class GSFCDailyFile(DailyFile):
         median_interp = np.interp(timestamps, timestamps[prelim_flag], rolling_median)
         std_interp = np.interp(timestamps, timestamps[prelim_flag], rolling_std)
 
-        median_flag = abs(ssh - median_interp) <= std_interp * 5
+        median_flag = abs(ssha - median_interp) <= std_interp * 5
 
         nasa_flag = ~(
             ((surf_type == 0) | (surf_type == 2))
             & (~flag_array[:, [1, 2, 3, 5]].any(axis=1))
-            & (~np.isnan(ssh))
+            & (~np.isnan(ssha))
             & median_flag
-            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssh) > 1.2))
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
-        
+
         nasa_flag[outliers] = 1
-        
+
         source_flag = np.array(flag_array).astype("bool")
 
         all_flag_meanings = re.split(r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"])
@@ -198,12 +198,12 @@ class GSFCDailyFile(DailyFile):
             "standard_name": "quality_flag",
             "long_name": "Source data flag",
             "comment": "GSFC flags used to calculate nasa_flag. See documentation for more details.",
-            "coverage_content_type": "auxiliaryInformation"
+            "coverage_content_type": "auxiliaryInformation",
         }
         for i, src_flag in enumerate(all_flag_meanings, 1):
             source_flag_attrs[f"flag_column_{i}"] = src_flag
 
-        source_flag_attrs["flag_values"] = "0, 1"
+        source_flag_attrs["flag_values"] = np.array([0, 1], dtype=np.int8)
         source_flag_attrs["flag_meanings"] = "good bad"
         self.ds["source_flag"] = (
             ("time", "src_flag_dim"),
@@ -220,20 +220,20 @@ class GSFCDailyFile(DailyFile):
                 "long_name": "median filter flag",
                 "comment": "flag set to 0 for good data, 1 for data that fail a 5 standard deviation filter relative "
                 "to a 15-point along-track median. See documentation for details.",
-                "flag_values": "0, 1",
+                "flag_values": np.array([0, 1], dtype=np.int8),
                 "flag_meanings": "good bad",
-                "coverage_content_type": "auxiliaryInformation"
+                "coverage_content_type": "auxiliaryInformation",
             },
         )
 
     def mss_swap(self):
-        logging.info("Applying mss swap to ssh values...")
+        logging.info("Applying mss swap to ssha values...")
         if len(self.ds["time"]) == 0:
             logging.debug("Empty data arrays, skipping mss swapping")
             return
         mss_path = os.path.join("daily_files", "ref_files", "mss_diffs", self.mss_name)
         mss_swapped_values = self.get_mss_values(mss_path)
-        self.ds["ssh"].values = self.ds["ssh"].values + mss_swapped_values
+        self.ds["ssha"].values = self.ds["ssha"].values + mss_swapped_values
 
     def set_source_attrs(self):
         """
@@ -252,7 +252,5 @@ class GSFCDailyFile(DailyFile):
         self.ds.attrs["source"] = ", and ".join(sorted(sources))
         self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
         self.ds.attrs["references"] = ", and ".join(sorted(references))
-        self.ds.attrs["geospatial_lat_min"] = "-67LL"
-        self.ds.attrs["geospatial_lat_max"] = "67LL"
         self.ds.attrs["mean_sea_surface"] = self.target_mss
         self.ds.attrs["absolute_offset_applied"] = 0

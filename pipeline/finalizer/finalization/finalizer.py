@@ -68,9 +68,9 @@ class Finalizer:
             ds.flagged_passes = "N/A"
             ds.pass_flag_notes = (
                 "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are too large relative to self crossovers, "
-                "computed using data from a 20-day window.  To be flagged, there must be at least 'pass_flag_mean_num' crossover points for a pass "
-                "and the absolute value of its mean crossover difference is larger than 'pass_flag_mean_threshold' (meters), or when it has at least 'pass_flag_rms_num' "
-                "crossover points with RMS larger than 'pass_flag_rms_threshold' (meters). Passes that have been flagged are stored in the 'flagged_passes' attribute "
+                "computed using data from a 20-day window.  To be flagged, there must be at least pass_flag_mean_num crossover points for a pass "
+                "and the absolute value of its mean crossover difference is larger than pass_flag_mean_threshold (meters), or when it has at least pass_flag_rms_num "
+                "crossover points with RMS larger than pass_flag_rms_threshold (meters). Passes that have been flagged are stored in the flagged_passes attribute "
                 "as comma separated cycle/pass"
             )
             ds.pass_flag_mean_num = 15.0
@@ -91,16 +91,16 @@ class Finalizer:
                 # Remove any previously applied offset
                 try:
                     if "absolute_offset_applied" in ds.ncattrs():
-                        ds.variables["ssh"][:] = ds.variables["ssh"][:] - float(ds.absolute_offset_applied)
-                        ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] - float(
+                        ds.variables["ssha"][:] = ds.variables["ssha"][:] - float(ds.absolute_offset_applied)
+                        ds.variables["ssha_smoothed"][:] = ds.variables["ssha_smoothed"][:] - float(
                             ds.absolute_offset_applied
                         )
                 except AttributeError as e:
                     logging.exception(f"Error finalizing {filename}: {e}")
                     pass
 
-                ds.variables["ssh"][:] = ds.variables["ssh"][:] + S6_ABSOLUTE_OFFSET
-                ds.variables["ssh_smoothed"][:] = ds.variables["ssh_smoothed"][:] + S6_ABSOLUTE_OFFSET
+                ds.variables["ssha"][:] = ds.variables["ssha"][:] + S6_ABSOLUTE_OFFSET
+                ds.variables["ssha_smoothed"][:] = ds.variables["ssha_smoothed"][:] + S6_ABSOLUTE_OFFSET
 
                 ds.absolute_offset_applied = S6_ABSOLUTE_OFFSET
             elif source == "GSFC":
@@ -153,10 +153,10 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
     # Update the 'flagged_passes' attribute in the dataset
     ds.flagged_passes = ", ".join(df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1))
 
-    # Reapply nasa_flag to ssh_smoothed
-    ssh_smoothed = ds.variables["ssh_smoothed"][:]
+    # Reapply nasa_flag to ssha_smoothed
+    ssha_smoothed = ds.variables["ssha_smoothed"][:]
     nasa_flag = ds.variables["nasa_flag"][:]
-    ssh_smoothed[nasa_flag == 1] = np.nan
-    ds.variables["ssh_smoothed"][:] = ssh_smoothed
+    ssha_smoothed[nasa_flag == 1] = np.nan
+    ds.variables["ssha_smoothed"][:] = ssha_smoothed
 
     return ds

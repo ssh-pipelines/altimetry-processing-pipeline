@@ -61,14 +61,12 @@ class DailyFileJob:
 
 def save_ds(ds: xr.Dataset, output_path: str):
     ds = ds.set_coords(["latitude", "longitude"])
-    encoding = {
-        "time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", '_FillValue': None}
-    }
+    encoding = {"time": {"units": "seconds since 1990-01-01 00:00:00", "dtype": "float64", "_FillValue": None}}
     for var in ds.variables:
         if var not in ["latitude", "longitude", "time", "basin_names_table"]:
             encoding[var] = {"complevel": 5, "zlib": True}
         elif "lat" in var or "lon" in var:
-            encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", '_FillValue': None}
+            encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", "_FillValue": None}
 
         if any(x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]):
             encoding[var]["dtype"] = "int8"
@@ -76,7 +74,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
         if any(x in var for x in ["basin_flag", "pass", "cycle"]):
             encoding[var]["dtype"] = "int32"
             encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-        if any(x in var for x in ["ssh", "dac"]):
+        if any(x in var for x in ["ssha", "dac"]):
             encoding[var]["dtype"] = "float64"
             encoding[var]["_FillValue"] = np.finfo(np.float64).max
 
@@ -91,10 +89,8 @@ def work(job: DailyFileJob):
     file_objs = [job.fetcher.fetch(granule.s3_url) for granule in job.granules]
     collection_ids = [granule.collection_id for granule in job.granules]
     daily_ds = job.processor(file_objs, job.date, collection_ids).ds
-    daily_ds.attrs["source_files"] = ", ".join(
-        [granule.title for granule in job.granules]
-    )
-    
+    daily_ds.attrs["source_files"] = ", ".join([granule.title for granule in job.granules])
+
     filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
@@ -123,14 +119,12 @@ def make_empty(job: DailyFileJob):
             f"{job.source.lower()}_empty_template.nc",
         )
     )
-    daily_ds.attrs["history"] = (
-        f"Created on {datetime.now().isoformat(timespec='seconds')}"
-    )
+    daily_ds.attrs["history"] = f"Created on {datetime.now().isoformat(timespec='seconds')}"
     daily_ds.attrs["source_files"] = ""
-    daily_ds.attrs["time_coverage_start"] = job.date.strftime('%Y-%m-%dT00:00:00Z')
-    daily_ds.attrs["time_coverage_start"] = job.date.strftime('%Y-%m-%dT23:59:59Z')
+    daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
+    daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"
-    
+
     filename = f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)

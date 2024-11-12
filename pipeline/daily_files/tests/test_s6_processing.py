@@ -22,15 +22,11 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
 
         opened_paths = [open(p, "rb") for p in cls.paths]
 
-        daily_file_job = S6DailyFile(
-            opened_paths, datetime(2023, 12, 17), ["C2619443998-POCLOUD"]
-        )
+        daily_file_job = S6DailyFile(opened_paths, datetime(2023, 12, 17), ["C2619443998-POCLOUD"])
         cls.daily_ds = daily_file_job.ds
         [op.close() for op in opened_paths]
 
-        og_ds = daily_file_job.original_ds.where(
-            ~np.isnat(daily_file_job.original_ds["time"]), drop=True
-        )
+        og_ds = daily_file_job.original_ds.where(~np.isnat(daily_file_job.original_ds["time"]), drop=True)
         today = str(datetime(2023, 12, 17))[:10]
         og_ds = og_ds.sel(time=today)
         og_ds = og_ds.drop_duplicates(dim="time")
@@ -40,12 +36,8 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
         save_ds(cls.daily_ds, "tests/testing_granules/s6_test_20231217.nc")
 
     def test_file_date_coverage(self):
-        self.assertGreaterEqual(
-            self.daily_ds["time"].values.min(), np.datetime64("2023-12-17")
-        )
-        self.assertLessEqual(
-            self.daily_ds["time"].values.max(), np.datetime64("2023-12-17T23:59:59")
-        )
+        self.assertGreaterEqual(self.daily_ds["time"].values.min(), np.datetime64("2023-12-17"))
+        self.assertLessEqual(self.daily_ds["time"].values.max(), np.datetime64("2023-12-17T23:59:59"))
 
     def test_source_attr(self):
         self.assertEqual(

@@ -7,13 +7,13 @@ import shapely
 
 from datetime import datetime
 
-from daily_files.processing.smoothing import ssh_smoothing
+from daily_files.processing.smoothing import ssha_smoothing
 
 
 class DailyFile(ABC):
     """
     Parent class for individual altimeter source data. Required data arrays:
-    - SSH in meters
+    - SSHA in meters
     - Latitude
     - Longitude
     - Cycle
@@ -33,7 +33,7 @@ class DailyFile(ABC):
 
     def __init__(
         self,
-        ssh: np.ndarray,
+        ssha: np.ndarray,
         lat: np.ndarray,
         lon: np.ndarray,
         time: np.ndarray,
@@ -43,7 +43,7 @@ class DailyFile(ABC):
     ):
         self.time: np.ndarray = time
         self.data = {
-            "ssh": xr.DataArray(ssh, dims=["time"]),
+            "ssha": xr.DataArray(ssha, dims=["time"]),
             "dac": xr.DataArray(dac, dims=["time"]),
             "latitude": xr.DataArray(lat, dims=["time"]),
             "longitude": xr.DataArray(lon, dims=["time"]),
@@ -72,7 +72,7 @@ class DailyFile(ABC):
     @abstractmethod
     def mss_swap(self):
         """
-        Abstract method for performing an MSS swap on ssh.
+        Abstract method for performing an MSS swap on ssha.
         Defined per source dataset
         """
         raise NotImplementedError
@@ -113,7 +113,7 @@ class DailyFile(ABC):
         """
         Removes values that exceed limit. Not currently used.
         """
-        ds = ds.where(np.abs(ds["ssh"]) < limit, drop=True)
+        ds = ds.where(np.abs(ds["ssha"]) < limit, drop=True)
         return ds
 
     def clean_date(self, date: datetime):
@@ -182,8 +182,8 @@ class DailyFile(ABC):
             )
         return mss_swapped_values
 
-    def make_ssh_smoothed(self, date: datetime):
-        self.ds = ssh_smoothing(self.ds, date)
+    def make_ssha_smoothed(self, date: datetime):
+        self.ds = ssha_smoothing(self.ds, date)
 
     def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """
@@ -201,19 +201,21 @@ class DailyFile(ABC):
         logging.info("Mapping data points to their respective basin")
 
         poly_df = gpd.read_file("daily_files/ref_files/basin/new_basin_lake_polygons.shp")
-        
+
         # Format basin ids and names for basin_names_table
-        names = poly_df["name"].apply(lambda x: x.replace("'"," ").replace(",", " -")).values
+        names = poly_df["name"].apply(lambda x: x.replace("'", " ").replace(",", " -")).values
         basin_ids = poly_df["feature_id"].astype(str).values
-        basin_table = np.array([f'{basin},{name}' for basin, name in zip(basin_ids, names)])
+        basin_table = np.array([f"{basin},{name}" for basin, name in zip(basin_ids, names)])
         basin_table = np.insert(basin_table, 0, "0,Land", axis=0)
-        self.ds['basin_names_table'] = (('basin_names'), np.array(basin_table).astype('unicode'))
+        self.ds["basin_names_table"] = (("basins"), np.array(basin_table).astype("unicode"))
 
         if len(self.ds["time"]) == 0:
-            self.ds["ssh_smoothed"] = (("time"), np.array([], dtype="float64"))
+            self.ds["ssha_smoothed"] = (("time"), np.array([], dtype="float64"))
             self.ds["basin_flag"] = (("time"), np.array([], dtype="int32"))
-            self.ds['basin_flag'].attrs['flag_values'] = ' '.join(basin_ids)
-            self.ds['basin_flag'].attrs['flag_meanings'] = ' '.join([name.replace(': ', ':').replace(' ', '_') for name in names])
+            self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
+            self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
+                [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
+            )
             return
 
         points_df = self.make_lonlat_points(self.ds["latitude"].values, self.ds["longitude"].values)
@@ -222,8 +224,10 @@ class DailyFile(ABC):
             ("time"),
             np.nan_to_num(join_df.feature_id.values).astype("int32"),
         )
-        self.ds['basin_flag'].attrs['flag_values'] = ' '.join(basin_ids)
-        self.ds['basin_flag'].attrs['flag_meanings'] = ' '.join([name.replace(': ', ':').replace(' ', '_') for name in names])
+        self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
+        self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
+            [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
+        )
 
     def apply_basin_to_nasa(self):
         self.ds["nasa_flag"].values[
@@ -236,13 +240,17 @@ class DailyFile(ABC):
                 "long_name": "latitude",
                 "standard_name": "latitude",
                 "units": "degrees_north",
-                "coverage_content_type": "coordinate"
+                "coverage_content_type": "coordinate",
+                "valid_min": -90,
+                "valid_max": 90,
             },
             "longitude": {
                 "long_name": "longitude",
                 "standard_name": "longitude",
                 "units": "degrees_east",
-                "coverage_content_type": "coordinate"
+                "coverage_content_type": "coordinate",
+                "valid_min": 0,
+                "valid_max": 360,
             },
             "time": {
                 "long_name": "time",
@@ -252,76 +260,68 @@ class DailyFile(ABC):
                     "This string contains a time in the format yyyy-mm-dd HH:MM:SS "
                     "to which all times in the time variable are referenced."
                 ),
-                "coverage_content_type": "coordinate"
+                "coverage_content_type": "coordinate",
+                # "valid_min": 0,
+                # "valid_max": 1e100,
             },
-            "cycle": {
-                "long_name": "Satellite cycle number",
-                "coverage_content_type": "auxiliaryInformation"
-            },
-            "pass": {
-                "long_name": "Satellite pass number",
-                "coverage_content_type": "auxiliaryInformation"
-            },
-            "ssh": {
-                "long_name": "Sea surface height relative to mean_sea_surface",
+            "cycle": {"long_name": "Satellite cycle number", "coverage_content_type": "auxiliaryInformation"},
+            "pass": {"long_name": "Satellite pass number", "coverage_content_type": "auxiliaryInformation"},
+            "ssha": {
+                "long_name": "Sea surface height anomaly relative to mean_sea_surface",
                 "standard_name": "sea_surface_height_above_mean_sea_level",
                 "mean_sea_surface": self.target_mss,
                 "description": "Use nasa_flag = 0 to select valid data points from this variable",
                 "units": "m",
                 "coordinates": "latitude longitude",
-                "coverage_content_type": "physicalMeasurement"
+                "coverage_content_type": "physicalMeasurement",
+                "valid_min": -1e100,
+                "valid_max": 1e100,
             },
-            "ssh_smoothed": {
-                "long_name": "Smoothed sea surface height relative to mean_sea_surface",
+            "ssha_smoothed": {
+                "long_name": "Smoothed sea surface height anomaly relative to mean_sea_surface",
                 "standard_name": "sea_surface_height_above_mean_sea_level",
                 "mean_sea_surface": self.target_mss,
                 "description": (
-                    "Smoothed sea surface height values computed using a 19 point filter. "
+                    "Smoothed sea surface height anomaly values computed using a 19 point filter. "
                     "nasa_flag is applied prior to filter and should not be used to remove points from this field."
                 ),
                 "units": "m",
                 "coordinates": "latitude longitude",
-                "coverage_content_type": "physicalMeasurement"
+                "coverage_content_type": "physicalMeasurement",
+                "valid_min": -1e100,
+                "valid_max": 1e100,
             },
             "dac": {
                 "long_name": "dynamic atmospheric correction",
-                "standard_name": "dynamic_atmospheric_correction",
-                "comment": "Additive correction applied to ssh to remove atmospheric effects.  Subtract this field from ssh or ssh_smoothed to un-apply this correction.",
+                "comment": "Additive correction applied to ssha to remove atmospheric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
                 "units": "m",
                 "coordinates": "latitude longitude",
-                "coverage_content_type": "auxiliaryInformation"
+                "coverage_content_type": "auxiliaryInformation",
+                "valid_min": -1e100,
+                "valid_max": 1e100,
             },
             "basin_flag": {
                 "long_name": "Basin ID number mapping each observation to a geographic basin",
-                "standard_name": "region",
                 "comment": "Also see basin_names_table for basin ID to basin name mapping",
                 "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
-                "coverage_content_type": "auxiliaryInformation"
+                "coverage_content_type": "auxiliaryInformation",
             },
             "basin_names_table": {
                 "long_name": "Table mapping basin ID numbers to basin names",
                 "description": "Values are comma separated string of the form feature id,feature name",
                 "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
                 "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
-                "coverage_content_type": "auxiliaryInformation"
+                "coverage_content_type": "auxiliaryInformation",
             },
             "nasa_flag": {
-                "long_name": "NASA SSH quality flag",
+                "long_name": "NASA SSHA quality flag",
                 "standard_name": "quality_flag",
-                "flag_values": "0, 1",
+                "flag_values": np.array([0, 1], dtype=np.int8),
                 "flag_meanings": "good bad",
-                "description": "Quality flag to be used for ssh, not for ssh_smoothed.",
-                "coverage_content_type": "auxiliaryInformation"
+                "description": "Quality flag to be used for ssha, not for ssha_smoothed.",
+                "coverage_content_type": "auxiliaryInformation",
             },
         }
-
-        if len(self.ds["time"]) > 0:
-            for ssh_var in ["ssh", "ssh_smoothed", "dac", "latitude", "longitude"]:
-                attributes[ssh_var]["valid_min"] = np.nanmin(self.ds[ssh_var])
-                attributes[ssh_var]["valid_max"] = np.nanmax(self.ds[ssh_var])
-                
-            attributes["time"]["valid_min"] = np.datetime_as_string(np.min(self.ds["time"].values), unit='s') 
-            attributes["time"]["valid_max"] = np.datetime_as_string(np.max(self.ds["time"].values), unit='s')
 
         for var, attrs in attributes.items():
             for attr, value in attrs.items():
@@ -342,17 +342,15 @@ class DailyFile(ABC):
             "history": f"Created on {datetime.now().isoformat(timespec='seconds')}",
             "references": "",  # Source specific and set downstream
             "mean_sea_surface": "",
-            # 'Metadata_Conventions': "Unidata Dataset Discovery v1.0",
-            'standard_name_vocabulary': "CF Standard Name Table v86",
-            "granule_id": "",
-            "id": "PODAAC-EXAMPLE-DATA",
-            'naming_authority': "org.nasa.podaac",
+            "standard_name_vocabulary": "CF Standard Name Table v86",
+            "id": "NASA_SSH_REF_ALONGTRACK_V1",
+            "naming_authority": "gov.nasa.jpl.podaac",
             "project": "NASA-SSH",
             "processing_level": "Level 2",
             "product_generation_step": "1",
             "product_short_name": "NASA_SSH_REF_ALONGTRACK_V1",
             "acknowledgement": "This data is provided by NASAs PO.DAAC.",
-            'license': "Public Domain",
+            "license": "https://creativecommons.org/licenses/by/4.0/",
             "product_version": "V1",
             "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
             "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
@@ -360,16 +358,16 @@ class DailyFile(ABC):
             "featureType": "trajectory",
             "platform": "Satellite",
             "instrument": "Altimeter",
-            'publisher_name': "NASA PO.DAAC",
-            'publisher_url': "https://podaac.jpl.nasa.gov/",
-            'publisher_email': "podaac@podaac.jpl.nasa.gov",
-            "creator_name": "NASA-SSH",
+            "publisher_name": "PO.DAAC",
+            "publisher_url": "https://podaac.jpl.nasa.gov/",
+            "publisher_email": "podaac@podaac.jpl.nasa.gov",
+            "creator_name": "Josh K. Willis",
             "creator_url": "https://podaac.jpl.nasa.gov/NASA-SSH/",
-            "creator_email": "tbd@tbd.com",
-            "geospatial_lat_min": "",  # Source specific and set downstream
-            "geospatial_lat_max": "",  # Source specific and set downstream
-            "geospatial_lon_min": "0LL",
-            "geospatial_lon_max": "360LL",
+            "creator_email": "podaac@podaac.jpl.nasa.gov",
+            "geospatial_lat_min": -90,
+            "geospatial_lat_max": 90,
+            "geospatial_lon_min": 0,
+            "geospatial_lon_max": 360,
             "time_coverage_start": str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
             "time_coverage_end": str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
         }

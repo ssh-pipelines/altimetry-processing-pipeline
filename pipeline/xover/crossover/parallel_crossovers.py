@@ -125,12 +125,12 @@ class Crossover:
             parallel=True,
             combine="nested",
         )
-        window_ds = window_ds.dropna("time", subset=["ssh_smoothed"]).sortby("time")
+        window_ds = window_ds.dropna("time", subset=["ssha_smoothed"]).sortby("time")
 
         self.time = window_ds["time"].values
         self.longitude = window_ds["longitude"].values.astype("float64")
         self.latitude = window_ds["latitude"].values.astype("float64")
-        self.ssh = window_ds["ssh_smoothed"].values.astype("float64")
+        self.ssh = window_ds["ssha_smoothed"].values.astype("float64")
 
         self.trackids = (
             window_ds["cycle"].values.astype("int32") * 10000 + window_ds["pass"].values

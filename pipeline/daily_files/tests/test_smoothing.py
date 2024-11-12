@@ -2,7 +2,7 @@ from datetime import datetime
 import unittest
 import numpy as np
 import xarray as xr
-from daily_files.processing.smoothing import smooth, ssh_smoothing
+from daily_files.processing.smoothing import smooth, ssha_smoothing
 
 
 class EndToEndSmoothingTestCase(unittest.TestCase):
@@ -10,16 +10,16 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.n = 100
 
-        cls.ssh: np.ndarray = np.ones(cls.n + 18)
-        cls.flag: np.ndarray = np.full_like(cls.ssh, 0)
-        cls.time: np.ndarray = np.arange(
-            "2020-01-01", "2020-01-02", 1, dtype="datetime64[s]"
-        ).astype("datetime64[ns]")[: cls.n + 18]
+        cls.ssha: np.ndarray = np.ones(cls.n + 18)
+        cls.flag: np.ndarray = np.full_like(cls.ssha, 0)
+        cls.time: np.ndarray = np.arange("2020-01-01", "2020-01-02", 1, dtype="datetime64[s]").astype("datetime64[ns]")[
+            : cls.n + 18
+        ]
         cls.og_ds: xr.Dataset = xr.Dataset(
-            {"ssh": (("time"), cls.ssh), "nasa_flag": (("time"), cls.flag)},
+            {"ssha": (("time"), cls.ssha), "nasa_flag": (("time"), cls.flag)},
             {"time": cls.time},
         )
-        cls.smooth_ds: xr.Dataset = ssh_smoothing(cls.og_ds, datetime(2020, 1, 1))
+        cls.smooth_ds: xr.Dataset = ssha_smoothing(cls.og_ds, datetime(2020, 1, 1))
 
     def test_mirror_nans(self):
         arr = np.array([1, np.nan, 2, 3])
@@ -49,17 +49,57 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         smoothed_val = smooth(arr)
         self.assertAlmostEqual(8.56348, smoothed_val, 4)
-        
+
     def test_case_1(self):
-        arr = np.array([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,  
-                        1.89804412, 
-                        np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
+        arr = np.array(
+            [
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                1.89804412,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+            ]
+        )
         smoothed_val = smooth(arr)
         self.assertIs(np.nan, smoothed_val)
 
     def test_case_2(self):
-        arr = np.array([-0.17185227, -0.09885015, -0.00343418, 0.08667804, 0.26273039, np.nan, np.nan, np.nan, np.nan, 
-                        np.nan, 
-                        np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 1.89804412, np.nan, np.nan])
+        arr = np.array(
+            [
+                -0.17185227,
+                -0.09885015,
+                -0.00343418,
+                0.08667804,
+                0.26273039,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                1.89804412,
+                np.nan,
+                np.nan,
+            ]
+        )
         smoothed_val = smooth(arr)
         self.assertAlmostEqual(0.94406, smoothed_val, 4)

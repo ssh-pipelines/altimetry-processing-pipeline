@@ -28,10 +28,7 @@ class CMRGranule:
 
     def extract_s3_url(self, links: Iterable) -> str:
         for link in links:
-            if (
-                "rel" in link
-                and link["rel"] == "http://esipfed.org/ns/fedsearch/1.1/s3#"
-            ):
+            if "rel" in link and link["rel"] == "http://esipfed.org/ns/fedsearch/1.1/s3#":
                 return link["href"]
         raise S3NotFound()
 
@@ -44,18 +41,14 @@ class CMRQuery:
     def __init__(self, concept_id: str, date: datetime):
         self.concept_id: str = concept_id
         self.start_date: datetime = date
-        self.end_date: datetime = (
-            self.start_date + timedelta(days=1) - timedelta(seconds=1)
-        )
+        self.end_date: datetime = self.start_date + timedelta(days=1) - timedelta(seconds=1)
         self.token = self._get_edl_token()
 
     def _get_edl_token(self) -> str:
         edl_secret = aws_manager.get_secret("EDL_auth")
         username = edl_secret.get("user")
         password = edl_secret.get("password")
-        encoded_auth = base64.b64encode(f"{username}:{password}".encode()).decode(
-            "ascii"
-        )
+        encoded_auth = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
 
         resp = requests.post(
             "https://urs.earthdata.nasa.gov/api/users/find_or_create_token",

@@ -120,9 +120,11 @@ def make_empty(job: DailyFileJob):
         )
     )
     daily_ds.attrs["history"] = f"Created on {datetime.now().isoformat(timespec='seconds')}"
+    daily_ds.attrs["source"] = ""
     daily_ds.attrs["source_files"] = ""
+    daily_ds.attrs["source_url"] = ""
     daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
-    daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
+    daily_ds.attrs["time_coverage_end"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"
 
     filename = f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'

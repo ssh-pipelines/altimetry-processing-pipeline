@@ -4,7 +4,21 @@ import logging
 from typing import Tuple
 
 from oer.oer import OerCorrection
-from utilities.aws_utils import aws_manager
+
+
+def process_records(event):
+    for record in event["Records"]:
+        message_body = json.loads(record["body"])
+        try:
+            date, source = parse_params(message_body)
+        except ValueError as e:
+            logging.exception(f"Error processing params: {e}")
+            continue
+        try:
+            oer_job = OerCorrection(source, date)
+            oer_job.run()
+        except Exception as e:
+            logging.exception(f"Error processing params: {e}")
 
 
 def parse_params(params: dict) -> Tuple[datetime, str, str]:
@@ -13,11 +27,10 @@ def parse_params(params: dict) -> Tuple[datetime, str, str]:
     except Exception as e:
         raise ValueError(f"Unable to parse date: {e}")
     source = params.get("source")
-    processing = params.get("processing", "update")
 
     if None in [date, source]:
         raise ValueError(f"Unable to get date {date} or source {source} from message.")
-    return date, source, processing
+    return date, source
 
 
 def handler(event, context):
@@ -27,30 +40,19 @@ def handler(event, context):
         format="[%(levelname)s] %(asctime)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
-
-    # Handle direct Lambda invocations
-    if "Records" not in event:
-        date, source, processing = parse_params(event)
-        oer_job = OerCorrection(source, date)
-        oer_job.run()
+    
+    # Bulk processing via SQS
+    if "Records" in event:
+        process_records(event)
         return
 
-    # Handle messages from SQS
-    response = {"batchItemFailures": []}
-    for record in event["Records"]:
-        message_body = json.loads(record["body"])
-        try:
-            date, source, processing = parse_params(message_body)
-        except ValueError as e:
-            logging.exception(f"Error processing params: {e}")
-            continue
-        try:
-            oer_job = OerCorrection(source, date)
-            oer_job.run()
-            if processing == "update":
-                aws_manager.update_stage("oer", f"{source}_{date}", "Complete")
-        except Exception as e:
-            logging.exception(f"Error processing params: {e}")
-            if processing == "update":
-                aws_manager.update_stage("oer", f"{source}_{date}", "Failed")
-            response["batchItemFailures"].append({"itemIdentifier": record["messageId"]})
+    try:
+        date, source = parse_params(event)
+        oer_job = OerCorrection(source, date)
+        oer_job.run()
+        result = {"status": "success", "data": event}
+        return result
+    except Exception as e:
+        error_response = {"status": "error", "errorType": type(e).__name__, "errorMessage": str(e), "input": event}
+        print(f"Error: {error_response}")
+        raise Exception(json.dumps(error_response))

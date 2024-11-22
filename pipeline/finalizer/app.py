@@ -1,8 +1,21 @@
-from datetime import date, timedelta, datetime
+from datetime import datetime
 import json
 import logging
 from finalization.finalizer import Finalizer
-from utilities.aws_utils import aws_manager
+
+
+def process_records(event):
+    for record in event["Records"]:
+        message_body = json.loads(record["body"])
+
+        date = datetime.strptime(message_body.get("date"), "%Y-%m-%d").date()
+
+        logging.info(f"Finalizing daily file for {date.isoformat()}")
+        try:
+            finalizer = Finalizer(date)
+            finalizer.process()
+        except Exception as e:
+            logging.exception(e)
 
 
 def handler(event, context):
@@ -13,37 +26,19 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    if "Records" not in event:
-        start_str = event.get("start_date", (date.today() - timedelta(days=60)).isoformat())
-        end_str = event.get("end_date", date.today().isoformat())
-
-        start = datetime.strptime(start_str, "%Y-%m-%d").date()
-        end = datetime.strptime(end_str, "%Y-%m-%d").date()
-
-        logging.info(f"Finalizing daily files between {start} and {end}")
-        finalizer = Finalizer(start, end)
-        finalizer.process()
+    if "Records" in event:
+        process_records(event)
         return
-    
-    response = {"batchItemFailures": []}
-    for record in event["Records"]:
-        message_body = json.loads(record["body"])
-        
-        start_str = message_body.get("start_date", (date.today() - timedelta(days=60)).isoformat())
-        end_str = message_body.get("end_date", date.today().isoformat())
-        start = datetime.strptime(start_str, "%Y-%m-%d").date()
-        end = datetime.strptime(end_str, "%Y-%m-%d").date()
-        logging.info(f"Finalizing daily files between {start} and {end}")
-        
-        processing = message_body.get("processing", "update")
 
-        try:
-            finalizer = Finalizer(start, end)
-            finalizer.process()
-            if processing == "update":
-                aws_manager.update_stage("finalizer", f"p3_{start_str}_{end_str}", "Complete")
-        except Exception as e:
-            logging.exception(e)
-            if processing == "update":
-                aws_manager.update_stage("finalizer", f"p3_{start_str}_{end_str}", "Failed")
-            response["batchItemFailures"].append({"itemIdentifier": record["messageId"]})
+    try:
+        date = datetime.strptime(event.get("date"), "%Y-%m-%d").date()
+
+        logging.info(f"Finalizing daily file for {date.isoformat()}")
+        finalizer = Finalizer(date)
+        finalizer.process()
+        result = {"status": "success", "data": event}
+        return result
+    except Exception as e:
+        error_response = {"status": "error", "errorType": type(e).__name__, "errorMessage": str(e), "input": event}
+        print(f"Error: {error_response}")
+        raise Exception(json.dumps(error_response))

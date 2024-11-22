@@ -1,6 +1,7 @@
-from datetime import date, timedelta
+from datetime import datetime
+import json
 import logging
-from bad_passes.bad_pass_flag import update_bad_passes
+from bad_passes.bad_pass_flag import XoverProcessor
 
 
 def handler(event, context):
@@ -11,12 +12,14 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    gsfc_start = event.get("gsfc_start", "")
-    gsfc_end = event.get("gsfc_end", "")
-    s6_start = event.get("s6_start", (date.today() - timedelta(days=60)).isoformat())
-    s6_end = event.get("s6_end", date.today().isoformat())
+    proc_date = event.get("date")
+    source = event.get("source")
 
     try:
-        update_bad_passes(gsfc_start, gsfc_end, s6_start, s6_end)
+        xover_processor = XoverProcessor(source, datetime.fromisoformat(proc_date))
+        bad_pass_results = xover_processor.process()
+        return bad_pass_results
     except Exception as e:
-        logging.exception(e)
+        error_response = {"status": "error", "errorType": type(e).__name__, "errorMessage": str(e), "input": event}
+        print(f"Error: {error_response}")
+        raise Exception(json.dumps(error_response))

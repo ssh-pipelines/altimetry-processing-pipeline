@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
 import re
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 import boto3
 from cmr import GranuleQuery

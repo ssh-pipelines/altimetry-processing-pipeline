@@ -1,2 +1,0 @@
-daily_files/ref_files/mss_diffs/DTU15_minus_DTU21.nc filter=lfs diff=lfs merge=lfs -text
-daily_files/ref_files/mss_diffs/DTU18_minus_DTU21.nc filter=lfs diff=lfs merge=lfs -text

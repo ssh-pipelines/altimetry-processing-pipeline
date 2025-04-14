@@ -1,0 +1,6 @@
+numpy==1.26.2
+xarray
+netCDF4
+h5netcdf
+h5py
+pyresample

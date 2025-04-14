@@ -6,6 +6,31 @@ Pipeline consists of:
 
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
+Additional products are created from the finalized daily files:
+
+Simple grids -> Indicators -> Imagery for website
+
+```
+                  GSFC Data     S6 Data
+                      |            |
+                      +------------+
+                            |
+                            v
+                [ Generate Daily Files ] -------------------------->|
+                            |                                       |
+                            v                                       |
+                [ Generate Simple Grids ] ------------------------->| 
+                            |                                       |
+                            v                                       |
+             +--------------+--------------+                        |
+             |                             |                        |
+             v                             v                        |
+[ Generate ENSO Maps & Imagery]  [ Generate Indicators ]----------->|
+                                                                    |
+                                                                    v
+                                                          [ Publish to PODAAC ]
+```
+
 ## Description
 
 The directories contained within `pipeline/` contain everything for a given stage in the pipeline (note: stage as opposed to step, as the crossover stage is used for two steps). Each stage's directory can be thought of as an independent repository for that stage.

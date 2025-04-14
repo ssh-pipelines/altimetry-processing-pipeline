@@ -1,3 +1,0 @@
-pandas
-boto3
-s3fs

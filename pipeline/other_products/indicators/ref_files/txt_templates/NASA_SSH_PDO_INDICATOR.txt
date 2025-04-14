@@ -1,0 +1,55 @@
+HDR NASA-SSH PDO Sea Surface Height Anomaly Indicator
+HDR 
+HDR This file contains an indicator for the Pacific Decadal Oscillation (PDO), 
+HDR based on satellite observations of sea surface height anomaly, measured by 
+HDR radar altimeter missions such as TOPEX/Poseidon, the Jason series, and 
+HDR Sentinel-6. The indicator values were calculated using NASA-SSH Simple  
+HDR Gridded Sea Surface Height from Standardized Reference Missions Only 
+HDR Version 1 https://podaac.jpl.nasa.gov/dataset/NASA_SSH_REF_SIMPLE_GRID_V1 . 
+HDR 
+HDR Indicator values were calculated using cyclostationary empirical orthogonal 
+HDR functions (CSEOFs; Kim et al., 2015) computed by decomposing the gridded 
+HDR sea surface height anomalies over the time period from 1993 to 2019. After 
+HDR removing the linear trend from each individual gridded location, three sets 
+HDR of regional CSEOFs were generated, one each for El Nino-Southern  
+HDR Oscillation (ENSO), the PDO and Indian Ocean Diode (IOD). In each case, the 
+HDR dominant statistical mode represents the seasonal cycle. The second most 
+HDR dominant mode represents the variability explained by each respective 
+HDR indicator and is referred to as the “indicator mode”. The seasonal mode and 
+HDR indicator mode are then projected onto the along-track sea surface height 
+HDR anomalies to produce the indicator time series through the most current 
+HDR date.  In this case, the PDO mode was used to produce the time series 
+HDR contained in this file.
+HDR 
+HDR For more information on how the data were generated please refer to:
+HDR K.Y. Kim, B. Hamlington, H. Na, “Theoretical foundation of cyclostationary 
+HDR EOF analysis for geophysical and climatic variables: concepts and  
+HDR examples”, 2015. Earth-science reviews, 150, 201-218.
+HDR 
+HDR P. Kumar, B. Hamlington, S. Cheon, W. Han, and P. Thompson, “20th Century 
+HDR Multivariate Indian Ocean Regional Sea Level Reconstruction,” J. Geophys. 
+HDR Res. Oceans, vol. 125, no. 10, Oct. 2020, doi: 10.1029/2020jc016270.
+HDR 
+HDR B. D. Hamlington et al., “The Dominant Global Modes of Recent Internal Sea 
+HDR Level Variability,” J. Geophys. Res. Oceans, vol. 124, no. 4, pp. 
+HDR 2750–2768, Apr. 2019, doi: 10.1029/2018jc014635.
+HDR 
+HDR If you use these data please cite:
+HDR NASA-SSH. 2025. PDO Sea Surface Height Anomaly Indicator from Simple 
+HDR Gridded Sea Surface Height from Standardized Reference Missions Only 
+HDR Version 1. PO.DAAC, CA, USA. Dataset accessed [YYYY-MM-DD] at 
+HDR https://doi.org/10.5067/NSIND-PDOV1.
+HDR
+HDR This file was created on PLACEHOLDER_CREATION_DATE.
+HDR
+HDR ====================
+HDR 
+HDR PDO Sea Surface Height Anomaly Indicator
+HDR 
+HDR column description
+HDR 1 year+fraction of year
+HDR 2 PDO (Pacific Decadal Oscillation) indicator values
+HDR 
+HDR Missing or bad value flag: 9.96921E36f
+HDR 
+HDR Header_End-------------------------------------

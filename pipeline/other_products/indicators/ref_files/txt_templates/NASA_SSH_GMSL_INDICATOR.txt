@@ -1,0 +1,42 @@
+HDR NASA-SSH Global Mean Sea Level from Simple Gridded Sea Surface Height 
+HDR 
+HDR This file contains a time series of globally-averaged sea level change, or 
+HDR "global mean sea level" (GMSL) in units of centimeters.  The estimate is 
+HDR based on satellite observations of sea surface height anomaly, measured by 
+HDR reference radar altimeter missions such as TOPEX/Poseidon, the Jason 
+HDR series, and Sentinel-6. The indicator values were calculated using NASA-SSH 
+HDR Simple Gridded Sea Surface Height from Standardized Reference Missions Only 
+HDR Version 1 https://podaac.jpl.nasa.gov/dataset/NASA_SSH_REF_SIMPLE_GRID_V1 . 
+HDR 
+HDR GMSL was calculated as the area-weighted average over each map in the time 
+HDR series of Simple Gridded Sea Surface Height.  Because maps are computed  
+HDR using 10-days of observations, but are computed once every 7 days, there is 
+HDR a small amount of overlap between data used to compute successive time 
+HDR steps. A version of the estimate smoothed over 60 days is also provided.
+HDR The estimates have been shifted to have zero mean over calendar year 1993.
+HDR 
+HDR Expert users, please note that this estimate has NOT been adjusted for 
+HDR Glacial Isostatic Adjustment, to account for the slight long-term  
+HDR depression of the sea floor.  Users who study the sea level budget will 
+HDR need to account for this effect in order to properly evaluate closure of 
+HDR the budget. 
+HDR
+HDR If you use these data please cite:
+HDR NASA-SSH. 2025. Global Mean Sea Level from Simple Gridded Sea Surface  
+HDR Height from Standardized Reference Missions Only Version 1. PO.DAAC, CA, 
+HDR USA. Dataset accessed [YYYY-MM-DD] at https://doi.org/10.5067/NSIND-GMSV1.
+HDR 
+HDR This file was created on PLACEHOLDER_CREATION_DATE.
+HDR
+HDR ====================
+HDR 
+HDR Global Mean Sea Level from Gridded Sea Surface Height
+HDR 
+HDR column description
+HDR 1 year+fraction of year
+HDR 2 GMSL (cm)
+HDR 3 GMSL with 60-day smoothing applied (cm)
+HDR 
+HDR Missing or bad value flag: 9.96921E36f
+HDR
+HDR Header_End-------------------------------------

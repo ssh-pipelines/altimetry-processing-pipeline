@@ -239,5 +239,5 @@ class IndicatorProcessor:
             date_str = datetime.now().date().isoformat().replace('-','')
             date_filename = f"NASA_SSH_{indicator_name.upper()}_INDICATOR_{date_str}.txt"
             aws_manager.upload_obj(
-                f"/tmp/{filename}.txt", f"s3://example-bucket/indicators/archive/{date_filename}"
+                f"/tmp/{filename}.txt", f"s3://example-bucket/indicators/archive/{indicator_name.upper()}/{date_filename}"
             )

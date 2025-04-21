@@ -1,4 +1,4 @@
-HDR NASA-SSH ENSO Sea Surface Height Anomaly Indicator
+HDR NASA-SSH ENSO Sea Surface Height Indicator
 HDR 
 HDR This file contains an indicator for the El Nino-Southern Oscillation
 HDR (ENSO), based on satellite observations of sea surface height anomaly,  
@@ -36,8 +36,8 @@ HDR Level Variability,” J. Geophys. Res. Oceans, vol. 124, no. 4, pp.
 HDR 2750–2768, Apr. 2019, doi: 10.1029/2018jc014635.
 HDR
 HDR If you use these data please cite:
-HDR NASA-SSH. 2025. ENSO Sea Surface Height Anomaly Indicator from Simple 
-HDR Gridded Sea Surface Height from Standardized Reference Missions Only 
+HDR NASA-SSH. 2025. ENSO Sea Surface Height Indicator from Simple Gridded
+HDR Sea Surface Height from Standardized Reference Missions Only 
 HDR Version 1. PO.DAAC, CA, USA. Dataset accessed [YYYY-MM-DD] at 
 HDR https://doi.org/10.5067/NSIND-ENSV1.
 HDR 
@@ -45,7 +45,7 @@ HDR This file was created on PLACEHOLDER_CREATION_DATE.
 HDR
 HDR ====================
 HDR
-HDR ENSO Sea Surface Height Anomaly Indicator
+HDR ENSO Sea Surface Height Indicator
 HDR 
 HDR column description
 HDR 1 year+fraction of year

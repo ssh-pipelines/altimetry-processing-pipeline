@@ -1,4 +1,4 @@
-HDR NASA-SSH PDO Sea Surface Height Anomaly Indicator
+HDR NASA-SSH PDO Sea Surface Height Indicator
 HDR 
 HDR This file contains an indicator for the Pacific Decadal Oscillation (PDO), 
 HDR based on satellite observations of sea surface height anomaly, measured by 
@@ -35,7 +35,7 @@ HDR Level Variability,” J. Geophys. Res. Oceans, vol. 124, no. 4, pp.
 HDR 2750–2768, Apr. 2019, doi: 10.1029/2018jc014635.
 HDR 
 HDR If you use these data please cite:
-HDR NASA-SSH. 2025. PDO Sea Surface Height Anomaly Indicator from Simple 
+HDR NASA-SSH. 2025. PDO Sea Surface Height Indicator from Simple 
 HDR Gridded Sea Surface Height from Standardized Reference Missions Only 
 HDR Version 1. PO.DAAC, CA, USA. Dataset accessed [YYYY-MM-DD] at 
 HDR https://doi.org/10.5067/NSIND-PDOV1.
@@ -44,7 +44,7 @@ HDR This file was created on PLACEHOLDER_CREATION_DATE.
 HDR
 HDR ====================
 HDR 
-HDR PDO Sea Surface Height Anomaly Indicator
+HDR PDO Sea Surface Height Indicator
 HDR 
 HDR column description
 HDR 1 year+fraction of year

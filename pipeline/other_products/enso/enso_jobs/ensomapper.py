@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 from matplotlib import colors
 import matplotlib.ticker as mticker
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
@@ -38,7 +38,7 @@ class ENSOMapper:
             (date(2002, 5, 14), date(2008, 7, 12), "Jason-1"),
             (date(2008, 7, 12), date(2016, 3, 18), "Jason-2"),
             (date(2016, 3, 18), date(2022, 4, 7), "Jason-3"),
-            (date(2022, 4, 7), date.today(), "Sentinel-6 Michael Freilich"),
+            (date(2022, 4, 7), date.today() + timedelta(days=1), "Sentinel-6 Michael Freilich"),
         ]
 
         for start, end, satellite in date_ranges:

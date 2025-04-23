@@ -1,13 +1,13 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-COPY requirements.txt .
+COPY pipeline/infra/pipeline_init/requirements.txt .
 
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
-COPY app.py .
+COPY pipeline/infra/pipeline_init/app.py .
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}"
 

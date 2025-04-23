@@ -18,6 +18,14 @@ S6_COLLECTIONS = {
 
 GSFC_COLLECTION = "C2901523432-POCLOUD"
 
+def latest_simple_grid_date() -> datetime:
+    """Returns the date of the most recent simple grid date prior to today"""
+    d = datetime(1992, 10, 12)
+    today = datetime.today()
+    while d + timedelta(days=7) < today:
+        d += timedelta(days=7)
+    return d
+
 
 def chunk_dates_by_year(dates: List[datetime]) -> Dict[int, List[datetime]]:
     """
@@ -180,14 +188,12 @@ def handler(event, context):
     # "full" lookback checks everything starting at 1992-10-25
     elif event.get("lookback") == "full":
         start_date = datetime(1992, 10, 25)
-        end_date = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = latest_simple_grid_date()
 
     # Default is to check S6 data starting on 2024-01-01
     else:
         start_date = datetime(2024, 1, 1)
-        end_date = datetime.today().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=1)
+        end_date = latest_simple_grid_date()
 
     # Generate the list of dates
     lookback_dates = [

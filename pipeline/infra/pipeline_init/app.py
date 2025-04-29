@@ -18,13 +18,17 @@ S6_COLLECTIONS = {
 
 GSFC_COLLECTION = "C2901523432-POCLOUD"
 
+
 def latest_simple_grid_date() -> datetime:
-    """Returns the date of the most recent simple grid date prior to today"""
-    d = datetime(1992, 10, 12)
-    today = datetime.today()
-    while d + timedelta(days=7) < today:
-        d += timedelta(days=7)
-    return d
+    """
+    Returns the date of the most recent Monday for which a full 10-day window is available.
+    The pipeline runs on a Monday cadence and simple grids are generated for Mondays.
+    """
+    today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    monday = today - timedelta(days=today.weekday())
+    while monday + timedelta(days=4) >= today:
+        monday -= timedelta(weeks=1)
+    return monday
 
 
 def chunk_dates_by_year(dates: List[datetime]) -> Dict[int, List[datetime]]:

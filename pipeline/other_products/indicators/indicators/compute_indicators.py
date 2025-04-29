@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
 import logging
+from os.path import basename, join
 from typing import List
 import warnings
+from datetime import datetime, timedelta
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -10,37 +12,14 @@ import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
 from indicators.pattern_data import Pattern
-from indicators.txt_engine import generate_txt
+from indicators.utils import generate_txt, generate_mp, dt_to_dec, dec_to_dt
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
     from pyresample.utils import check_and_wrap
 
 
-def dt_to_dec(date: datetime) -> float:
-    """
-    Transforms datetime values to year decimal values.
-    """
-    year_start = date.replace(month=1, day=1)
-    year_end = year_start.replace(year=date.year + 1)
-    fraction_of_year = (date - year_start).total_seconds() / (
-        year_end - year_start
-    ).total_seconds()
-    return date.year + fraction_of_year
-
-
-def decimal_year_to_datetime(decimal_years):
-    """Convert an array of decimal years to datetime objects."""
-    dates = []
-    for year_decimal in decimal_years:
-        year = int(year_decimal)
-        days = (year_decimal - year) * 365.25  # Convert fraction to days
-        date = datetime(year, 1, 1) + timedelta(days=days)
-        dates.append(date)
-    return np.array(dates)
-
-
-def running_mean(data, time, window=28.1):
+def running_mean(data: np.ndarray, time: np.ndarray, window=28.1) -> np.ndarray:
     """
     Compute a 60-day smoothed version of the input data using a running mean.
     The window is 28.1 days before and after, and it shrinks near the edges.
@@ -53,16 +32,12 @@ def running_mean(data, time, window=28.1):
     Returns:
         np.ndarray: Smoothed data array of the same length as input.
     """
-    smoothed = np.full_like(data, np.nan)  # Initialize output with NaNs
+    smoothed = np.full_like(data, np.nan)
     for i in range(len(data)):
-        # Define dynamic window range
         lower_bound = time[i] - timedelta(days=window)
         upper_bound = time[i] + timedelta(days=window)
-        # Find indices within window
         indices = (time >= lower_bound) & (time <= upper_bound)
-        # Compute mean over valid indices
         smoothed[i] = np.nanmean(np.array(data)[indices]) if np.any(indices) else np.nan
-
     return smoothed
 
 
@@ -70,15 +45,14 @@ class IndicatorProcessor:
     def __init__(self, sg_keys: List[str]):
         self.grid_keys = sg_keys
         self.patterns = [Pattern("enso"), Pattern("pdo"), Pattern("iod")]
-        self.grid_cell_areas = (
-            xr.open_dataset("ref_files/half_deg_grid_cell_areas.nc")
-            .sel(latitude=slice(-66, 66), drop=True)["area"]
-            .values
-        )
+        self.grid_cell_areas = self._open_grid_cell_areas()
         self.trend_ds = xr.open_dataset("ref_files/BH_offset_and_trend_v0_new_grid.nc")
-        self.annual_cycle_ds = xr.open_dataset("ref_files/ann_pattern.nc")[
-            "ann_pattern"
-        ]
+        self.annual_ds = xr.open_dataset("ref_files/ann_pattern.nc")["ann_pattern"]
+
+    @staticmethod
+    def _open_grid_cell_areas() -> np.ndarray:
+        ds = xr.open_dataset("ref_files/half_deg_grid_cell_areas.nc")
+        return ds.sel(latitude=slice(-66, 66), drop=True)["area"].values
 
     @staticmethod
     def validate_counts(counts: np.ndarray, threshold: float = 0.9) -> bool:
@@ -90,13 +64,12 @@ class IndicatorProcessor:
     def calc_gmsl(self, masked_ssha: np.ma.masked_array) -> float:
         """
         Compute GMSL in cm
-        """       
+        """
         masked_ssha = masked_ssha.filled(np.nan)
         weighted_ssha_sum = np.nansum(masked_ssha * self.grid_cell_areas)
         total_area = np.nansum(self.grid_cell_areas[~np.isnan(masked_ssha)])
         gmsl = (weighted_ssha_sum / total_area) * 100
         return gmsl
-
 
     def detrend_deseason(self, date: datetime, masked_ssha: np.ndarray) -> np.ndarray:
         # Compute trend
@@ -105,14 +78,14 @@ class IndicatorProcessor:
             time_diff * self.trend_ds["BH_sea_level_trend_meters_per_second"]
             + self.trend_ds["BH_sea_level_offset_meters"]
         )
-        masked_ssha = np.ma.masked_invalid(masked_ssha)  # Mask invalid (NaN) values
-        trend = np.ma.masked_invalid(trend)  # Mask invalid (NaN) values
+        masked_ssha = np.ma.masked_invalid(masked_ssha)
+        trend = np.ma.masked_invalid(trend)
 
         # Remove trend (ensure we don't perform any operations on NaN values)
         detrended = masked_ssha - trend
 
         # Grab seasonal cycle
-        seasonal_cycle = self.annual_cycle_ds.sel(month=date.month).values / 1e3
+        seasonal_cycle = self.annual_ds.sel(month=date.month).values / 1e3
 
         # Mask invalid values in seasonal cycle
         seasonal_cycle = np.ma.masked_invalid(seasonal_cycle)
@@ -131,7 +104,6 @@ class IndicatorProcessor:
 
         latitudes = cycle_ds.variables["latitude"][:]
         lat_idx = np.where((latitudes >= -66) & (latitudes <= 66))[0]
-
         lons, lats = check_and_wrap(cycle_ds["longitude"][:], cycle_ds["latitude"][:])
 
         ssha = cycle_ds.variables["ssha"][:]
@@ -146,6 +118,7 @@ class IndicatorProcessor:
 
         # Remove trend and seasonal cycle in prep for indicator computation
         detrended_deseasoned = self.detrend_deseason(date, masked_ssha)
+
         # Compute indicator value for each pattern
         for pattern in self.patterns:
             # Select pattern area of interest
@@ -178,12 +151,69 @@ class IndicatorProcessor:
         indicators_ds["time"].attrs = {"units": "Date in decimal year format"}
         indicators_ds["gmsl"].attrs = {"units": "cm"}
 
+        decimal_years_to_datetimes = np.vectorize(dec_to_dt)
         smoothed_gmsl = running_mean(
             indicators_ds["gmsl"].values,
-            decimal_year_to_datetime(indicators_ds["time"].values),
+            decimal_years_to_datetimes(indicators_ds["time"].values),
         )
         indicators_ds["smoothed_gmsl"] = (["time"], smoothed_gmsl, {"units": "cm"})
         return indicators_ds
+
+    def format_and_upload(self, computed_indicators: List[dict]):
+        """
+        From list of dictionary values of indicators:
+        1. Make netcdf containing all indicators and upload to s3
+        For each indicator:
+        2. Make and upload text file to s3
+        3. Make .mp file and upload to s3
+        4. Make archival version of text file and upload to s3
+        5. Make .mp file and upload to s3
+        """
+        # Convert results to xarray Dataset
+        indicators_ds = self.generate_ds(computed_indicators)
+
+        indicators_prefix = "s3://example-bucket/indicators/"
+
+        # Make and upload netcdf
+        nc_path = "/tmp/indicators.nc"
+        indicators_ds.to_netcdf(nc_path)
+        aws_manager.upload_obj(nc_path, join(indicators_prefix, "indicators.nc"))
+
+        first_time = int(dec_to_dt(indicators_ds["time"].values[0]).timestamp() * 1000)
+        last_time = int(dec_to_dt(indicators_ds["time"].values[-1]).timestamp() * 1000)
+
+        # Convert xarray Dataset to individual indicator txt files
+        for indicator_name in ["gmsl", "enso", "iod", "pdo"]:
+            # Make text file
+            filename = generate_txt(indicators_ds, indicator_name)
+            shortname = filename.replace(".txt", "")
+            local_path = join("/tmp", filename)
+
+            # Upload (and replace) latest version
+            aws_manager.upload_obj(local_path, join(indicators_prefix, filename))
+
+            # Generate and upload .mp file
+            mp_path = generate_mp(first_time, last_time, local_path, shortname)
+            aws_manager.upload_obj(mp_path, join(indicators_prefix, basename(mp_path)))
+
+            # Generate and upload archival version
+            date_str = datetime.now().date().isoformat().replace("-", "")
+            date_filename = filename.replace(".txt", f"_{date_str}.txt")
+            archive_path = join("/tmp", date_filename)
+
+            shutil.copyfile(local_path, archive_path)
+
+            s3_archive_path = join(
+                indicators_prefix, "archive", indicator_name.upper(), date_filename
+            )
+            aws_manager.upload_obj(archive_path, s3_archive_path)
+
+            # Generate and upload archivel .mp file
+            mp_path = generate_mp(first_time, last_time, archive_path, shortname)
+            s3_mp_path = join(
+                indicators_prefix, "archive", indicator_name.upper(), basename(mp_path)
+            )
+            aws_manager.upload_obj(mp_path, s3_mp_path)
 
     def run(self):
         logging.info("Beginning indicators calculations...")
@@ -199,7 +229,7 @@ class IndicatorProcessor:
             logging.info(f"Processing {grid_key}")
             try:
                 stream = aws_manager.stream_obj(grid_key)
-                
+
                 cycle_ds = nc.Dataset("dummy", memory=stream.read())
                 latitudes = cycle_ds.variables["latitude"][:]
                 lat_idx = np.where((latitudes >= -66) & (latitudes <= 66))[0]
@@ -217,27 +247,4 @@ class IndicatorProcessor:
             except Exception as e:
                 logging.exception(f"Error processing cycle {grid_key}. {e}")
 
-        # Convert results to xarray Dataset
-        indicators_ds = self.generate_ds(computed_indicators)
-
-        indicators_ds.to_netcdf("/tmp/indicators.nc")
-        aws_manager.upload_obj(
-            "/tmp/indicators.nc", "s3://example-bucket/indicators/indicators.nc"
-        )
-
-        # Convert xarray Dataset to individual indicator txt files
-        for indicator_name in ["gmsl", "enso", "iod", "pdo"]:
-            filename = f"NASA_SSH_{indicator_name.upper()}_INDICATOR.txt"
-            generate_txt(indicators_ds, indicator_name)
-            
-            # Upload (and replace) latest version
-            aws_manager.upload_obj(
-                f"/tmp/{filename}.txt", f"s3://example-bucket/indicators/{filename}"
-            )
-            
-            # Upload archival version
-            date_str = datetime.now().date().isoformat().replace('-','')
-            date_filename = f"NASA_SSH_{indicator_name.upper()}_INDICATOR_{date_str}.txt"
-            aws_manager.upload_obj(
-                f"/tmp/{filename}.txt", f"s3://example-bucket/indicators/archive/{indicator_name.upper()}/{date_filename}"
-            )
+        self.format_and_upload(computed_indicators)

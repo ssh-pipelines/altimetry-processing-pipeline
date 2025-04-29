@@ -1,4 +1,3 @@
-from io import BytesIO
 import logging
 import xarray as xr
 import numpy as np

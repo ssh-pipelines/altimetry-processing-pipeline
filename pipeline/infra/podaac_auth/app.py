@@ -15,8 +15,8 @@ def get_secret(secret_name: str) -> dict:
         raise e
     try:
         secret = json.loads(secret_str)
-    except:
-        raise RuntimeError('Error converting secret string to dict')
+    except Exception as e:
+        raise RuntimeError(f'Error converting secret string to dict: {e}')
     return secret
 
 def put_secret(secret_name: str, secret_string: str):

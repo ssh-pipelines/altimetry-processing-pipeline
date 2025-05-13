@@ -43,7 +43,7 @@ def generate_txt(ds: xr.Dataset, indicator_name: str) -> str:
     lines = create_lines(ds, indicator_name)
 
     with open(f"ref_files/txt_templates/{filename}", "r") as template:
-        with open(f"/tmp/{filename}.txt", "w") as f:
+        with open(f"/tmp/{filename}", "w") as f:
             template_header = template.readlines()
             template_header = [
                 hdr.replace(

@@ -1,32 +1,40 @@
 from datetime import date, timedelta
+from typing import Tuple
 
 
-def simple_grid_date_generator():
-    d = date(1992, 10, 12)
-    while d <= date.today():
-        yield d
-        d += timedelta(days=7)
+def last_sg_date(today = date.today()) -> date:
+    """
+    Returns the date of the most recent Monday for which a full 10-day window is available.
+    The pipeline runs on a Monday cadence and simple grids are generated for Mondays.
+    """
+    latest_simple_grid_date = today - timedelta(days=today.weekday())
+    while latest_simple_grid_date + timedelta(days=4) >= today:
+        latest_simple_grid_date -= timedelta(weeks=1)
+    return latest_simple_grid_date
+
+        
+def surrounding_mondays(d: date) -> Tuple[date, date]:
+    weekday = d.weekday()  # Monday=0, Sunday=6
+    prev_monday = d - timedelta(days=weekday)
+    next_monday = prev_monday + timedelta(days=7)
+
+    return prev_monday, next_monday
 
 
 def lambda_handler(event, context):
     job_dates_dt = [date.fromisoformat(jd["date"]) for jd in event]
 
-    sg_dates = [i for i in simple_grid_date_generator()]
-
-    sg_dates_with_jobs = sorted(sg_dates + job_dates_dt)
+    end_date = last_sg_date()
 
     sg_jobs = set()
     for job_date in job_dates_dt:
-        job_date_idx = sg_dates_with_jobs.index(job_date)
-        left = sg_dates_with_jobs[job_date_idx - 1]
-        sg_jobs.add(left)
+        prev_monday, next_monday = surrounding_mondays(job_date)
 
-        try:
-            right = sg_dates_with_jobs[job_date_idx + 1]
-            sg_jobs.add(right)
-        except IndexError:
-            pass
+        if prev_monday <= end_date:
+            sg_jobs.add(prev_monday)
+        if next_monday <= end_date:
+            sg_jobs.add(next_monday)
 
-    intersection = [sg_job.isoformat() for sg_job in list(sg_jobs & set(sg_dates))]
-
+    intersection = [job.isoformat() for job in sg_jobs]
+    
     return intersection

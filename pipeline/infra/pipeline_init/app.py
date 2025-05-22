@@ -19,16 +19,16 @@ S6_COLLECTIONS = {
 GSFC_COLLECTION = "C2901523432-POCLOUD"
 
 
-def latest_simple_grid_date() -> datetime:
+def daily_file_end_date() -> datetime:
     """
     Returns the date of the most recent Monday for which a full 10-day window is available.
     The pipeline runs on a Monday cadence and simple grids are generated for Mondays.
     """
     today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-    monday = today - timedelta(days=today.weekday())
-    while monday + timedelta(days=4) >= today:
-        monday -= timedelta(weeks=1)
-    return monday
+    latest_simple_grid_date = today - timedelta(days=today.weekday())
+    while latest_simple_grid_date + timedelta(days=4) >= today:
+        latest_simple_grid_date -= timedelta(weeks=1)
+    return latest_simple_grid_date + timedelta(days=4)
 
 
 def chunk_dates_by_year(dates: List[datetime]) -> Dict[int, List[datetime]]:
@@ -192,12 +192,12 @@ def handler(event, context):
     # "full" lookback checks everything starting at 1992-10-25
     elif event.get("lookback") == "full":
         start_date = datetime(1992, 10, 25)
-        end_date = latest_simple_grid_date()
+        end_date = daily_file_end_date()
 
     # Default is to check S6 data starting on 2024-01-01
     else:
         start_date = datetime(2024, 1, 1)
-        end_date = latest_simple_grid_date()
+        end_date = daily_file_end_date()
 
     # Generate the list of dates
     lookback_dates = [

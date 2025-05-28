@@ -11,7 +11,7 @@ from utilities.aws_utils import aws_manager
 GSFC_START = date(1992, 10, 13)
 S6_START = date(2024, 1, 20)
 
-S6_ABSOLUTE_OFFSET = 0.0232  # Offset from GSFC in meters
+S6_ABSOLUTE_OFFSET = 0.0177 # Offset from GSFC in meters
 
 
 class Finalizer:

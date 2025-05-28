@@ -13,9 +13,7 @@ from daily_files.collection_metadata import AllCollections, CollectionMeta
 
 
 class S6DailyFile(DailyFile):
-    def __init__(
-        self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]
-    ):
+    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
         self.date = date
 
         logging.info(f"Opening {len(file_objs)} files")
@@ -24,7 +22,7 @@ class S6DailyFile(DailyFile):
         self.original_ds = ds
         self.collection_ids = collection_ids
 
-        ssha: np.ndarray = ds["ssha_nr"].values
+        ssha: np.ndarray = ds["ssha"].values
         lats: np.ndarray = ds["latitude"].values
         lons: np.ndarray = ds["longitude"].values
         times: np.ndarray = ds["time"].values
@@ -52,6 +50,11 @@ class S6DailyFile(DailyFile):
         Use the netCDF4 library to efficiently open and extract grouped variables
         """
         ds = nc.Dataset("file_like", "r", memory=file_obj.read())
+        
+        s6_offset = None
+        if "product_name" in ds.ncattrs() and "G01" in ds.product_name:
+            s6_offset = 0.011
+        
         das = []
 
         for var in [
@@ -66,18 +69,18 @@ class S6DailyFile(DailyFile):
         ]:
             nc_var = ds.groups["data_01"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {
-                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
-            }
+            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
-        for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
+        for var in ["sig0_ocean", "range_ocean_qual", "swh_ocean", "ssha"]:
             nc_var = ds.groups["data_01"].groups["ku"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {
-                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
-            }
+
+            if var == "ssha" and s6_offset is not None:
+                nc_var_data = nc_var_data + s6_offset
+
+            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
@@ -89,11 +92,7 @@ class S6DailyFile(DailyFile):
             for k, v in ds.groups["data_01"].variables["time"].__dict__.items()
             if k != "scale_factor" and k != "add_offset"
         }
-        merged_ds.attrs = {
-            k: v
-            for k, v in ds.__dict__.items()
-            if k != "scale_factor" and k != "add_offset"
-        }
+        merged_ds.attrs = {k: v for k, v in ds.__dict__.items() if k != "scale_factor" and k != "add_offset"}
         merged_ds["cycle"] = (
             ("time"),
             np.full(merged_ds["time"].values.shape, ds.cycle_number),
@@ -120,13 +119,13 @@ class S6DailyFile(DailyFile):
     def make_nasa_flag(self):
         """ """
         logging.info("Making nasa_flag...")
-        kqual = self.original_ds["range_ocean_nr_qual"].values
+        kqual = self.original_ds["range_ocean_qual"].values
         surfc = self.original_ds["surface_classification_flag"].values
         rqual = self.original_ds["rad_water_vapor_qual"].values
         rain = self.original_ds["rain_flag"].values
-        s0 = self.original_ds["sig0_ocean_nr"].values
-        swh = self.original_ds["swh_ocean_nr"].values
-        ssha = self.original_ds["ssha_nr"].values
+        s0 = self.original_ds["sig0_ocean"].values
+        swh = self.original_ds["swh_ocean"].values
+        ssha = self.original_ds["ssha"].values
         basin_flag = self.ds["basin_flag"].values
         lats = self.ds["latitude"].values
 
@@ -162,35 +161,21 @@ class S6DailyFile(DailyFile):
             & (kqual == 0)
             & ((rain == 0) | (rain == 3) | (rain == 5))
             & ((np.abs(ssha) < 5) & (basin_flag > 0) & (basin_flag < 1000))
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssha) > 1.2)
-            )
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
         swp_flag = prelim_flag & ~sw_flag
 
-        rolling_median = (
-            pd.Series(ssha[swp_flag])
-            .rolling(n_median, center=True, min_periods=1)
-            .median()
-            .values
-        )
+        rolling_median = pd.Series(ssha[swp_flag]).rolling(n_median, center=True, min_periods=1).median().values
         dx_median = ssha[swp_flag] - rolling_median
 
         outlier_index = np.abs(dx_median) < 2
-        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(
-            n_std, center=True, min_periods=1
-        )
+        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(n_std, center=True, min_periods=1)
         rolling_std = np.clip(np.sqrt(pd_roll.median().values), 0.02, None)
 
         median_interp = np.interp(timestamps, timestamps[swp_flag], rolling_median)
         dx = ssha - median_interp
-        std_interp = np.interp(
-            timestamps, timestamps[swp_flag][outlier_index], rolling_std
-        )
+        std_interp = np.interp(timestamps, timestamps[swp_flag][outlier_index], rolling_std)
 
         median_flag = abs(dx) > std_interp * 5
         nasa_flag = ~(
@@ -200,12 +185,7 @@ class S6DailyFile(DailyFile):
             & ((rain == 0) | (rain == 3) | (rain == 5))
             & (rqual == 0)
             & (~median_flag)
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssha) > 1.2)
-            )
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
         source_flag = np.array([kqual, surfc, rqual, rain], dtype=np.int8).T
@@ -220,7 +200,7 @@ class S6DailyFile(DailyFile):
                 "flag_derivation": (
                     "nasa_flag is set to 0 for data that should be retained, and 1 for data that should be removed. nasa_flag is 0 if: "
                     "basin_flag is set to any valid, non-fill value & data passes an along-track median check, saved in the medain_filter_flag variable & the "
-                    "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag, range_ocean_nr_qual, rad_water_vapor_qual, and derived standard deviation"
+                    "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag, range_ocean_qual, rad_water_vapor_qual, and derived standard deviation"
                 )
             },
         )
@@ -235,7 +215,7 @@ class S6DailyFile(DailyFile):
 
         for i, src_flag in enumerate(
             [
-                "range_ocean_nr_qual",
+                "range_ocean_qual",
                 "surface_classification_flag",
                 "rad_water_vapor_qual",
                 "rain_flag",

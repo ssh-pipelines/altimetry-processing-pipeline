@@ -213,12 +213,14 @@ def handler(event, context):
     df_mod_times = {}
     granule_mod_times = {}
 
-    for year, dates in yearly_dates.items():
-        start_date, end_date = dates[0], dates[-1]
+    if not force_update:
 
-        # Query daily files and granules for the year
-        df_mod_times.update(query_daily_files_for_year(year, start_date, end_date))
-        granule_mod_times.update(query_granules_for_year(year, start_date, end_date))
+        for year, dates in yearly_dates.items():
+            start_date, end_date = dates[0], dates[-1]
+
+            # Query daily files and granules for the year
+            df_mod_times.update(query_daily_files_for_year(year, start_date, end_date))
+            granule_mod_times.update(query_granules_for_year(year, start_date, end_date))
 
     jobs = []
     for date in lookback_dates:
@@ -230,7 +232,7 @@ def handler(event, context):
             or (not granule_mod_time and not df_mod_time)
             or (df_mod_time and granule_mod_time and df_mod_time < granule_mod_time)
         ):
-            if date.date() < datetime(2024, 1, 21).date():
+            if date.date() < datetime(2024, 1, 1).date():
                 source = "GSFC"
             else:
                 source = "S6"

@@ -100,9 +100,7 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
             "tests/test_granules/NASA-SSH_alt_ref_simple_grid_v1_20241111.nc",
             "tests/test_granules/NASA-SSH_alt_ref_simple_grid_v1_20250106.nc",
         ]
-        sg_keys = sorted(
-            glob("/Users/username/Developer/Measures-Cloud/data/from_podaac_bucket/NASA_SSH_REF_SIMPLE_GRID_V1/*.nc")
-        )
+        sg_keys = sorted(glob("data/from_podaac_bucket/NASA_SSH_REF_SIMPLE_GRID_V1/*.nc"))
 
         ind_proc = IndicatorProcessor(sg_keys)
 

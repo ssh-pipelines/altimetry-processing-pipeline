@@ -14,25 +14,8 @@ def parse_params(params: dict) -> Tuple[np.datetime64, str, str, str]:
     df_version = params.get("df_version")
 
     if None in [date, source, df_version]:
-        raise ValueError(
-            f"Missing job parameters: {df_version = },{source = },{date = }"
-        )
+        raise ValueError(f"Missing job parameters: {df_version = },{source = },{date = }")
     return date, source, df_version
-
-
-def process_records(event):
-    for record in event["Records"]:
-        message_body = json.loads(record["body"])
-        try:
-            date, source, daily_file_version = parse_params(message_body)
-        except ValueError as e:
-            logging.error(e)
-            continue
-        try:
-            processor = Crossover(date, source, daily_file_version)
-            processor.run()
-        except Exception as e:
-            logging.exception(e)
 
 
 def handler(event, context):
@@ -43,16 +26,18 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    # Bulk processing via SQS
-    if "Records" in event:
-        process_records(event)
-        return
+    bucket = event.get("bucket")
+    proc_date = event.get("date")
+    source = event.get("source")
+    df_version = event.get("df_version")
+    if None in [proc_date, source, df_version]:
+        raise ValueError("One of date, source, df_version, or bucket job parameters missing.")
 
     # Step Function processing
     try:
-        date, source, daily_file_version = parse_params(event)
-        processor = Crossover(date, source, daily_file_version)
-        processor.run()
+        date = np.datetime64(proc_date)
+        processor = Crossover(date, source, df_version)
+        processor.run(bucket)
         result = {"status": "success", "data": event}
         return result
 

@@ -46,13 +46,13 @@ class OerCorrection:
             ds.to_netcdf(out_path, engine="h5netcdf")
         return out_path
 
-    def fetch_xovers(self, window_start: datetime, window_end: datetime) -> xr.Dataset:
+    def fetch_xovers(self, window_start: datetime, window_end: datetime, bucket: str) -> xr.Dataset:
         date_range = list(rrule(DAILY, dtstart=window_start, until=window_end))
         streams = []
         for d in date_range:
             filename = f'xovers_{self.source}-{d.strftime("%Y-%m-%d")}.nc'
             key = os.path.join(
-                "s3://example-bucket/crossovers/p1/",
+                f"s3://{bucket}/crossovers/p1/",
                 self.source,
                 str(d.year),
                 filename,
@@ -76,12 +76,12 @@ class OerCorrection:
             )
         return ds
 
-    def fetch_daily_file(self) -> xr.Dataset:
+    def fetch_daily_file(self, bucket: str) -> xr.Dataset:
         """
-        Streams the p1 daily file from the example-bucket bucket.
+        Streams the p1 daily file
         """
         prefix = os.path.join(
-            "s3://example-bucket/daily_files/p1",
+            f"s3://{bucket}/daily_files/p1",
             self.source,
             str(self.date.year),
             self.daily_file_filename,
@@ -92,14 +92,14 @@ class OerCorrection:
             raise ValueError(f"Key {prefix} does not exist!")
         return xr.open_dataset(stream)
 
-    def make_polygon(self) -> xr.Dataset:
+    def make_polygon(self, bucket: str) -> xr.Dataset:
         window_start = max(
             self.date - timedelta(self.window_len) - timedelta(self.window_pad),
             datetime(1992, 9, 25),
         )
         window_end = self.date + timedelta(self.window_pad)
 
-        xover_ds = self.fetch_xovers(window_start, window_end)
+        xover_ds = self.fetch_xovers(window_start, window_end, bucket)
 
         polygon_ds = create_polygon(xover_ds, self.date, self.source)
 
@@ -107,7 +107,7 @@ class OerCorrection:
         polygon_filename = f'oerpoly_{self.source}_{self.date.strftime("%Y-%m-%d")}.nc'
         out_path = self.save_ds(polygon_ds, polygon_filename)
         target_path = os.path.join(
-            "s3://example-bucket/oer",
+            f"s3://{bucket}/oer",
             self.source,
             str(self.date.year),
             polygon_filename,
@@ -116,7 +116,7 @@ class OerCorrection:
         return polygon_ds
 
     def make_correction(
-        self, polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset
+        self, polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, bucket: str
     ) -> xr.Dataset:
         correction_ds = evaluate_correction(
             polygon_ds, daily_file_ds, self.date, self.source
@@ -128,7 +128,7 @@ class OerCorrection:
         )
         out_path = self.save_ds(correction_ds, correction_filename)
         target_path = os.path.join(
-            "s3://example-bucket/oer",
+            f"s3://{bucket}/oer",
             self.source,
             str(self.date.year),
             correction_filename,
@@ -137,7 +137,7 @@ class OerCorrection:
         return correction_ds
 
     def apply_oer(
-        self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset
+        self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset, bucket: str
     ) -> xr.Dataset:
         ds = apply_correction(daily_file_ds, correction_ds)
 
@@ -181,7 +181,7 @@ class OerCorrection:
         # Save the correction and upload to S3
         out_path = self.save_ds(ds, self.daily_file_filename, encoding)
         target_path = os.path.join(
-            "s3://example-bucket/daily_files/p2",
+            f"s3://{bucket}/daily_files/p2",
             self.source,
             str(self.date.year),
             self.daily_file_filename,
@@ -189,7 +189,7 @@ class OerCorrection:
         aws_manager.upload_obj(out_path, target_path)
         return ds
 
-    def run(self):
+    def run(self, bucket: str):
         """
         Executes the three steps for OER correction:
         1. Make the polygon
@@ -198,13 +198,13 @@ class OerCorrection:
 
         Each step includes uploading netCDF to relevant bucket location
         """
-        polygon_ds = self.make_polygon()
+        polygon_ds = self.make_polygon(bucket)
 
-        daily_file_ds = self.fetch_daily_file()
+        daily_file_ds = self.fetch_daily_file(bucket)
 
-        correction_ds = self.make_correction(polygon_ds, daily_file_ds)
+        correction_ds = self.make_correction(polygon_ds, daily_file_ds, bucket)
 
-        self.apply_oer(daily_file_ds, correction_ds)
+        self.apply_oer(daily_file_ds, correction_ds, bucket)
 
         # Cleanup files saved to /tmp
         for f in glob("/tmp/*.nc"):

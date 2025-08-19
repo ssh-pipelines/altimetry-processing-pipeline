@@ -13,7 +13,7 @@ from daily_files.collection_metadata import AllCollections, CollectionMeta
 
 
 class S6DailyFile(DailyFile):
-    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]):
+    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str], bucket: str):
         self.date = date
 
         logging.info(f"Opening {len(file_objs)} files")
@@ -50,11 +50,11 @@ class S6DailyFile(DailyFile):
         Use the netCDF4 library to efficiently open and extract grouped variables
         """
         ds = nc.Dataset("file_like", "r", memory=file_obj.read())
-        
+
         s6_offset = None
         if "product_name" in ds.ncattrs() and "G01" in ds.product_name:
             s6_offset = 0.011
-        
+
         das = []
 
         for var in [

@@ -29,10 +29,6 @@ class AWSManager:
             aws_session_token=self._session_token,
         )
 
-        self._dynamodb = self._session.resource("dynamodb")
-        self._msg_table = self._dynamodb.Table("nasa-ssh-pipeline")
-        self._job_table = self._dynamodb.Table("nasa-ssh-pipeline-jobs")
-
     def key_exists(self, key: str) -> bool:
         return self.fs.exists(key)
 

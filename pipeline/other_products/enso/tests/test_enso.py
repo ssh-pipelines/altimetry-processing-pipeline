@@ -30,17 +30,10 @@ class EndToEndGSFCProcessingTestCase(unittest.TestCase):
 
         try:
             # Make grids
-            grid_paths = sorted(
-                glob(
-                    "/Users/username/Developer/Measures-Cloud/data/simple_grids/p3/2024/*.nc"
-                )
-            )
-            # grid_paths = ['/Users/username/Desktop/NASA-SSH_alt_ref_simple_grid_v1_20240923.nc']
+            grid_paths = sorted(glob("data/simple_grids/p3/2024/*.nc"))
             for path in grid_paths:
                 filename = os.path.basename(path)
-                date = datetime.strptime(
-                    os.path.splitext(filename)[0].split("_")[-1], "%Y%m%d"
-                )
+                date = datetime.strptime(os.path.splitext(filename)[0].split("_")[-1], "%Y%m%d")
 
                 grid_ds = grid_processer.process_grid(path, date)
                 logging.info("Grid making complete")

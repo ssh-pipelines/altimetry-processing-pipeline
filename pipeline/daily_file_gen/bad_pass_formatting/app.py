@@ -47,9 +47,14 @@ def handler(event, context):
         format="[%(levelname)s] %(asctime)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
+    
+    bucket = event.get("bucket")
+    if bucket is None:
+        raise ValueError("bucket job parameter missing.")
+    
     try:
         # Load up existing bad pass document
-        bad_pass_path = "s3://example-bucket/aux_files/bad_pass_list.csv"
+        bad_pass_path = f"s3://{bucket}/aux_files/bad_pass_list.csv"
         og_df = pd.read_csv(aws_manager.stream_obj(bad_pass_path))
 
         logging.info(f"There are currently {og_df.shape[0]} bad passes being flagged.")

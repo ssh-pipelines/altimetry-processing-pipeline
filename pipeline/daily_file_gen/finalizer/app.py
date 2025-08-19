@@ -4,20 +4,6 @@ import logging
 from finalization.finalizer import Finalizer
 
 
-def process_records(event):
-    for record in event["Records"]:
-        message_body = json.loads(record["body"])
-
-        date = datetime.strptime(message_body.get("date"), "%Y-%m-%d").date()
-
-        logging.info(f"Finalizing daily file for {date.isoformat()}")
-        try:
-            finalizer = Finalizer(date)
-            finalizer.process()
-        except Exception as e:
-            logging.exception(e)
-
-
 def handler(event, context):
     logging.root.handlers = []
     logging.basicConfig(
@@ -26,16 +12,18 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    if "Records" in event:
-        process_records(event)
-        return
+    bucket = event.get("bucket")
+    proc_date = event.get("date")
+
+    if None in [bucket, proc_date]:
+        raise ValueError("One of date, or bucket job parameters missing.")
 
     try:
-        date = datetime.strptime(event.get("date"), "%Y-%m-%d").date()
+        date = datetime.strptime(proc_date, "%Y-%m-%d").date()
 
         logging.info(f"Finalizing daily file for {date.isoformat()}")
-        finalizer = Finalizer(date)
-        finalizer.process()
+        finalizer = Finalizer(date, bucket)
+        finalizer.process(bucket)
         result = {"status": "success", "data": event}
         return result
     except Exception as e:

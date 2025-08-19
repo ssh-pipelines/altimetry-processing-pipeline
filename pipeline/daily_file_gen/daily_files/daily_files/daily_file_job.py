@@ -93,23 +93,21 @@ def save_ds(ds: xr.Dataset, output_path: str):
     ds.to_netcdf(output_path, encoding=encoding)
 
 
-def work(job: DailyFileJob):
+def work(job: DailyFileJob, bucket: str):
     """
     Opens and processes granules via direct S3 paths
     """
     file_objs = [job.fetcher.fetch(granule.s3_url) for granule in job.granules]
     collection_ids = [granule.collection_id for granule in job.granules]
-    daily_ds = job.processor(file_objs, job.date, collection_ids).ds
-    daily_ds.attrs["source_files"] = ", ".join(
-        [granule.title for granule in job.granules]
-    )
+    daily_ds = job.processor(file_objs, job.date, collection_ids, bucket).ds
+    daily_ds.attrs["source_files"] = ", ".join([granule.title for granule in job.granules])
 
     filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
     s3_output_path = os.path.join(
-        "s3://example-bucket/daily_files/p1",
+        f"s3://{bucket}/daily_files/p1",
         job.satellite,
         str(job.date.year),
         filename,
@@ -119,7 +117,7 @@ def work(job: DailyFileJob):
     daily_ds.close()
 
 
-def make_empty(job: DailyFileJob):
+def make_empty(job: DailyFileJob, bucket: str):
     """
     In the event no data is found we still want an empty daily file with the expected metadata.
     """
@@ -143,14 +141,12 @@ def make_empty(job: DailyFileJob):
     daily_ds.attrs["time_coverage_end"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"
 
-    filename = (
-        f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'
-    )
+    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
     s3_output_path = os.path.join(
-        "s3://example-bucket/daily_files/p1",
+        f"s3://{bucket}/daily_files/p1",
         job.satellite,
         str(job.date.year),
         filename,
@@ -159,10 +155,10 @@ def make_empty(job: DailyFileJob):
     logging.info("Job complete.")
 
 
-def start_job(date: str, source: str, satellite: str):
+def start_job(date: str, source: str, satellite: str, bucket: str):
     daily_file_job = DailyFileJob(date, source, satellite)
     daily_file_job.fetch_granules()
     if len(daily_file_job.granules) > 0:
-        work(daily_file_job)
+        work(daily_file_job, bucket)
     else:
-        make_empty(daily_file_job)
+        make_empty(daily_file_job, bucket)

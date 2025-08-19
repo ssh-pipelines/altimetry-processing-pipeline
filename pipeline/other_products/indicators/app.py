@@ -13,19 +13,11 @@ def get_indicators_modtime() -> datetime:
     Currently a placeholder as we are processing ALL dates every time
     """
     return datetime(1970, 1, 1)
-    indicators_meta = aws_manager.get_all_obj_meta(
-        "s3://example-bucket/aux_files/indicators.nc"
-    )
-    if "LastModified" in indicators_meta["example-bucket/aux_files/indicators.nc"]:
-        return indicators_meta["example-bucket/aux_files/indicators.nc"][
-            "LastModified"
-        ]
-    return datetime(1970, 1, 1)
 
 
-def get_keys_to_process(base_mod_time: datetime) -> List[str]:
+def get_keys_to_process(base_mod_time: datetime, bucket: str) -> List[str]:
     sg_modtimes = aws_manager.get_all_obj_meta(
-        "s3://example-bucket/simple_grids/p3/*/*.nc"
+        f"s3://{bucket}/simple_grids/p3/*/*.nc"
     )
     return [
         k
@@ -42,17 +34,21 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
+    bucket = event.get("bucket")
+    if bucket is None:
+        raise ValueError("bucket job parameter missing.")
+
     try:
         # Get existing indicators file mod time
         base_mod_time = get_indicators_modtime()
         logging.info(f"Indicators file mod time: {base_mod_time}")
 
-        keys_to_process = get_keys_to_process(base_mod_time)
+        keys_to_process = get_keys_to_process(base_mod_time, bucket)
         logging.info(f"{len(keys_to_process)} simple grids require processing")
 
         if keys_to_process:
             # process simple grids and update indicators file
-            IndicatorProcessor(keys_to_process).run()
+            IndicatorProcessor(keys_to_process).run(bucket)
 
         result = {"status": "success", "data": event}
         return result

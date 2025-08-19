@@ -42,7 +42,7 @@ def chunk_dates_by_year(dates: List[datetime]) -> Dict[int, List[datetime]]:
 
 
 def query_daily_files_for_year(
-    year: int, start_date: datetime, end_date: datetime
+    year: int, start_date: datetime, end_date: datetime, bucket: str
 ) -> Dict[datetime, datetime]:
     """
     Query S3 for modified times of daily files for a specific year.
@@ -50,7 +50,7 @@ def query_daily_files_for_year(
     print(f"Querying S3 for daily files in {year}")
     paginator = s3.get_paginator("list_objects_v2")
     prefix = f"daily_files/p3/{year}/"
-    pages = paginator.paginate(Bucket="example-bucket", Prefix=prefix)
+    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
     timestamps = {}
     for page in pages:
@@ -67,25 +67,15 @@ def query_daily_files_for_year(
 def query_gsfc(start_date: datetime, end_date: datetime) -> Dict[datetime, List[dict]]:
     print(f"Querying CMR for GSFC granules in {start_date.year}")
 
-    api = (
-        GranuleQuery()
-        .concept_id(GSFC_COLLECTION)
-        .provider("POCLOUD")
-        .temporal(start_date, end_date)
-    )
+    api = GranuleQuery().concept_id(GSFC_COLLECTION).provider("POCLOUD").temporal(start_date, end_date)
     query_results = api.get_all()
 
     query_results_by_date = defaultdict(list)
     for granule in query_results:
-        granule_start = datetime.fromisoformat(
-            granule.get("time_start").replace("Z", "")
-        )
+        granule_start = datetime.fromisoformat(granule.get("time_start").replace("Z", ""))
         granule_end = datetime.fromisoformat(granule.get("time_end").replace("Z", ""))
 
-        for date in [
-            start_date + timedelta(days=i)
-            for i in range((end_date - start_date).days + 1)
-        ]:
+        for date in [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]:
             if granule_end > date > granule_start:
                 query_results_by_date[date.date()].append(granule)
 
@@ -102,25 +92,15 @@ def query_gsfc(start_date: datetime, end_date: datetime) -> Dict[datetime, List[
 
 def query_s6(start_date: datetime, end_date: datetime) -> Dict[datetime, datetime]:
     print(f"Querying CMR for S6 granules in {start_date.year}")
-    api = (
-        GranuleQuery()
-        .concept_id(list(S6_COLLECTIONS.keys()))
-        .provider("POCLOUD")
-        .temporal(start_date, end_date)
-    )
+    api = GranuleQuery().concept_id(list(S6_COLLECTIONS.keys())).provider("POCLOUD").temporal(start_date, end_date)
     query_results = api.get_all()
 
     query_results_by_date = defaultdict(list)
     for granule in query_results:
-        granule_start = datetime.fromisoformat(
-            granule.get("time_start").replace("Z", "")
-        )
+        granule_start = datetime.fromisoformat(granule.get("time_start").replace("Z", ""))
         granule_end = datetime.fromisoformat(granule.get("time_end").replace("Z", ""))
 
-        for date in [
-            start_date + timedelta(days=i)
-            for i in range((end_date - start_date).days + 1)
-        ]:
+        for date in [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]:
             if granule_end > date > granule_start:
                 query_results_by_date[date.date()].append(granule)
 
@@ -152,9 +132,7 @@ def query_s6(start_date: datetime, end_date: datetime) -> Dict[datetime, datetim
     return granule_mod_times
 
 
-def query_granules_for_year(
-    year: int, start_date: datetime, end_date: datetime
-) -> Dict[datetime, datetime]:
+def query_granules_for_year(year: int, start_date: datetime, end_date: datetime) -> Dict[datetime, datetime]:
     """
     Query CMR for granules across multiple collections for a specific year.
     """
@@ -179,14 +157,17 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
+    bucket = event.get("bucket")
+    
+    if bucket is None:
+        raise ValueError("bucket job parameter missing.")
+
     # Force an update ie: does not perform check
     force_update = event.get("force_update", False)
 
     # Allowing manual setting of date range to check
     if event.get("start") and event.get("end"):
-        start_date = max(
-            datetime.fromisoformat(event.get("start")), datetime(1992, 10, 25)
-        )
+        start_date = max(datetime.fromisoformat(event.get("start")), datetime(1992, 10, 25))
         end_date = datetime.fromisoformat(event.get("end"))
 
     # "full" lookback checks everything starting at 1992-10-25
@@ -200,12 +181,8 @@ def handler(event, context):
         end_date = daily_file_end_date()
 
     # Generate the list of dates
-    lookback_dates = [
-        start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)
-    ]
-    logging.info(
-        f"Determining jobs between {start_date} and {end_date} by looking at {len(lookback_dates)} dates"
-    )
+    lookback_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+    logging.info(f"Determining jobs between {start_date} and {end_date} by looking at {len(lookback_dates)} dates")
 
     # Chunk dates by year
     yearly_dates = chunk_dates_by_year(lookback_dates)
@@ -214,12 +191,11 @@ def handler(event, context):
     granule_mod_times = {}
 
     if not force_update:
-
         for year, dates in yearly_dates.items():
             start_date, end_date = dates[0], dates[-1]
 
             # Query daily files and granules for the year
-            df_mod_times.update(query_daily_files_for_year(year, start_date, end_date))
+            df_mod_times.update(query_daily_files_for_year(year, start_date, end_date, bucket))
             granule_mod_times.update(query_granules_for_year(year, start_date, end_date))
 
     jobs = []

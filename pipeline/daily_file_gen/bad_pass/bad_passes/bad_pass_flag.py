@@ -17,12 +17,12 @@ class XoverProcessor:
         self.window_start = date - timedelta(self.windowlen) - timedelta(self.windowpad)
         self.window_end = date + timedelta(self.windowpad)
 
-    def get_files(self) -> Iterable[str]:
+    def get_files(self, bucket: str) -> Iterable[str]:
         window_range = []
         cur_date = self.window_start
         while cur_date <= self.window_end:
             xover_filename = f'xovers_{self.source}-{cur_date.strftime("%Y-%m-%d")}.nc'
-            xover_path = f"s3://example-bucket/crossovers/p2/{self.source}/{cur_date.year}/{xover_filename}"
+            xover_path = f"s3://{bucket}/crossovers/p2/{self.source}/{cur_date.year}/{xover_filename}"
             if aws_manager.key_exists(xover_path):
                 window_range.append(xover_path)
             else:
@@ -107,9 +107,9 @@ class XoverProcessor:
                     bad_passes.append({"cycle": cycle, "pass_num": pass_num})
         return bad_passes
 
-    def process(self):
+    def process(self, bucket: str):
         logging.info(f"Finding {self.source} bad passes for {self.date}")
-        file_paths = self.get_files()
+        file_paths = self.get_files(bucket)
         self.load_all_data(file_paths)
         currentdate = datetime.timestamp(self.date)
         # Get list of (cycle, pass_num)

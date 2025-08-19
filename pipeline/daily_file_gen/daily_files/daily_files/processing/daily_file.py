@@ -185,9 +185,7 @@ class DailyFile(ABC):
     def make_ssha_smoothed(self, date: datetime):
         self.ds = ssha_smoothing(self.ds, date)
 
-    def make_lonlat_points(
-        self, lats: np.ndarray, lons: np.ndarray
-    ) -> gpd.GeoDataFrame:
+    def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """
         Convert lat lon values to shapely Point objects and wrap
         as georeferenced GeoDataFrame.
@@ -202,20 +200,12 @@ class DailyFile(ABC):
         """ """
         logging.info("Mapping data points to their respective basin")
 
-        poly_df = gpd.read_file(
-            "daily_files/ref_files/basin/new_basin_lake_polygons.shp"
-        )
+        poly_df = gpd.read_file("daily_files/ref_files/basin/new_basin_lake_polygons.shp")
 
         # Format basin ids and names for basin_names_table
-        names = (
-            poly_df["name"]
-            .apply(lambda x: x.replace("'", " ").replace(",", " -"))
-            .values
-        )
+        names = poly_df["name"].apply(lambda x: x.replace("'", " ").replace(",", " -")).values
         basin_ids = poly_df["feature_id"].astype(str).values
-        basin_table = np.array(
-            [f"{basin},{name}" for basin, name in zip(basin_ids, names)]
-        )
+        basin_table = np.array([f"{basin},{name}" for basin, name in zip(basin_ids, names)])
         basin_table = np.insert(basin_table, 0, "0,Land", axis=0)
         self.ds["basin_names_table"] = (
             ("basins"),
@@ -225,20 +215,13 @@ class DailyFile(ABC):
         if len(self.ds["time"]) == 0:
             self.ds["ssha_smoothed"] = (("time"), np.array([], dtype="float64"))
             self.ds["basin_flag"] = (("time"), np.array([], dtype="int32"))
-            self.ds["basin_flag"].attrs["flag_values"] = np.array(
-                basin_ids, dtype=np.int32
-            )
+            self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
             self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
-                [
-                    name.replace(": ", ":").replace(" ", "_").replace(":", "_")
-                    for name in names
-                ]
+                [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
             )
             return
 
-        points_df = self.make_lonlat_points(
-            self.ds["latitude"].values, self.ds["longitude"].values
-        )
+        points_df = self.make_lonlat_points(self.ds["latitude"].values, self.ds["longitude"].values)
         join_df = gpd.sjoin(points_df, poly_df, how="left", predicate="within")
         self.ds["basin_flag"] = (
             ("time"),
@@ -246,19 +229,12 @@ class DailyFile(ABC):
         )
         self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
         self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
-            [
-                name.replace(": ", ":").replace(" ", "_").replace(":", "_")
-                for name in names
-            ]
+            [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
         )
 
     def apply_basin_to_nasa(self):
         self.ds["nasa_flag"].values[
-            (
-                (self.ds["basin_flag"] == 0)
-                | (self.ds["basin_flag"] == 1003)
-                | (self.ds["basin_flag"] == 190)
-            )
+            ((self.ds["basin_flag"] == 0) | (self.ds["basin_flag"] == 1003) | (self.ds["basin_flag"] == 190))
         ] = 1
 
     def set_var_attrs(self):
@@ -401,12 +377,8 @@ class DailyFile(ABC):
             "geospatial_lat_max": 90.0,
             "geospatial_lon_min": 0.0,
             "geospatial_lon_max": 360.0,
-            "time_coverage_start": str(self.ds["time"].values[0])[:19] + "Z"
-            if len(self.ds["time"]) > 0
-            else "N/A",
-            "time_coverage_end": str(self.ds["time"].values[-1])[:19] + "Z"
-            if len(self.ds["time"]) > 0
-            else "N/A",
+            "time_coverage_start": str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
+            "time_coverage_end": str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
         }
 
         for k, v in global_attrs.items():

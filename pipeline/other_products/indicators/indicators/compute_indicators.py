@@ -159,7 +159,7 @@ class IndicatorProcessor:
         indicators_ds["smoothed_gmsl"] = (["time"], smoothed_gmsl, {"units": "cm"})
         return indicators_ds
 
-    def format_and_upload(self, computed_indicators: List[dict]):
+    def format_and_upload(self, computed_indicators: List[dict], bucket: str):
         """
         From list of dictionary values of indicators:
         1. Make netcdf containing all indicators and upload to s3
@@ -172,7 +172,7 @@ class IndicatorProcessor:
         # Convert results to xarray Dataset
         indicators_ds = self.generate_ds(computed_indicators)
 
-        indicators_prefix = "s3://example-bucket/indicators/"
+        indicators_prefix = f"s3://{bucket}/indicators/"
 
         # Make and upload netcdf
         nc_path = "/tmp/indicators.nc"
@@ -215,7 +215,7 @@ class IndicatorProcessor:
             )
             aws_manager.upload_obj(mp_path, s3_mp_path)
 
-    def run(self):
+    def run(self, bucket: str):
         logging.info("Beginning indicators calculations...")
 
         computed_indicators = []
@@ -247,4 +247,4 @@ class IndicatorProcessor:
             except Exception as e:
                 logging.exception(f"Error processing cycle {grid_key}. {e}")
 
-        self.format_and_upload(computed_indicators)
+        self.format_and_upload(computed_indicators, bucket)

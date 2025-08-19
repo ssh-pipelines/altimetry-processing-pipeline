@@ -12,20 +12,11 @@ from utilities.aws_utils import aws_manager
 
 
 class GSFCDailyFile(DailyFile):
-    def __init__(
-        self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str]
-    ):
+    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str], bucket: str):
         self.date = date
 
-        opened_files = [
-            xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs
-        ]
-        cycles = np.concatenate(
-            [
-                np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"])
-                for ds in opened_files
-            ]
-        )
+        opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
+        cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
         self.og_ds = xr.concat(opened_files, dim="N_Records")
         opened_files = []
 
@@ -33,7 +24,7 @@ class GSFCDailyFile(DailyFile):
         lats: np.ndarray = self.og_ds["lat"].values
         lons: np.ndarray = self.og_ds["lon"].values
         times: np.ndarray = self.og_ds["time"].values
-        dac: np.ndarray = self.compute_dac(np.unique(cycles), ssha)
+        dac: np.ndarray = self.compute_dac(np.unique(cycles), ssha, bucket)
         cycles, passes = self.compute_cycles_passes(self.og_ds, cycles)
         self.collection_ids = collection_ids
 
@@ -45,18 +36,14 @@ class GSFCDailyFile(DailyFile):
 
         self.make_daily_file_ds()
 
-    def compute_cycles_passes(
-        self, ds: xr.Dataset, cycles: np.ndarray
-    ) -> tuple[np.ndarray]:
+    def compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> tuple[np.ndarray]:
         """
         Computes passes using look up table that converts a reference_orbit and index value to pass number.
         GSFC uses slightly different pass/cycle definitions. We need to increment cycle number in the ascending half below the equator
         of a pass where pass==1
         """
         logging.info("Computing pass values")
-        df = pd.read_csv(
-            "daily_files/ref_files/complete_gsfc_pass_lut.csv", converters={"id": str}
-        ).set_index("id")
+        df = pd.read_csv("daily_files/ref_files/complete_gsfc_pass_lut.csv", converters={"id": str}).set_index("id")
 
         # Convert reference_orbit and index from GSFC file to 7 digit long, left-padded string
         ds_ids = [
@@ -67,23 +54,20 @@ class GSFCDailyFile(DailyFile):
 
         # Use index where passes wrap back to 1 to select cycles values that require manual incrementing
         index_of_wrap = np.where(passes[:-1] > passes[1:])[0][0] + 1
-        cycles[index_of_wrap:][
-            (cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)
-        ] += 1
+        cycles[index_of_wrap:][(cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)] += 1
         return cycles, passes
 
-    def compute_dac(self, unique_cycles: np.ndarray, ssha: np.ndarray) -> np.ndarray:
+    def compute_dac(self, unique_cycles: np.ndarray, ssha: np.ndarray, bucket: str) -> np.ndarray:
         """
         Loads corresponding NOIB cycle file(s) and subtracts "ssha_noib" from our ssha values
         """
         all_obj_ds = []
+        noib_bucket_path = f"s3://{bucket}/aux_files/GSFC_NOIB"
         try:
             for cycle_num in unique_cycles:
                 logging.info(f"Streaming cycle {cycle_num}")
                 noib_filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V5_2.nc"
-                src = os.path.join(
-                    "s3://", "example-bucket", "aux_files", "GSFC_NOIB", noib_filename
-                )
+                src = os.path.join(noib_bucket_path, noib_filename)
                 obj = aws_manager.stream_obj(src)
                 obj_ds = xr.open_dataset(obj, engine="h5netcdf")
                 all_obj_ds.append(obj_ds)
@@ -113,14 +97,10 @@ class GSFCDailyFile(DailyFile):
         """
         flag = self.og_ds["flag"].values
         max_bits = int(np.ceil(np.log2(flag.max())))
-        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(
-            bool
-        )
+        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
         return binary_representation
 
-    def manual_outliers(
-        self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray
-    ) -> np.ndarray:
+    def manual_outliers(self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
         """
         Manual method for catching known bad values
         """
@@ -168,14 +148,7 @@ class GSFCDailyFile(DailyFile):
             ((surf_type == 0) | (surf_type == 2))
             & (~flag_array[:, src_flag_indices].any(axis=1))
             & (~np.isnan(ssha))
-            & (
-                ~(
-                    (basin_flag > 0)
-                    & (basin_flag < 1000)
-                    & (abs(lats) > 60)
-                    & (abs(ssha) > 1.2)
-                )
-            )
+            & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2)))
         )
 
         outliers = self.manual_outliers(ssha, prelim_flag, lats)
@@ -185,20 +158,10 @@ class GSFCDailyFile(DailyFile):
         n_std = 95
         timestamps = np.arange(1, len(ssha) + 1)
 
-        rolling_median = (
-            pd.Series(ssha[prelim_flag])
-            .rolling(n_median, center=True, min_periods=1)
-            .median()
-            .values
-        )
+        rolling_median = pd.Series(ssha[prelim_flag]).rolling(n_median, center=True, min_periods=1).median().values
         dx = ssha[prelim_flag] - rolling_median
 
-        dx_median = (
-            pd.Series(np.square(dx))
-            .rolling(n_std, center=True, min_periods=1)
-            .median()
-            .values
-        )
+        dx_median = pd.Series(np.square(dx)).rolling(n_std, center=True, min_periods=1).median().values
         rolling_std = np.clip(np.sqrt(dx_median), 0.05, None)
 
         median_interp = np.interp(timestamps, timestamps[prelim_flag], rolling_median)
@@ -211,21 +174,14 @@ class GSFCDailyFile(DailyFile):
             & (~flag_array[:, [1, 2, 3, 5]].any(axis=1))
             & (~np.isnan(ssha))
             & median_flag
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssha) > 1.2)
-            )
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
         nasa_flag[outliers] = 1
 
         source_flag = np.array(flag_array).astype("bool")
 
-        all_flag_meanings = re.split(
-            r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"]
-        )
+        all_flag_meanings = re.split(r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"])
 
         # Assign nasa_flag to dataset
         self.ds["nasa_flag"] = (

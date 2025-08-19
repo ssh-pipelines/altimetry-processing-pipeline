@@ -1,36 +1,8 @@
 from datetime import datetime
 import json
 import logging
-from typing import Tuple
 
 from oer.oer import OerCorrection
-
-
-def process_records(event):
-    for record in event["Records"]:
-        message_body = json.loads(record["body"])
-        try:
-            date, source = parse_params(message_body)
-        except ValueError as e:
-            logging.exception(f"Error processing params: {e}")
-            continue
-        try:
-            oer_job = OerCorrection(source, date)
-            oer_job.run()
-        except Exception as e:
-            logging.exception(f"Error processing params: {e}")
-
-
-def parse_params(params: dict) -> Tuple[datetime, str, str]:
-    try:
-        date = datetime.strptime(params.get("date"), "%Y-%m-%d")
-    except Exception as e:
-        raise ValueError(f"Unable to parse date: {e}")
-    source = params.get("source")
-
-    if None in [date, source]:
-        raise ValueError(f"Unable to get date {date} or source {source} from message.")
-    return date, source
 
 
 def handler(event, context):
@@ -41,15 +13,16 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    # Bulk processing via SQS
-    if "Records" in event:
-        process_records(event)
-        return
+    bucket = event.get("bucket")
+    proc_date = event.get("date")
+    source = event.get("source")
+    if None in [proc_date, source, bucket]:
+        raise ValueError("One of date, source, or bucket job parameters missing.")
 
     try:
-        date, source = parse_params(event)
+        date = datetime.strptime(proc_date, "%Y-%m-%d")
         oer_job = OerCorrection(source, date)
-        oer_job.run()
+        oer_job.run(bucket)
         result = {"status": "success", "data": event}
         return result
     except Exception as e:

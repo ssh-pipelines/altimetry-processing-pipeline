@@ -15,14 +15,14 @@ S6_ABSOLUTE_OFFSET = 0.0177 # Offset from GSFC in meters
 
 
 class Finalizer:
-    def __init__(self, processing_date: date):
-        self.bad_pass_df: pd.DataFrame = self._load_bad_passes()
+    def __init__(self, processing_date: date, bucket: str):
+        self.bad_pass_df: pd.DataFrame = self._load_bad_passes(bucket)
         self.processing_date: date = processing_date
         self.source: str = "GSFC" if processing_date < S6_START else "S6"
 
-    def _load_bad_passes(self) -> pd.DataFrame:
+    def _load_bad_passes(self, bucket: str) -> pd.DataFrame:
         stream = aws_manager.fs.open(
-            "s3://example-bucket/aux_files/bad_pass_list.csv"
+            f"s3://{bucket}/aux_files/bad_pass_list.csv"
         )
         return pd.read_csv(stream)
 
@@ -36,12 +36,12 @@ class Finalizer:
     def upload_df(self, local_path: str, dst_path: str):
         aws_manager.fs.upload(local_path, dst_path)
 
-    def process(self):
+    def process(self, bucket):
         year = str(self.processing_date.year)
         filename = f'{self.source}-SSH_alt_ref_at_v1_{self.processing_date.strftime("%Y%m%d")}.nc'
         logging.info(f"Processing {filename}")
         src_s3_path = os.path.join(
-            "s3://example-bucket/daily_files/p2", self.source, year, filename
+            f"s3://{bucket}/daily_files/p2", self.source, year, filename
         )
 
         try:
@@ -99,7 +99,7 @@ class Finalizer:
 
         dst_filename = filename.replace(self.source, "NASA")
         dst_s3_path = os.path.join(
-            "s3://example-bucket/daily_files/p3", year, dst_filename
+            f"s3://{bucket}/daily_files/p3", year, dst_filename
         )
 
         ds.granule_id = dst_filename

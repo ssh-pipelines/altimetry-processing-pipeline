@@ -89,7 +89,7 @@ class Crossover:
         date = self._date_from_filename(os.path.basename(filepath))
         return self.window_start <= date <= self.window_end
 
-    def stream_files(self) -> Iterable[TextIOWrapper]:
+    def stream_files(self, bucket: str) -> Iterable[TextIOWrapper]:
         start_year = str(self.window_start.astype("datetime64[Y]"))
         end_year = str(self.window_end.astype("datetime64[Y]"))
 
@@ -97,7 +97,7 @@ class Crossover:
 
         for year in list({start_year, end_year}):
             glob_pattern = os.path.join(
-                "s3://example-bucket/daily_files",
+                f"s3://{bucket}/daily_files",
                 self.df_version,
                 self.source,
                 year,
@@ -271,13 +271,13 @@ class Crossover:
         ds.to_netcdf(local_output_path, engine="h5netcdf")
         return local_output_path
 
-    def upload_xover(self, local_path):
+    def upload_xover(self, local_path: str, bucket: str):
         """
         Uploads crossover netCDF to bucket
         """
         filename = os.path.basename(local_path)
         s3_output_path = os.path.join(
-            "s3://example-bucket/crossovers",
+            f"s3://{bucket}/crossovers",
             self.df_version,
             self.source,
             np.datetime_as_string(self.day, unit="Y"),
@@ -285,7 +285,7 @@ class Crossover:
         )
         aws_manager.upload_obj(local_path, s3_output_path)
 
-    def run(self):
+    def run(self, bucket):
         logging.info(f"Looking for {self.source} {self.day} self-crossovers...")
         """
         1. Stream files in window
@@ -301,12 +301,12 @@ class Crossover:
         # Initialize empty data class
         self.crossover_data = CrossoverData.init()
 
-        self.streams = self.stream_files()
+        self.streams = self.stream_files(bucket)
         if len(self.streams) > 0:
             self.extract_and_set_data()
             self.search_day_for_crossovers()
 
         ds = self.create_dataset()
         local_path = self.save_to_netcdf(ds)
-        self.upload_xover(local_path)
+        self.upload_xover(local_path, bucket)
         logging.info(f"Processing {self.source} {self.day} complete")

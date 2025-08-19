@@ -12,12 +12,16 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
+    bucket = event.get("bucket")   
     proc_date = event.get("date")
     source = event.get("source")
+    
+    if None in [bucket, proc_date, source]:
+        raise ValueError("One of date, source, or bucket job parameters missing.")
 
     try:
         xover_processor = XoverProcessor(source, datetime.fromisoformat(proc_date))
-        bad_pass_results = xover_processor.process()
+        bad_pass_results = xover_processor.process(bucket)
         return bad_pass_results
     except Exception as e:
         error_response = {

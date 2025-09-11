@@ -1,12 +1,14 @@
-# NASA SSH Pipeline
+# ALTIMETRY PROCESSING PIPELINE
 
-Monorepo for the independent stages of the NASA SSH Pipeline. 
+Monorepo for the independent stages of the altimetry processing pipeline used to generate NASA SSH products. 
 
 Pipeline consists of:
 
+### Daily along track generation
+
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
-Additional products are created from the finalized daily files:
+### Additional product generation
 
 Simple grids -> Indicators -> Imagery for website
 
@@ -16,19 +18,16 @@ Simple grids -> Indicators -> Imagery for website
                       +------------+
                             |
                             v
-                [ Generate Daily Files ] -------------------------->|
-                            |                                       |
-                            v                                       |
-                [ Generate Simple Grids ] ------------------------->| 
-                            |                                       |
-                            v                                       |
-             +--------------+--------------+                        |
-             |                             |                        |
-             v                             v                        |
-[ Generate ENSO Maps & Imagery]  [ Generate Indicators ]----------->|
-                                                                    |
-                                                                    v
-                                                          [ Publish to PODAAC ]
+                [ Generate Daily Files ]
+                            |   
+                            v   
+                [ Generate Simple Grids ]
+                            |  
+                            v  
+             +--------------+--------------+ 
+             |                             | 
+             v                             v 
+[ Generate ENSO Maps & Imagery]  [ Generate Indicators ]
 ```
 
 ## Description

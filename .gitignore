@@ -6,3 +6,4 @@ __pycache__
 *test*granules
 *.egg*
 build
+.env

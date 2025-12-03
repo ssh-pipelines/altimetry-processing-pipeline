@@ -5,14 +5,15 @@ set -eo pipefail
 if [ -z "$DRY_RUN" ]; then
     : "${AWS_ACCOUNT_ID:?AWS_ACCOUNT_ID not set}"
     : "${AWS_REGION:?AWS_REGION not set}"
+    : "${AWS_PROFILE:?AWS_PROFILE not set}"
 fi
 
 REGISTRY="${AWS_ACCOUNT_ID:-<ACCOUNT_ID>}.dkr.ecr.${AWS_REGION:-us-west-2}.amazonaws.com"
 
 if [ -z "$DRY_RUN" ]; then
     echo "Logging in to ECR: $REGISTRY" >&2   # send message to stderr
-    aws ecr get-login-password --region "$AWS_REGION" \
-        | docker login --username AWS --password-stdin "$REGISTRY"
+    aws --profile "$AWS_PROFILE" ecr get-login-password --region "$AWS_REGION" \
+        | docker login --username AWS --password-stdin "$REGISTRY" >/dev/null 2>&1
 else
     echo "[DRY-RUN] Would log in to ECR: $REGISTRY" >&2  # send message to stderr
 fi

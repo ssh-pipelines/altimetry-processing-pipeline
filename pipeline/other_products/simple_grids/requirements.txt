@@ -3,10 +3,11 @@ numpy==1.26.2
 netcdf4==1.6.5
 requests==2.25.1
 xarray==2023.10.1
-h5py
-scipy
-dask
+h5py==3.13.0
+scipy==1.15.3
+dask==2025.5.1
 boto3
 s3fs
-h5netcdf
-geopandas
+h5netcdf==1.6.1
+geopandas==1.0.1
+pyproj==3.7.1

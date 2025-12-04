@@ -31,9 +31,9 @@ class Target:
 
 class Source:
     def __init__(self, ds: xr.Dataset) -> None:
-        try:
+        if "ssha_smoothed" in ds:
             self.smssh = ds["ssha_smoothed"].values
-        except:
+        elif "ssh_smoothed" in ds:
             self.smssh = ds["ssh_smoothed"].values
 
         self.bflag = ds["basin_flag"].values
@@ -263,7 +263,7 @@ class Gridder:
             "valid_max": 360.0,
         }
 
-        creation_time = datetime.now().isoformat(timespec='seconds')
+        creation_time = datetime.now().isoformat(timespec="seconds")
 
         # Set global attributes
         ds.attrs["Conventions"] = "CF-1.7"

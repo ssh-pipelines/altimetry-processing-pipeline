@@ -20,9 +20,10 @@ scripts/
     ├── ecr_login.sh          # Authenticates Docker with AWS ECR
     ├── find_images.sh        # Enumerates all images in the monorepo
     └── load_env.sh           # Loads shared environment variables
+.env                          # File with deployment specific values
 ```
 
-Requires `.env` file at the repo root containg `AWS_REGION` and `AWS_ACCOUNT_ID` key value pairs.
+Requires `.env` file at the repo root containg `AWS_REGION`,  `AWS_ACCOUNT_ID`, `AWS_PROFILE` key value pairs. `AWS_PROFILE` contains the profile name to use with valid credentials for accessing `AWS_ACCOUNT_ID`'s ECR and Lambda services with sufficient privelege   
 
 Scripts are enforced to be run from the root of the repo.
 

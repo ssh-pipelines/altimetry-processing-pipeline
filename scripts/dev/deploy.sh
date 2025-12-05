@@ -4,6 +4,15 @@ set -eo pipefail
 UTIL="$(cd "$(dirname "$0")/../util" && pwd)"
 source "$UTIL/load_env.sh"
 
+if [ -z "$REGISTRY" ]; then
+    echo "REGISTRY not set, assuming manual run"
+    echo "Logging in to ECR..."
+    DEV="$(cd "$(dirname "$0")" && pwd)"
+    UTIL="$DEV/../util"
+
+    export REGISTRY=$("$UTIL/ecr_login.sh")
+fi
+
 # Fail in real mode if env not set
 if [ -z "$DRY_RUN" ]; then
     : "${AWS_ACCOUNT_ID:?AWS_ACCOUNT_ID not set}"

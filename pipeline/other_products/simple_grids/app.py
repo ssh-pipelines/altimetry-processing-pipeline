@@ -1,6 +1,6 @@
 import json
 import logging
-from simple_gridder import simple_gridder
+from simple_gridder.gridder import start_job
 
 
 def handler(event, context):
@@ -17,7 +17,7 @@ def handler(event, context):
     if None in [date, source, bucket]:
         raise ValueError("One of date, or bucket job parameters missing.")
     try:
-        simple_gridder.start_job(date, source, resolution, bucket)
+        start_job(date, source, resolution, bucket)
     except Exception as e:
         error_response = {
             "status": "error",

@@ -18,10 +18,13 @@ class SimpleGridderJob:
         self.end_date: datetime = self.start_date + timedelta(9)
         self.source: Optional[str] = source
         self.resolution: Optional[str] = resolution
-        if resolution == "quart":
-            base_filename = "NASA-SSH_alt_ref_simple_grid_quart_v1"
+        if self.source:
+            base_filename = f"{self.source}_alt_ref_simple_grid_v1" 
         else:
             base_filename = "NASA-SSH_alt_ref_simple_grid_v1"
+            
+        if resolution == "quart":
+            base_filename = base_filename.replace("simple_grid_v1", "simple_grid_quart_v1")
 
         self.filename = f'{base_filename}_{self.center_date.strftime("%Y%m%d")}.nc'
 

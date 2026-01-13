@@ -12,7 +12,7 @@ COPY setup.py setup.py
 
 RUN python -m pip install .
 
-COPY pipeline/other_products/simple_grids/simple_gridder simple_grids/
+COPY pipeline/other_products/simple_grids/simple_gridder simple_gridder/
 COPY pipeline/other_products/simple_grids/app.py .
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/simple_gridder"

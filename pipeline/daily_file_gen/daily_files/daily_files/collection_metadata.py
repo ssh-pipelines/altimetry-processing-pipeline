@@ -11,15 +11,15 @@ class CollectionMeta:
 
 class AllCollections:
     collections: Iterable[CollectionMeta] = {
-        "C2619443998-POCLOUD": CollectionMeta(
-            "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography F08",
-            "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08",
-            "https://doi.org/10.5067/S6AP4-2LRNTR-F08",
+        "C3332203845-POCLOUD": CollectionMeta(
+            "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography G01",
+            "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01",
+            "https://doi.org/10.5067/S6AP4-2LRNTR-G01",
         ),
-        "C2619444006-POCLOUD": CollectionMeta(
-            "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography (Unvalidated) F08",
-            "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_F08_UNVALIDATED",
-            "https://doi.org/10.5067/S6AP4-2LRNUR-F08",
+        "C3332203819-POCLOUD": CollectionMeta(
+            "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography (Unvalidated) G01",
+            "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01_UNVALIDATED",
+            "https://doi.org/10.5067/S6AP4-2LRNUR-G01",
         ),
         "C1968979561-POCLOUD": CollectionMeta(
             "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography",

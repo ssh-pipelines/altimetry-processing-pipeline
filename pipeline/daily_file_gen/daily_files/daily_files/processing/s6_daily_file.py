@@ -6,7 +6,7 @@ import pandas as pd
 import xarray as xr
 import netCDF4 as nc
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from daily_files.processing.daily_file import DailyFile
 from daily_files.collection_metadata import AllCollections, CollectionMeta
@@ -17,12 +17,20 @@ class S6DailyFile(DailyFile):
         self.date = date
 
         logging.info(f"Opening {len(file_objs)} files")
-        opened_files = [self.extract_grouped_data(file_obj) for file_obj in file_objs]
+
+        opened_files = []
+        for i, file_obj in enumerate(file_objs):
+            try:
+                ds = self.extract_grouped_data(file_obj)
+                opened_files.append(ds)
+            except Exception as e:
+                logging.warning(f"Unable to open file object {i}: {e}")
+
         ds = xr.concat(opened_files, dim="time")
         self.original_ds = ds
         self.collection_ids = collection_ids
 
-        ssha: np.ndarray = ds["ssha"].values
+        ssha: np.ndarray = ds["ssha_nr"].values
         lats: np.ndarray = ds["latitude"].values
         lons: np.ndarray = ds["longitude"].values
         times: np.ndarray = ds["time"].values
@@ -51,17 +59,13 @@ class S6DailyFile(DailyFile):
         """
         ds = nc.Dataset("file_like", "r", memory=file_obj.read())
 
-        s6_offset = None
-        if "product_name" in ds.ncattrs() and "G01" in ds.product_name:
-            s6_offset = 0.011
-
         das = []
 
         for var in [
             "latitude",
             "longitude",
             "surface_classification_flag",
-            "rain_flag",
+            "rain_flag_nr",
             "rad_water_vapor_qual",
             "dac",
             "mean_sea_surface_sol1",
@@ -73,12 +77,9 @@ class S6DailyFile(DailyFile):
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
-        for var in ["sig0_ocean", "range_ocean_qual", "swh_ocean", "ssha"]:
+        for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
             nc_var = ds.groups["data_01"].groups["ku"].variables[var]
             nc_var_data = nc_var[:]
-
-            if var == "ssha" and s6_offset is not None:
-                nc_var_data = nc_var_data + s6_offset
 
             nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
@@ -119,13 +120,13 @@ class S6DailyFile(DailyFile):
     def make_nasa_flag(self):
         """ """
         logging.info("Making nasa_flag...")
-        kqual = self.original_ds["range_ocean_qual"].values
+        kqual = self.original_ds["range_ocean_nr_qual"].values
         surfc = self.original_ds["surface_classification_flag"].values
         rqual = self.original_ds["rad_water_vapor_qual"].values
-        rain = self.original_ds["rain_flag"].values
-        s0 = self.original_ds["sig0_ocean"].values
-        swh = self.original_ds["swh_ocean"].values
-        ssha = self.original_ds["ssha"].values
+        rain = self.original_ds["rain_flag_nr"].values
+        s0 = self.original_ds["sig0_ocean_nr"].values
+        swh = self.original_ds["swh_ocean_nr"].values
+        ssha = self.original_ds["ssha_nr"].values
         basin_flag = self.ds["basin_flag"].values
         lats = self.ds["latitude"].values
 
@@ -200,7 +201,7 @@ class S6DailyFile(DailyFile):
                 "flag_derivation": (
                     "nasa_flag is set to 0 for data that should be retained, and 1 for data that should be removed. nasa_flag is 0 if: "
                     "basin_flag is set to any valid, non-fill value & data passes an along-track median check, saved in the medain_filter_flag variable & the "
-                    "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag, range_ocean_qual, rad_water_vapor_qual, and derived standard deviation"
+                    "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag_nr, range_ocean_nr_qual, rad_water_vapor_qual, and derived standard deviation"
                 )
             },
         )
@@ -215,10 +216,10 @@ class S6DailyFile(DailyFile):
 
         for i, src_flag in enumerate(
             [
-                "range_ocean_qual",
+                "range_ocean_nr_qual",
                 "surface_classification_flag",
                 "rad_water_vapor_qual",
-                "rain_flag",
+                "rain_flag_nr",
             ],
             1,
         ):
@@ -275,3 +276,10 @@ class S6DailyFile(DailyFile):
         self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
         self.ds.attrs["references"] = ", and ".join(sorted(references))
         self.ds.attrs["mean_sea_surface"] = self.target_mss
+
+        if self.ds.attrs["time_coverage_start"] == "N/A":
+            self.ds.attrs["time_coverage_start"] = self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+        if self.ds.attrs["time_coverage_end"] == "N/A":
+            self.ds.attrs["time_coverage_end"] = (self.date + timedelta(days=1) - timedelta(seconds=1)).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ) + "Z"

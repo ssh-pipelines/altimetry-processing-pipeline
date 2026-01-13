@@ -11,8 +11,8 @@ session = boto3.Session()
 s3 = session.client("s3")
 
 S6_COLLECTIONS = {
-    "C2619443998-POCLOUD": 1,  # Highest priority
-    "C2619444006-POCLOUD": 2,
+    "C3332203845-POCLOUD": 1,  # Highest priority
+    "C3332203819-POCLOUD": 2,
     "C1968979561-POCLOUD": 3,  # Lowest priority
 }
 

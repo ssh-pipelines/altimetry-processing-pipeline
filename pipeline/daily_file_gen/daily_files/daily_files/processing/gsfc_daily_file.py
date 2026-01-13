@@ -4,7 +4,7 @@ import re
 import xarray as xr
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable, TextIO
 from daily_files.processing.daily_file import DailyFile
 from daily_files.collection_metadata import AllCollections, CollectionMeta
@@ -255,3 +255,8 @@ class GSFCDailyFile(DailyFile):
         self.ds.attrs["references"] = ", and ".join(sorted(references))
         self.ds.attrs["mean_sea_surface"] = self.target_mss
         self.ds.attrs["absolute_offset_applied"] = 0
+
+        if self.ds.attrs["time_coverage_start"] == "N/A":
+            self.ds.attrs["time_coverage_start"] = self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+        if self.ds.attrs["time_coverage_end"] == "N/A":
+            self.ds.attrs["time_coverage_end"] = (self.date + timedelta(days=1) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S") + "Z"

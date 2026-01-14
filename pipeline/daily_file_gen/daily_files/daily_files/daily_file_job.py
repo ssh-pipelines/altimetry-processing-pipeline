@@ -93,7 +93,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
     ds.to_netcdf(output_path, encoding=encoding)
 
 
-def work(job: DailyFileJob, bucket: str):
+def work(job: DailyFileJob, bucket: str) -> xr.Dataset:
     """
     Opens and processes granules via direct S3 paths
     """
@@ -101,23 +101,10 @@ def work(job: DailyFileJob, bucket: str):
     collection_ids = [granule.collection_id for granule in job.granules]
     daily_ds = job.processor(file_objs, job.date, collection_ids, bucket).ds
     daily_ds.attrs["source_files"] = ", ".join([granule.title for granule in job.granules])
-
-    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
-    out_path = f"/tmp/{filename}"
-    save_ds(daily_ds, out_path)
-
-    s3_output_path = os.path.join(
-        f"s3://{bucket}/daily_files/p1",
-        job.satellite,
-        str(job.date.year),
-        filename,
-    )
-    aws_manager.upload_obj(out_path, s3_output_path)
-    logging.info("Job complete.")
-    daily_ds.close()
+    return daily_ds
 
 
-def make_empty(job: DailyFileJob, bucket: str):
+def make_empty(job: DailyFileJob) -> xr.Dataset:
     """
     In the event no data is found we still want an empty daily file with the expected metadata.
     """
@@ -140,8 +127,11 @@ def make_empty(job: DailyFileJob, bucket: str):
     daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
     daily_ds.attrs["time_coverage_end"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"
+    return daily_ds
 
-    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{str(job.date)[:10].replace("-","")}.nc'
+
+def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
+    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
@@ -153,12 +143,14 @@ def make_empty(job: DailyFileJob, bucket: str):
     )
     aws_manager.upload_obj(out_path, s3_output_path)
     logging.info("Job complete.")
-
+    daily_ds.close()
 
 def start_job(date: str, source: str, satellite: str, bucket: str):
     daily_file_job = DailyFileJob(date, source, satellite)
     daily_file_job.fetch_granules()
     if len(daily_file_job.granules) > 0:
-        work(daily_file_job, bucket)
+        daily_ds = work(daily_file_job, bucket)
     else:
-        make_empty(daily_file_job, bucket)
+        daily_ds = make_empty(daily_file_job)
+
+    upload_ds(daily_ds, daily_file_job, bucket)

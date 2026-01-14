@@ -1,9 +1,9 @@
 numpy==1.26.2
 pandas==2.0.2
 xarray==2023.6.0
-netCDF4
-h5netcdf
-h5py
+netCDF4==1.7.2
+h5netcdf==1.6.1
+h5py==3.13.0
 boto3
 s3fs
-dask
+dask==2025.5.1

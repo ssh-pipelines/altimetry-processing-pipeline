@@ -1,6 +1,7 @@
 numpy==1.26.2
-xarray
-netCDF4
-h5netcdf
-h5py
-pyresample
+xarray==2025.4.0
+netCDF4==1.7.2
+h5netcdf==1.6.1
+h5py==3.13.0
+pyresample==1.34.1
+pyproj==3.7.1

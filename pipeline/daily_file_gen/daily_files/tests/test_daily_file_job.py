@@ -18,7 +18,9 @@ from daily_files.ingestion.ingest import IngestedData
 class TestSourceRegistry(unittest.TestCase):
     def test_registry_entries_are_source_pipelines(self):
         for key, pipeline in SOURCE_REGISTRY.items():
-            self.assertIsInstance(pipeline, SourcePipeline, f"{key} is not a SourcePipeline")
+            self.assertIsInstance(
+                pipeline, SourcePipeline, f"{key} is not a SourcePipeline"
+            )
 
     def test_registry_has_expected_sources(self):
         self.assertIn("GSFC", SOURCE_REGISTRY)
@@ -59,7 +61,9 @@ class TestAcquirePhase(unittest.TestCase):
 
     def test_acquire_returns_none_when_no_granules(self):
         job = self._make_job()
-        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=[])))
+        job.enumerator_cls = MagicMock(
+            return_value=MagicMock(enumerate=MagicMock(return_value=[]))
+        )
         job.downloader_cls = MagicMock()
         job.downloader_kwargs = {}
         job.ingestor_cls = MagicMock()
@@ -72,11 +76,19 @@ class TestAcquirePhase(unittest.TestCase):
         job = self._make_job()
 
         file_refs = [
-            FileRef(id="1", title="f1.nc", access_url="s3://b/f1.nc",
-                    time_start="", time_end="", modified_time="",
-                    collection_id="C123"),
+            FileRef(
+                id="1",
+                title="f1.nc",
+                access_url="s3://b/f1.nc",
+                time_start="",
+                time_end="",
+                modified_time="",
+                collection_id="C123",
+            ),
         ]
-        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=file_refs)))
+        job.enumerator_cls = MagicMock(
+            return_value=MagicMock(enumerate=MagicMock(return_value=file_refs))
+        )
 
         mock_downloader = MagicMock()
         mock_downloader.download_all.return_value = [MagicMock()]

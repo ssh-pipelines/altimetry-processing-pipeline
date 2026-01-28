@@ -61,7 +61,9 @@ class _CMRQuery:
     def __init__(self, concept_id: str, date: datetime):
         self.concept_id: str = concept_id
         self.start_date: datetime = date
-        self.end_date: datetime = self.start_date + timedelta(days=1) - timedelta(seconds=1)
+        self.end_date: datetime = (
+            self.start_date + timedelta(days=1) - timedelta(seconds=1)
+        )
         self.token = _get_edl_token()
 
     def _granule_query_with_wait(self):
@@ -123,7 +125,9 @@ class S6Enumerator(CMREnumerator):
         cycle_pass_pattern = r"_\d{3}_\d{3}_"
         priority_granules: dict[str, tuple[int, FileRef]] = {}
 
-        for collection in sorted(self.source_config.collections, key=lambda c: c.priority):
+        for collection in sorted(
+            self.source_config.collections, key=lambda c: c.priority
+        ):
             logging.info(f"Querying for collection {collection.shortname}")
             granules = self.cmr_query(collection.concept_id, self.date)
             for granule in granules:

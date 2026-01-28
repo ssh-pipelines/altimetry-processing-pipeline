@@ -8,6 +8,7 @@ import numpy as np
 @dataclass
 class IngestedData:
     """Normalized data structure produced by all ingestors."""
+
     ssha: np.ndarray
     lat: np.ndarray
     lon: np.ndarray
@@ -15,7 +16,9 @@ class IngestedData:
     cycles: np.ndarray
     passes: np.ndarray
     dac: np.ndarray
-    source_specific: dict  # Additional source-specific arrays/objects needed for processing
+    source_specific: (
+        dict  # Additional source-specific arrays/objects needed for processing
+    )
 
 
 class Ingestor(ABC):

@@ -3,6 +3,8 @@ import os
 
 # Ensure the utilities package (installed via setup.py in Docker) is importable
 # during local development by adding the repo root to sys.path.
-_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+_repo_root = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)

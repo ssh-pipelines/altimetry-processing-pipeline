@@ -13,7 +13,9 @@ from utilities.aws_utils import aws_manager
 def get_podaac_s3_credentials() -> dict:
     """Retrieve temporary PODAAC S3 credentials via EDL auth stored in Secrets Manager."""
     current_auth: dict = aws_manager.get_secret("podaac_direct_s3_auth")
-    expiration = datetime.strptime(current_auth["expiration"], "%Y-%m-%d %H:%M:%S+00:00")
+    expiration = datetime.strptime(
+        current_auth["expiration"], "%Y-%m-%d %H:%M:%S+00:00"
+    )
     if expiration < datetime.now():
         raise RuntimeError(
             f"Podaac creds expire at {expiration} which is less than {datetime.now()}. "

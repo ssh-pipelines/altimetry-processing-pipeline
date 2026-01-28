@@ -57,14 +57,18 @@ class S6Ingestor(Ingestor):
         ]:
             nc_var = ds.groups["data_01"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
+            nc_var_attrs = {
+                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
+            }
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
         for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
             nc_var = ds.groups["data_01"].groups["ku"].variables[var]
             nc_var_data = nc_var[:]
-            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
+            nc_var_attrs = {
+                k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"
+            }
             da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
             das.append(da)
 
@@ -76,7 +80,11 @@ class S6Ingestor(Ingestor):
             for k, v in ds.groups["data_01"].variables["time"].__dict__.items()
             if k != "scale_factor" and k != "add_offset"
         }
-        merged_ds.attrs = {k: v for k, v in ds.__dict__.items() if k != "scale_factor" and k != "add_offset"}
+        merged_ds.attrs = {
+            k: v
+            for k, v in ds.__dict__.items()
+            if k != "scale_factor" and k != "add_offset"
+        }
         merged_ds["cycle"] = (
             ("time"),
             np.full(merged_ds["time"].values.shape, ds.cycle_number),

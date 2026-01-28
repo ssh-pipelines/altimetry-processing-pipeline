@@ -30,12 +30,24 @@ class TestS6PrioritySelection(unittest.TestCase):
         collections_sorted = sorted(source_config.collections, key=lambda c: c.priority)
 
         validated_refs = [
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_001_010_20231217.nc", collections_sorted[0].concept_id),
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_002_020_20231217.nc", collections_sorted[0].concept_id),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_001_010_20231217.nc",
+                collections_sorted[0].concept_id,
+            ),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_002_020_20231217.nc",
+                collections_sorted[0].concept_id,
+            ),
         ]
         unvalidated_refs = [
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_002_020_20231217_unval.nc", collections_sorted[1].concept_id),
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_003_030_20231217_unval.nc", collections_sorted[1].concept_id),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_002_020_20231217_unval.nc",
+                collections_sorted[1].concept_id,
+            ),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_003_030_20231217_unval.nc",
+                collections_sorted[1].concept_id,
+            ),
         ]
 
         def query_side_effect(concept_id, date):
@@ -81,8 +93,14 @@ class TestS6PrioritySelection(unittest.TestCase):
         collections_sorted = sorted(source_config.collections, key=lambda c: c.priority)
 
         refs_p1 = [
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_001_010_20231217.nc", collections_sorted[0].concept_id),
-            _make_fake_file_ref("S6A_P4_2__LR_RED__NR_002_020_20231217.nc", collections_sorted[0].concept_id),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_001_010_20231217.nc",
+                collections_sorted[0].concept_id,
+            ),
+            _make_fake_file_ref(
+                "S6A_P4_2__LR_RED__NR_002_020_20231217.nc",
+                collections_sorted[0].concept_id,
+            ),
         ]
 
         def query_side_effect(concept_id, date):

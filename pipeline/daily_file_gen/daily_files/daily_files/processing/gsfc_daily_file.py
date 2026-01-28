@@ -9,9 +9,18 @@ from daily_files.ingestion.ingest import IngestedData
 
 
 class GSFCDailyFile(DailyFile):
-    def __init__(self, ingested_data: IngestedData, date: datetime, source_config: SourceConfig, collection_ids: list[str], source_files: str = ""):
+    def __init__(
+        self,
+        ingested_data: IngestedData,
+        date: datetime,
+        source_config: SourceConfig,
+        collection_ids: list[str],
+        source_files: str = "",
+    ):
         self.og_ds = ingested_data.source_specific["og_ds"]
-        super().__init__(ingested_data, date, source_config, collection_ids, source_files)
+        super().__init__(
+            ingested_data, date, source_config, collection_ids, source_files
+        )
 
     def gsfc_flag_splitting(self) -> np.ndarray:
         """
@@ -19,10 +28,14 @@ class GSFCDailyFile(DailyFile):
         """
         flag = self.og_ds["flag"].values
         max_bits = int(np.ceil(np.log2(flag.max())))
-        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
+        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(
+            bool
+        )
         return binary_representation
 
-    def manual_outliers(self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
+    def manual_outliers(
+        self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray
+    ) -> np.ndarray:
         """
         Manual method for catching known bad values
         """
@@ -70,7 +83,14 @@ class GSFCDailyFile(DailyFile):
             ((surf_type == 0) | (surf_type == 2))
             & (~flag_array[:, src_flag_indices].any(axis=1))
             & (~np.isnan(ssha))
-            & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2)))
+            & (
+                ~(
+                    (basin_flag > 0)
+                    & (basin_flag < 1000)
+                    & (abs(lats) > 60)
+                    & (abs(ssha) > 1.2)
+                )
+            )
         )
 
         outliers = self.manual_outliers(ssha, prelim_flag, lats)
@@ -80,10 +100,20 @@ class GSFCDailyFile(DailyFile):
         n_std = 95
         timestamps = np.arange(1, len(ssha) + 1)
 
-        rolling_median = pd.Series(ssha[prelim_flag]).rolling(n_median, center=True, min_periods=1).median().values
+        rolling_median = (
+            pd.Series(ssha[prelim_flag])
+            .rolling(n_median, center=True, min_periods=1)
+            .median()
+            .values
+        )
         dx = ssha[prelim_flag] - rolling_median
 
-        dx_median = pd.Series(np.square(dx)).rolling(n_std, center=True, min_periods=1).median().values
+        dx_median = (
+            pd.Series(np.square(dx))
+            .rolling(n_std, center=True, min_periods=1)
+            .median()
+            .values
+        )
         rolling_std = np.clip(np.sqrt(dx_median), 0.05, None)
 
         median_interp = np.interp(timestamps, timestamps[prelim_flag], rolling_median)
@@ -96,23 +126,30 @@ class GSFCDailyFile(DailyFile):
             & (~flag_array[:, [1, 2, 3, 5]].any(axis=1))
             & (~np.isnan(ssha))
             & median_flag
-            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
+            & ~(
+                (basin_flag > 0)
+                & (basin_flag < 1000)
+                & (abs(lats) > 60)
+                & (abs(ssha) > 1.2)
+            )
         )
 
         nasa_flag[outliers] = 1
 
         source_flag = np.array(flag_array).astype("bool")
 
-        all_flag_meanings = re.split(r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"])
+        all_flag_meanings = re.split(
+            r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"]
+        )
 
         # Assign nasa_flag to dataset
         self.ds["nasa_flag"] = (
             ("time"),
             nasa_flag.data,
             {
-                "flag_derivation": f'nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes an along-track '
-                f'median check, saved in the medain_filter_flag variable & the following source_flag values are set '
-                f'to 0: {", ".join([all_flag_meanings[i] for i in [1,2,3,5]])}'
+                "flag_derivation": f"nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes an along-track "
+                f"median check, saved in the medain_filter_flag variable & the following source_flag values are set "
+                f"to 0: {', '.join([all_flag_meanings[i] for i in [1, 2, 3, 5]])}"
             },
         )
 

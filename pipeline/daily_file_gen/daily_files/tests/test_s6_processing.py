@@ -14,7 +14,8 @@ def _make_s6_ingested_data(n=500, date=datetime(2023, 12, 17)):
     """Build a synthetic IngestedData mimicking S6 ingestor output."""
     rng = np.random.RandomState(99)
     times = np.arange(
-        np.datetime64(date), np.datetime64(date) + np.timedelta64(1, "D"),
+        np.datetime64(date),
+        np.datetime64(date) + np.timedelta64(1, "D"),
         np.timedelta64(86400 // n, "s"),
     ).astype("datetime64[ns]")[:n]
 
@@ -26,15 +27,30 @@ def _make_s6_ingested_data(n=500, date=datetime(2023, 12, 17)):
     dac = rng.normal(0, 0.01, n)
 
     # Build a minimal original_ds with the fields S6DailyFile.make_nasa_flag expects
-    original_ds = xr.Dataset({
-        "range_ocean_nr_qual": (("time",), rng.choice([0, 1], n, p=[0.95, 0.05]).astype(np.int8)),
-        "surface_classification_flag": (("time",), rng.choice([0, 2, 1], n, p=[0.8, 0.15, 0.05]).astype(np.int8)),
-        "rad_water_vapor_qual": (("time",), rng.choice([0, 1], n, p=[0.95, 0.05]).astype(np.int8)),
-        "rain_flag_nr": (("time",), rng.choice([0, 3, 5, 1], n, p=[0.8, 0.1, 0.05, 0.05]).astype(np.int8)),
-        "sig0_ocean_nr": (("time",), rng.uniform(8, 20, n)),
-        "swh_ocean_nr": (("time",), rng.uniform(0, 5, n)),
-        "ssha_nr": (("time",), ssha),
-    }, coords={"time": times})
+    original_ds = xr.Dataset(
+        {
+            "range_ocean_nr_qual": (
+                ("time",),
+                rng.choice([0, 1], n, p=[0.95, 0.05]).astype(np.int8),
+            ),
+            "surface_classification_flag": (
+                ("time",),
+                rng.choice([0, 2, 1], n, p=[0.8, 0.15, 0.05]).astype(np.int8),
+            ),
+            "rad_water_vapor_qual": (
+                ("time",),
+                rng.choice([0, 1], n, p=[0.95, 0.05]).astype(np.int8),
+            ),
+            "rain_flag_nr": (
+                ("time",),
+                rng.choice([0, 3, 5, 1], n, p=[0.8, 0.1, 0.05, 0.05]).astype(np.int8),
+            ),
+            "sig0_ocean_nr": (("time",), rng.uniform(8, 20, n)),
+            "swh_ocean_nr": (("time",), rng.uniform(0, 5, n)),
+            "ssha_nr": (("time",), ssha),
+        },
+        coords={"time": times},
+    )
 
     mean_sea_surface_sol1 = rng.normal(30, 5, n)
     mean_sea_surface_sol2 = mean_sea_surface_sol1 + rng.normal(0, 0.01, n)
@@ -71,14 +87,28 @@ class TestS6Processing(unittest.TestCase):
         source_config = get_source_config("S6")
         ingested = _make_s6_ingested_data(date=cls.date)
         cls.daily_ds = S6DailyFile(
-            ingested, cls.date, source_config, ["C3332203845-POCLOUD"],
+            ingested,
+            cls.date,
+            source_config,
+            ["C3332203845-POCLOUD"],
             source_files="test_granule.nc",
         ).ds
 
     def test_has_required_vars(self):
-        for var in ["ssha", "ssha_smoothed", "nasa_flag", "source_flag",
-                     "median_filter_flag", "dac", "basin_flag", "basin_names_table",
-                     "latitude", "longitude", "cycle", "pass"]:
+        for var in [
+            "ssha",
+            "ssha_smoothed",
+            "nasa_flag",
+            "source_flag",
+            "median_filter_flag",
+            "dac",
+            "basin_flag",
+            "basin_names_table",
+            "latitude",
+            "longitude",
+            "cycle",
+            "pass",
+        ]:
             self.assertIn(var, self.daily_ds, f"Missing variable: {var}")
 
     def test_no_mss_sol_vars(self):
@@ -118,6 +148,7 @@ class TestS6Processing(unittest.TestCase):
     def test_save_ds(self):
         """Verify the dataset can be serialized to NetCDF without error."""
         import tempfile, os
+
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "test_s6.nc")
             save_ds(self.daily_ds, path)

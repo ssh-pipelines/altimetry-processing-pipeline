@@ -15,8 +15,15 @@ class GSFCIngestor(Ingestor):
     def ingest(self, file_objs: Iterable[TextIO], **kwargs) -> IngestedData:
         bucket = kwargs.get("bucket")
 
-        opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
-        cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
+        opened_files = [
+            xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs
+        ]
+        cycles = np.concatenate(
+            [
+                np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"])
+                for ds in opened_files
+            ]
+        )
         og_ds = xr.concat(opened_files, dim="N_Records")
         opened_files = []
 
@@ -40,14 +47,19 @@ class GSFCIngestor(Ingestor):
             },
         )
 
-    def _compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _compute_cycles_passes(
+        self, ds: xr.Dataset, cycles: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Computes passes using look up table that converts a reference_orbit and index value to pass number.
         GSFC uses slightly different pass/cycle definitions. We need to increment cycle number in the ascending half
         below the equator of a pass where pass==1
         """
         logging.info("Computing pass values")
-        df = pd.read_csv(os.path.join(REF_FILES_DIR, "complete_gsfc_pass_lut.csv"), converters={"id": str}).set_index("id")
+        df = pd.read_csv(
+            os.path.join(REF_FILES_DIR, "complete_gsfc_pass_lut.csv"),
+            converters={"id": str},
+        ).set_index("id")
 
         ds_ids = [
             str(orbit).zfill(3) + str(index).zfill(4)
@@ -56,10 +68,14 @@ class GSFCIngestor(Ingestor):
         passes = df.loc[ds_ids]["pass"].values
 
         index_of_wrap = np.where(passes[:-1] > passes[1:])[0][0] + 1
-        cycles[index_of_wrap:][(cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)] += 1
+        cycles[index_of_wrap:][
+            (cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)
+        ] += 1
         return cycles, passes
 
-    def _compute_dac(self, unique_cycles: np.ndarray, ssha: np.ndarray, bucket: str) -> np.ndarray:
+    def _compute_dac(
+        self, unique_cycles: np.ndarray, ssha: np.ndarray, bucket: str
+    ) -> np.ndarray:
         """
         Loads corresponding NOIB cycle file(s) and subtracts "ssha_noib" from our ssha values
         """

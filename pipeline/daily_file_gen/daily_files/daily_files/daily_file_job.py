@@ -13,7 +13,11 @@ from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
 from daily_files.fetching.enumerator import Enumerator, FileRef
 from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
-from daily_files.fetching.downloader import Downloader, S3Downloader, get_podaac_s3_credentials
+from daily_files.fetching.downloader import (
+    Downloader,
+    S3Downloader,
+    get_podaac_s3_credentials,
+)
 
 from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
@@ -54,6 +58,7 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
 @dataclass
 class AcquiredData:
     """Result of the data acquisition phase."""
+
     ingested_data: IngestedData
     collection_ids: list[str]
     granule_titles: list[str]
@@ -72,7 +77,9 @@ class DailyFileJob:
         self.source_config: SourceConfig = get_source_config(source)
 
         if source not in SOURCE_REGISTRY:
-            raise SourceNotSupported(f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}")
+            raise SourceNotSupported(
+                f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}"
+            )
 
         pipeline = SOURCE_REGISTRY[source]
         self.enumerator_cls = pipeline.enumerator

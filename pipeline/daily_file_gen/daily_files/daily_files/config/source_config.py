@@ -68,7 +68,9 @@ def get_source_config(source: str) -> SourceConfig:
     if not _SOURCE_CONFIGS:
         _SOURCE_CONFIGS = _load_sources()
     if source not in _SOURCE_CONFIGS:
-        raise ValueError(f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}")
+        raise ValueError(
+            f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}"
+        )
     return _SOURCE_CONFIGS[source]
 
 

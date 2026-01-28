@@ -10,10 +10,19 @@ from daily_files.ingestion.ingest import IngestedData
 
 
 class S6DailyFile(DailyFile):
-    def __init__(self, ingested_data: IngestedData, date: datetime, source_config: SourceConfig, collection_ids: list[str], source_files: str = ""):
+    def __init__(
+        self,
+        ingested_data: IngestedData,
+        date: datetime,
+        source_config: SourceConfig,
+        collection_ids: list[str],
+        source_files: str = "",
+    ):
         self.original_ds = ingested_data.source_specific["original_ds"]
         self._ingested_source_specific = ingested_data.source_specific
-        super().__init__(ingested_data, date, source_config, collection_ids, source_files)
+        super().__init__(
+            ingested_data, date, source_config, collection_ids, source_files
+        )
 
     def _pre_process_setup(self):
         self.ds["mean_sea_surface_sol1"] = (
@@ -70,21 +79,35 @@ class S6DailyFile(DailyFile):
             & (kqual == 0)
             & ((rain == 0) | (rain == 3) | (rain == 5))
             & ((np.abs(ssha) < 5) & (basin_flag > 0) & (basin_flag < 1000))
-            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
+            & ~(
+                (basin_flag > 0)
+                & (basin_flag < 1000)
+                & (abs(lats) > 60)
+                & (abs(ssha) > 1.2)
+            )
         )
 
         swp_flag = prelim_flag & ~sw_flag
 
-        rolling_median = pd.Series(ssha[swp_flag]).rolling(n_median, center=True, min_periods=1).median().values
+        rolling_median = (
+            pd.Series(ssha[swp_flag])
+            .rolling(n_median, center=True, min_periods=1)
+            .median()
+            .values
+        )
         dx_median = ssha[swp_flag] - rolling_median
 
         outlier_index = np.abs(dx_median) < 2
-        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(n_std, center=True, min_periods=1)
+        pd_roll = pd.Series(np.square(dx_median[outlier_index])).rolling(
+            n_std, center=True, min_periods=1
+        )
         rolling_std = np.clip(np.sqrt(pd_roll.median().values), 0.02, None)
 
         median_interp = np.interp(timestamps, timestamps[swp_flag], rolling_median)
         dx = ssha - median_interp
-        std_interp = np.interp(timestamps, timestamps[swp_flag][outlier_index], rolling_std)
+        std_interp = np.interp(
+            timestamps, timestamps[swp_flag][outlier_index], rolling_std
+        )
 
         median_flag = abs(dx) > std_interp * 5
         nasa_flag = ~(
@@ -94,7 +117,12 @@ class S6DailyFile(DailyFile):
             & ((rain == 0) | (rain == 3) | (rain == 5))
             & (rqual == 0)
             & (~median_flag)
-            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
+            & ~(
+                (basin_flag > 0)
+                & (basin_flag < 1000)
+                & (abs(lats) > 60)
+                & (abs(ssha) > 1.2)
+            )
         )
 
         source_flag = np.array([kqual, surfc, rqual, rain], dtype=np.int8).T
@@ -152,8 +180,10 @@ class S6DailyFile(DailyFile):
         )
 
     def _source_mss_correction(self):
-        return self.ds["mean_sea_surface_sol1"].values - self.ds["mean_sea_surface_sol2"].values
+        return (
+            self.ds["mean_sea_surface_sol1"].values
+            - self.ds["mean_sea_surface_sol2"].values
+        )
 
     def _post_mss_swap(self):
         self.ds = self.ds.drop_vars(["mean_sea_surface_sol1", "mean_sea_surface_sol2"])
-

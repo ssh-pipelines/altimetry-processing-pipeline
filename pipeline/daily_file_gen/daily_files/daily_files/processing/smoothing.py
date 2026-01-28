@@ -4,17 +4,17 @@ import pandas as pd
 import numpy as np
 import logging
 
+from daily_files.config.source_config import get_source_config
 
-def create_filter(satellite: str) -> np.ndarray:
+
+def create_filter(source: str) -> np.ndarray:
     """
-    Generate 19 point Gaussian-like normalized filter specific to a given satellite's speed
+    Generate 19 point Gaussian-like normalized filter specific to a given source's speed.
+    Filter parameters are loaded from the source configuration.
     """
-    match satellite:
-        case "reference":
-            speed = 5.745
-            sigma = 15
-        case _:
-            raise RuntimeError(f"{satellite} is an invalid satellite type.")
+    source_config = get_source_config(source)
+    speed = source_config.smoothing.speed
+    sigma = source_config.smoothing.sigma
 
     # Apply the Gaussian-like filter
     filter_values = np.exp(-(((np.arange(-9, 19 - 9) * speed) / sigma) ** 2))
@@ -71,7 +71,7 @@ def smooth(ssha_vals: np.ndarray) -> np.float64:
     return smooth_point(ssha_vals)
 
 
-def ssha_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
+def ssha_smoothing(ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:
     logging.info("Beginning smoothing...")
 
     if len(ds.time) == 0:
@@ -79,7 +79,7 @@ def ssha_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
         return ds
 
     global FILTER_WEIGHTS
-    FILTER_WEIGHTS = create_filter("reference")
+    FILTER_WEIGHTS = create_filter(source)
 
     # Pad ssh values with NaNs
     df = pd.DataFrame(
@@ -88,7 +88,9 @@ def ssha_smoothing(ds: xr.Dataset, date: datetime) -> xr.Dataset:
     padded_df = df.reindex(np.arange(date, date + timedelta(1), dtype="datetime64[s]"))
 
     # Apply nasa_flag to ssha
-    padded_df.values[padded_df.flag.values.astype(bool)] = np.nan
+    vals = padded_df.values.copy()
+    vals[padded_df.flag.values.astype(bool)] = np.nan
+    padded_df = pd.DataFrame(vals, index=padded_df.index, columns=padded_df.columns)
 
     # Generate rolling windows
     windows = make_windows(padded_df.ssha.values)

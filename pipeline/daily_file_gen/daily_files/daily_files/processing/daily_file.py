@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import logging
+import os
 import xarray as xr
 import numpy as np
 import geopandas as gpd
@@ -7,82 +8,148 @@ import shapely
 
 from datetime import datetime
 
+from datetime import timedelta
+
+from daily_files.config.paths import REF_FILES_DIR
+from daily_files.config.source_config import SourceConfig
+from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.smoothing import ssha_smoothing
+
+
+def get_base_global_attrs(source_files: str = "") -> dict:
+    """Return the global attrs shared between DailyFile.set_global_attrs() and make_empty()."""
+    creation_time = datetime.now().isoformat(timespec="seconds")
+    return {
+        "Conventions": "CF-1.7",
+        "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1",
+        "summary": (
+            "This data set contains satellite based measurements of sea surface height, "
+            "computed relative to the mean sea surface specified in mean_sea_surface. "
+            "Data have been collected from multiple satellites, and processed to maximize "
+            "compatibility and minimize bias between satellites. They are intended for use "
+            "in studies and applications requiring climate-quality observations without "
+            "additional adjustments or filtering."
+        ),
+        "institution": "NASA/Jet Propulsion Laboratory",
+        "source": "",
+        "source_url": "",
+        "source_files": source_files,
+        "date_created": creation_time,
+        "history": f"Created on {creation_time}",
+        "references": "",
+        "standard_name_vocabulary": "CF Standard Name Table v86",
+        "id": "10.5067/NSREF-AT0V1",
+        "naming_authority": "gov.nasa.jpl.podaac",
+        "project": "NASA-SSH",
+        "processing_level": "Level 2",
+        "product_generation_step": "1",
+        "product_short_name": "NASA_SSH_REF_ALONGTRACK_V1",
+        "acknowledgement": "This data is provided by NASAs PO.DAAC.",
+        "license": "https://creativecommons.org/licenses/by/4.0/",
+        "product_version": "V1",
+        "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
+        "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
+        "cdm_data_type": "Point",
+        "featureType": "trajectory",
+        "platform": "Satellite",
+        "instrument": "Altimeter",
+        "publisher_name": "PO.DAAC",
+        "publisher_url": "https://podaac.jpl.nasa.gov/",
+        "publisher_email": "podaac@podaac.jpl.nasa.gov",
+        "creator_name": "Josh K. Willis",
+        "creator_url": "https://podaac.jpl.nasa.gov/NASA-SSH/",
+        "creator_email": "podaac@podaac.jpl.nasa.gov",
+        "geospatial_lat_min": -90.0,
+        "geospatial_lat_max": 90.0,
+        "geospatial_lon_min": 0.0,
+        "geospatial_lon_max": 360.0,
+    }
 
 
 class DailyFile(ABC):
     """
-    Parent class for individual altimeter source data. Required data arrays:
-    - SSHA in meters
-    - Latitude
-    - Longitude
-    - Cycle
-    - Pass
-    - Dac
-    - Time
+    Parent class for individual altimeter source data. Receives pre-extracted
+    IngestedData and a SourceConfig for source-specific parameters.
 
     Individual subclasses will implement:
-        make_daily_file_ds (defines sequence of processing):
-        make_nasa_flag()
-        clean_date()
-        make_ssh_smoothed()
-        map_points_to_basin()
-        set_metadata()
-    make_nasa_flag (creates boolean flag from source data flags)
+        make_daily_file_ds (defines sequence of processing)
+        make_nasa_flag (creates boolean flag from source data flags)
+        mss_swap (performs MSS swap on ssha)
+        set_source_attrs (sets source-specific metadata)
     """
 
     def __init__(
         self,
-        ssha: np.ndarray,
-        lat: np.ndarray,
-        lon: np.ndarray,
-        time: np.ndarray,
-        sat_cycle: np.ndarray,
-        sat_pass: np.ndarray,
-        dac: np.ndarray,
+        ingested_data: IngestedData,
+        date: datetime,
+        source_config: SourceConfig,
+        collection_ids: list[str],
+        source_files: str = "",
     ):
-        self.time: np.ndarray = time
+        self.date = date
+        self.source_config = source_config
+        self.collection_ids = collection_ids
+        self.source_files = source_files
+        self.source_mss = source_config.source_mss
+        self.target_mss = source_config.target_mss
+        self.mss_name = source_config.mss_diff_file
+
+        self.time = ingested_data.time
         self.data = {
-            "ssha": xr.DataArray(ssha, dims=["time"]),
-            "dac": xr.DataArray(dac, dims=["time"]),
-            "latitude": xr.DataArray(lat, dims=["time"]),
-            "longitude": xr.DataArray(lon, dims=["time"]),
-            "cycle": xr.DataArray(sat_cycle, dims=["time"]),
-            "pass": xr.DataArray(sat_pass, dims=["time"]),
+            "ssha": xr.DataArray(ingested_data.ssha, dims=["time"]),
+            "dac": xr.DataArray(ingested_data.dac, dims=["time"]),
+            "latitude": xr.DataArray(ingested_data.lat, dims=["time"]),
+            "longitude": xr.DataArray(ingested_data.lon, dims=["time"]),
+            "cycle": xr.DataArray(ingested_data.cycles, dims=["time"]),
+            "pass": xr.DataArray(ingested_data.passes, dims=["time"]),
         }
 
         self.ds = self.make_ds()
 
-    @abstractmethod
+        self._pre_process_setup()
+        self.make_daily_file_ds()
+
+    def _pre_process_setup(self):
+        """Hook for subclass-specific setup before processing begins.
+        Override to add source-specific data to self.ds, etc."""
+        pass
+
     def make_daily_file_ds(self):
-        """
-        Abstract method for the steps required to create daily file ds object.
-        Defined per source dataset
-        """
-        raise NotImplementedError
+        """Standard processing sequence for creating a daily file dataset."""
+        self.map_points_to_basin()
+        self.make_nasa_flag()
+        self.clean_date(self.date)
+        self.mss_swap()
+        self.apply_basin_to_nasa()
+        self.make_ssha_smoothed(self.date)
+        self.set_metadata()
+        self.set_source_attrs()
 
     @abstractmethod
     def make_nasa_flag(self):
-        """
-        Abstract method for defining the NASA flag variable.
-        Defined per source dataset
-        """
+        """Define the NASA flag variable. Source-specific."""
         raise NotImplementedError
 
-    @abstractmethod
     def mss_swap(self):
-        """
-        Abstract method for performing an MSS swap on ssha.
-        Defined per source dataset
-        """
-        raise NotImplementedError
+        """Performs MSS swap on ssha values using the configured MSS diff grid."""
+        logging.info("Applying mss swap to ssha values...")
+        if len(self.ds["time"]) == 0:
+            logging.debug("Empty data arrays, skipping mss swapping")
+            return
+        mss_path = os.path.join(REF_FILES_DIR, "mss_diffs", self.mss_name)
+        mss_correction = self.get_mss_values(mss_path)
+        self.ds["ssha"].values = (
+            self.ds["ssha"].values + self._source_mss_correction() + mss_correction
+        )
+        self._post_mss_swap()
 
-    @abstractmethod
-    def set_source_attrs(self):
-        """
-        Abstract method for defining source specific metadata
-        """
-        raise NotImplementedError
+    def _source_mss_correction(self) -> np.ndarray:
+        """Override to add source-specific MSS correction terms. Default returns 0."""
+        return 0.0
+
+    def _post_mss_swap(self):
+        """Hook called after MSS swap. Override for cleanup (e.g., dropping temp vars)."""
+        pass
 
     def make_ds(self) -> xr.Dataset:
         ds = xr.Dataset(data_vars=self.data, coords=dict(time=self.time))
@@ -183,7 +250,7 @@ class DailyFile(ABC):
         return mss_swapped_values
 
     def make_ssha_smoothed(self, date: datetime):
-        self.ds = ssha_smoothing(self.ds, date)
+        self.ds = ssha_smoothing(self.ds, date, self.source_config.source)
 
     def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """
@@ -200,7 +267,7 @@ class DailyFile(ABC):
         """ """
         logging.info("Mapping data points to their respective basin")
 
-        poly_df = gpd.read_file("daily_files/ref_files/basin/new_basin_lake_polygons.shp")
+        poly_df = gpd.read_file(os.path.join(REF_FILES_DIR, "basin", "new_basin_lake_polygons.shp"))
 
         # Format basin ids and names for basin_names_table
         names = poly_df["name"].apply(lambda x: x.replace("'", " ").replace(",", " -")).values
@@ -339,47 +406,9 @@ class DailyFile(ABC):
         Sets the global attrs that are common across all sources. Individual processors
         set source specific global attrs via the abstract set_source_attrs().
         """
-        creation_time = datetime.now().isoformat(timespec="seconds")
-        global_attrs = {
-            "Conventions": "CF-1.7",
-            "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1",
-            "summary": "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in mean_sea_surface. Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in studies and applications requiring climate-quality observations without additional adjustments or filtering.",
-            "institution": "NASA/Jet Propulsion Laboratory",
-            "source": "",  # Source specific and set downstream
-            "source_url": "",  # Source specific and set downstream
-            "date_created": creation_time,
-            "history": f"Created on {creation_time}",
-            "references": "",  # Source specific and set downstream
-            "mean_sea_surface": "",
-            "standard_name_vocabulary": "CF Standard Name Table v86",
-            "id": "10.5067/NSREF-AT0V1",
-            "naming_authority": "gov.nasa.jpl.podaac",
-            "project": "NASA-SSH",
-            "processing_level": "Level 2",
-            "product_generation_step": "1",
-            "product_short_name": "NASA_SSH_REF_ALONGTRACK_V1",
-            "acknowledgement": "This data is provided by NASAs PO.DAAC.",
-            "license": "https://creativecommons.org/licenses/by/4.0/",
-            "product_version": "V1",
-            "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
-            "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
-            "cdm_data_type": "Point",
-            "featureType": "trajectory",
-            "platform": "Satellite",
-            "instrument": "Altimeter",
-            "publisher_name": "PO.DAAC",
-            "publisher_url": "https://podaac.jpl.nasa.gov/",
-            "publisher_email": "podaac@podaac.jpl.nasa.gov",
-            "creator_name": "Josh K. Willis",
-            "creator_url": "https://podaac.jpl.nasa.gov/NASA-SSH/",
-            "creator_email": "podaac@podaac.jpl.nasa.gov",
-            "geospatial_lat_min": -90.0,
-            "geospatial_lat_max": 90.0,
-            "geospatial_lon_min": 0.0,
-            "geospatial_lon_max": 360.0,
-            "time_coverage_start": str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
-            "time_coverage_end": str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A",
-        }
+        global_attrs = get_base_global_attrs(source_files=self.source_files)
+        global_attrs["time_coverage_start"] = str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A"
+        global_attrs["time_coverage_end"] = str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A"
 
         for k, v in global_attrs.items():
             self.ds.attrs[k] = v
@@ -393,3 +422,27 @@ class DailyFile(ABC):
                 if "time" in self.ds[var].coords:
                     self.ds[var].attrs["comment"] = "No data for this date"
             self.ds.attrs["comment"] = "Data is missing from source for this date"
+
+    def set_source_attrs(self):
+        """Sets source-specific global attributes from collection metadata.
+        Subclasses can override to add extra attributes (call super first)."""
+        sources = set()
+        source_urls = set()
+        references = set()
+
+        collections_by_id = {c.concept_id: c for c in self.source_config.collections}
+        for collection_id in self.collection_ids:
+            col = collections_by_id[collection_id]
+            sources.add(col.source_label)
+            source_urls.add(col.source_url)
+            references.add(col.reference)
+
+        self.ds.attrs["source"] = ", and ".join(sorted(sources))
+        self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
+        self.ds.attrs["references"] = ", and ".join(sorted(references))
+        self.ds.attrs["mean_sea_surface"] = self.target_mss
+
+        if self.ds.attrs["time_coverage_start"] == "N/A":
+            self.ds.attrs["time_coverage_start"] = self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+        if self.ds.attrs["time_coverage_end"] == "N/A":
+            self.ds.attrs["time_coverage_end"] = (self.date + timedelta(days=1) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S") + "Z"

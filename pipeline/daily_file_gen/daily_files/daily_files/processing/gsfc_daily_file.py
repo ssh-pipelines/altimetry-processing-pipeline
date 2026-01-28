@@ -1,95 +1,17 @@
 import logging
-import os
 import re
-import xarray as xr
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import Iterable, TextIO
+from datetime import datetime
 from daily_files.processing.daily_file import DailyFile
-from daily_files.collection_metadata import AllCollections, CollectionMeta
-from utilities.aws_utils import aws_manager
+from daily_files.config.source_config import SourceConfig
+from daily_files.ingestion.ingest import IngestedData
 
 
 class GSFCDailyFile(DailyFile):
-    def __init__(self, file_objs: Iterable[TextIO], date: datetime, collection_ids: Iterable[str], bucket: str):
-        self.date = date
-
-        opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
-        cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
-        self.og_ds = xr.concat(opened_files, dim="N_Records")
-        opened_files = []
-
-        ssha: np.ndarray = self.og_ds["ssha"].values / 1000  # Convert from mm
-        lats: np.ndarray = self.og_ds["lat"].values
-        lons: np.ndarray = self.og_ds["lon"].values
-        times: np.ndarray = self.og_ds["time"].values
-        dac: np.ndarray = self.compute_dac(np.unique(cycles), ssha, bucket)
-        cycles, passes = self.compute_cycles_passes(self.og_ds, cycles)
-        self.collection_ids = collection_ids
-
-        self.source_mss = "DTU15"
-        self.target_mss = "DTU21"
-        self.mss_name = f"{self.source_mss}_minus_{self.target_mss}.nc"
-
-        super().__init__(ssha, lats, lons, times, cycles, passes, dac)
-
-        self.make_daily_file_ds()
-
-    def compute_cycles_passes(self, ds: xr.Dataset, cycles: np.ndarray) -> tuple[np.ndarray]:
-        """
-        Computes passes using look up table that converts a reference_orbit and index value to pass number.
-        GSFC uses slightly different pass/cycle definitions. We need to increment cycle number in the ascending half below the equator
-        of a pass where pass==1
-        """
-        logging.info("Computing pass values")
-        df = pd.read_csv("daily_files/ref_files/complete_gsfc_pass_lut.csv", converters={"id": str}).set_index("id")
-
-        # Convert reference_orbit and index from GSFC file to 7 digit long, left-padded string
-        ds_ids = [
-            str(orbit).zfill(3) + str(index).zfill(4)
-            for orbit, index in zip(ds["reference_orbit"].values, ds["index"].values)
-        ]
-        passes = df.loc[ds_ids]["pass"].values
-
-        # Use index where passes wrap back to 1 to select cycles values that require manual incrementing
-        index_of_wrap = np.where(passes[:-1] > passes[1:])[0][0] + 1
-        cycles[index_of_wrap:][(cycles[index_of_wrap:] == cycles[0]) & (passes[index_of_wrap:] == 1)] += 1
-        return cycles, passes
-
-    def compute_dac(self, unique_cycles: np.ndarray, ssha: np.ndarray, bucket: str) -> np.ndarray:
-        """
-        Loads corresponding NOIB cycle file(s) and subtracts "ssha_noib" from our ssha values
-        """
-        all_obj_ds = []
-        noib_bucket_path = f"s3://{bucket}/aux_files/GSFC_NOIB"
-        try:
-            for cycle_num in unique_cycles:
-                logging.info(f"Streaming cycle {cycle_num}")
-                noib_filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V5_2.nc"
-                src = os.path.join(noib_bucket_path, noib_filename)
-                obj = aws_manager.stream_obj(src)
-                obj_ds = xr.open_dataset(obj, engine="h5netcdf")
-                all_obj_ds.append(obj_ds)
-            noib_ds: xr.Dataset = xr.concat(all_obj_ds, dim="N_Records")
-            ssha_noib = noib_ds["ssha_noib"].values / 1000
-        except Exception as e:
-            logging.error(e)
-            ssha_noib = np.full_like(ssha, 0)
-        return ssha_noib - ssha
-
-    def make_daily_file_ds(self):
-        """
-        Ordering of steps to create daily file from GSFC granule
-        """
-        self.map_points_to_basin()
-        self.make_nasa_flag()
-        self.clean_date(self.date)
-        self.mss_swap()
-        self.apply_basin_to_nasa()
-        self.make_ssha_smoothed(self.date)
-        self.set_metadata()
-        self.set_source_attrs()
+    def __init__(self, ingested_data: IngestedData, date: datetime, source_config: SourceConfig, collection_ids: list[str], source_files: str = ""):
+        self.og_ds = ingested_data.source_specific["og_ds"]
+        super().__init__(ingested_data, date, source_config, collection_ids, source_files)
 
     def gsfc_flag_splitting(self) -> np.ndarray:
         """
@@ -227,36 +149,6 @@ class GSFCDailyFile(DailyFile):
             },
         )
 
-    def mss_swap(self):
-        logging.info("Applying mss swap to ssha values...")
-        if len(self.ds["time"]) == 0:
-            logging.debug("Empty data arrays, skipping mss swapping")
-            return
-        mss_path = os.path.join("daily_files", "ref_files", "mss_diffs", self.mss_name)
-        mss_swapped_values = self.get_mss_values(mss_path)
-        self.ds["ssha"].values = self.ds["ssha"].values + mss_swapped_values
-
     def set_source_attrs(self):
-        """
-        Sets GSFC specific global attributes
-        """
-        sources = set()
-        source_urls = set()
-        references = set()
-
-        for collection_id in self.collection_ids:
-            collection_meta: CollectionMeta = AllCollections.collections[collection_id]
-            sources.add(collection_meta.source)
-            source_urls.add(collection_meta.source_url)
-            references.add(collection_meta.reference)
-
-        self.ds.attrs["source"] = ", and ".join(sorted(sources))
-        self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
-        self.ds.attrs["references"] = ", and ".join(sorted(references))
-        self.ds.attrs["mean_sea_surface"] = self.target_mss
+        super().set_source_attrs()
         self.ds.attrs["absolute_offset_applied"] = 0
-
-        if self.ds.attrs["time_coverage_start"] == "N/A":
-            self.ds.attrs["time_coverage_start"] = self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-        if self.ds.attrs["time_coverage_end"] == "N/A":
-            self.ds.attrs["time_coverage_end"] = (self.date + timedelta(days=1) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S") + "Z"

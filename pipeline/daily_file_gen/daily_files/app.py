@@ -1,6 +1,7 @@
 import json
 import logging
 from daily_files import daily_file_job
+from daily_files.config.source_config import get_available_sources
 
 
 def handler(event, context):
@@ -18,6 +19,10 @@ def handler(event, context):
 
     if None in [date, source, satellite, bucket]:
         raise RuntimeError("One of date, source, satellite, or bucket job parameters missing. Job failure.")
+
+    available = get_available_sources()
+    if source not in available:
+        raise RuntimeError(f"Source '{source}' is not configured. Available sources: {available}")
 
     try:
         daily_file_job.start_job(date, source, satellite, bucket)

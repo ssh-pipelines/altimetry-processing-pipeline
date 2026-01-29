@@ -18,6 +18,10 @@ class TestSourceConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_source_config("NONEXISTENT")
 
+    def test_satellite_field(self):
+        self.assertEqual(get_source_config("GSFC").satellite, "GSFC")
+        self.assertEqual(get_source_config("S6").satellite, "S6")
+
     def test_gsfc_config_fields(self):
         cfg = get_source_config("GSFC")
         self.assertIsInstance(cfg, SourceConfig)

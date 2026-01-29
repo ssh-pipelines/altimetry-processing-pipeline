@@ -141,6 +141,10 @@ class TestS6Processing(unittest.TestCase):
         for attr in ["source", "source_url", "references"]:
             self.assertNotEqual(self.daily_ds.attrs[attr], "")
 
+    def test_source_flag_dimensions(self):
+        """source_flag should have 4 columns matching real S6 data (src_flag_dim=4)."""
+        self.assertEqual(self.daily_ds["source_flag"].shape[1], 4)
+
     def test_schema_validation(self):
         errors = validate_dataset(self.daily_ds)
         self.assertEqual(errors, [], f"Schema validation errors: {errors}")

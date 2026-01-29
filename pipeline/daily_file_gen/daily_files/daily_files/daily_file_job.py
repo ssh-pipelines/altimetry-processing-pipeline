@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import os
-from typing import Callable, Type
+from typing import Type
 import numpy as np
 import xarray as xr
 
@@ -11,7 +11,7 @@ from utilities.aws_utils import aws_manager
 from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
-from daily_files.fetching.enumerator import Enumerator, FileRef
+from daily_files.fetching.enumerator import Enumerator
 from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
 from daily_files.fetching.downloader import (
     Downloader,
@@ -69,17 +69,15 @@ class SourceNotSupported(Exception):
 
 
 class DailyFileJob:
-    def __init__(self, date: str, source: str, satellite: str):
+    def __init__(self, date: str, source: str):
         logging.info(f"Starting {source} job for {date}")
         self.date: datetime = datetime.strptime(date, "%Y-%m-%d")
         self.source: str = source
-        self.satellite: str = satellite
         self.source_config: SourceConfig = get_source_config(source)
+        self.satellite: str = self.source_config.satellite
 
         if source not in SOURCE_REGISTRY:
-            raise SourceNotSupported(
-                f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}"
-            )
+            raise SourceNotSupported(f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}")
 
         pipeline = SOURCE_REGISTRY[source]
         self.enumerator_cls = pipeline.enumerator
@@ -160,9 +158,7 @@ def make_empty(job: DailyFileJob) -> xr.Dataset:
     In the event no data is found we still want an empty daily file with the expected metadata.
     """
     logging.info(f"No {job.source} data found for {job.date}. Using template file.")
-    daily_ds = xr.open_dataset(
-        os.path.join(REF_FILES_DIR, "empty_templates", job.source_config.empty_template)
-    )
+    daily_ds = xr.open_dataset(os.path.join(REF_FILES_DIR, "empty_templates", job.source_config.empty_template))
     base_attrs = get_base_global_attrs()
     daily_ds.attrs.update(base_attrs)
     daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
@@ -194,8 +190,8 @@ def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
     daily_ds.close()
 
 
-def start_job(date: str, source: str, satellite: str, bucket: str):
-    job = DailyFileJob(date, source, satellite)
+def start_job(date: str, source: str, bucket: str):
+    job = DailyFileJob(date, source)
 
     # Phase 1: Acquire data
     acquired = job.acquire(bucket)

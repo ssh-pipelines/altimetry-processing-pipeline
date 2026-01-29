@@ -112,12 +112,8 @@ class TestGSFCProcessing(unittest.TestCase):
     def test_file_date_coverage(self):
         if len(self.daily_ds["time"]) == 0:
             self.skipTest("No data after subsetting")
-        self.assertGreaterEqual(
-            self.daily_ds["time"].values.min(), np.datetime64("1995-06-07")
-        )
-        self.assertLessEqual(
-            self.daily_ds["time"].values.max(), np.datetime64("1995-06-07T23:59:59")
-        )
+        self.assertGreaterEqual(self.daily_ds["time"].values.min(), np.datetime64("1995-06-07"))
+        self.assertLessEqual(self.daily_ds["time"].values.max(), np.datetime64("1995-06-07T23:59:59"))
 
     def test_nasa_flag_values(self):
         flag_vals = np.unique(self.daily_ds["nasa_flag"].values)
@@ -133,6 +129,10 @@ class TestGSFCProcessing(unittest.TestCase):
     def test_source_attrs_populated(self):
         for attr in ["source", "source_url", "references"]:
             self.assertNotEqual(self.daily_ds.attrs[attr], "")
+
+    def test_source_flag_dimensions(self):
+        """source_flag should have 15 columns matching real GSFC data (src_flag_dim=15)."""
+        self.assertEqual(self.daily_ds["source_flag"].shape[1], 15)
 
     def test_schema_validation(self):
         errors = validate_dataset(self.daily_ds)

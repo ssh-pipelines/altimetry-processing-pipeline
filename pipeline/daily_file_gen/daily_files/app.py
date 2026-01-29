@@ -15,21 +15,16 @@ def handler(event, context):
     bucket = event.get("bucket")
     date = event.get("date")
     source: str = event.get("source")
-    satellite = event.get("satellite")
 
-    if None in [date, source, satellite, bucket]:
-        raise RuntimeError(
-            "One of date, source, satellite, or bucket job parameters missing. Job failure."
-        )
+    if None in [date, source, bucket]:
+        raise RuntimeError("One of date, source, or bucket job parameters missing. Job failure.")
 
     available = get_available_sources()
     if source not in available:
-        raise RuntimeError(
-            f"Source '{source}' is not configured. Available sources: {available}"
-        )
+        raise RuntimeError(f"Source '{source}' is not configured. Available sources: {available}")
 
     try:
-        daily_file_job.start_job(date, source, satellite, bucket)
+        daily_file_job.start_job(date, source, bucket)
         result = {"status": "success", "data": event}
         return result
     except Exception as e:

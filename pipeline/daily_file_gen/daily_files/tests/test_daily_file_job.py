@@ -32,20 +32,20 @@ class TestDailyFileJobInit(unittest.TestCase):
     def test_unsupported_source_raises(self, mock_get_config):
         mock_get_config.return_value = MagicMock()
         with self.assertRaises(SourceNotSupported):
-            DailyFileJob("2023-12-17", "BOGUS", "sat1")
+            DailyFileJob("2023-12-17", "BOGUS")
 
     def test_valid_source_initializes(self):
-        job = DailyFileJob("2023-12-17", "GSFC", "sat1")
+        job = DailyFileJob("2023-12-17", "GSFC")
         self.assertEqual(job.date, datetime(2023, 12, 17))
         self.assertEqual(job.source, "GSFC")
-        self.assertEqual(job.satellite, "sat1")
+        self.assertEqual(job.satellite, "GSFC")
 
 
 class TestGetOutputFilename(unittest.TestCase):
     def test_filename_format(self):
-        job = DailyFileJob("2023-12-17", "GSFC", "TOPEX")
+        job = DailyFileJob("2023-12-17", "GSFC")
         filename = _get_output_filename(job)
-        self.assertIn("TOPEX", filename)
+        self.assertIn("GSFC", filename)
         self.assertIn("20231217", filename)
         self.assertTrue(filename.endswith(".nc"))
 
@@ -55,8 +55,8 @@ class TestAcquirePhase(unittest.TestCase):
         job = DailyFileJob.__new__(DailyFileJob)
         job.date = datetime(2023, 12, 17)
         job.source = "GSFC"
-        job.satellite = "sat1"
         job.source_config = get_source_config("GSFC")
+        job.satellite = job.source_config.satellite
         return job
 
     def test_acquire_returns_none_when_no_granules(self):

@@ -1,5 +1,6 @@
 sources:
   GSFC:
+    satellite: GSFC
     product_type: reference
     filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"
@@ -17,6 +18,7 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V52"
         reference: "https://doi.org/10.5067/ALTUG-TJ152"
   S6:
+    satellite: S6
     product_type: reference
     filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"

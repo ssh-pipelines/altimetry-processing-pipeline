@@ -1,12 +1,14 @@
-from dataclasses import dataclass
 import logging
 import numpy as np
 import pandas as pd
+from collections import namedtuple
 from datetime import datetime
 
 from daily_files.processing.daily_file import DailyFile
 from daily_files.config.source_config import SourceConfig
 from daily_files.ingestion.ingest import IngestedData
+
+_Point = namedtuple("_Point", ["x", "y"])
 
 
 class S6DailyFile(DailyFile):
@@ -51,13 +53,8 @@ class S6DailyFile(DailyFile):
         n_std = 95
         timestamps = np.array(range(1, len(ssha) + 1))
 
-        @dataclass
-        class Point:
-            x: int
-            y: int
-
-        p1, p2 = Point(11, 10), Point(16, 6)
-        p3, p4 = Point(26, 3), Point(32, 0)
+        p1, p2 = _Point(11, 10), _Point(16, 6)
+        p3, p4 = _Point(26, 3), _Point(32, 0)
 
         # 1st trend line goes from (x1, y1) to (x2, y2)
         swtrend1 = (s0 - p1.x) * ((p2.y - p1.y) / (p2.x - p1.x)) + p1.y

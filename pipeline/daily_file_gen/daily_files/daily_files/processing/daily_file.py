@@ -6,9 +6,7 @@ import numpy as np
 import geopandas as gpd
 import shapely
 
-from datetime import datetime
-
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
@@ -175,13 +173,6 @@ class DailyFile(ABC):
     def drop_dupe_times(self, ds: xr.Dataset) -> xr.Dataset:
         logging.debug("Dropping duplicate times")
         return ds.drop_duplicates(dim="time")
-
-    def filter_outliers(self, ds: xr.Dataset, limit: float = 2) -> xr.Dataset:
-        """
-        Removes values that exceed limit. Not currently used.
-        """
-        ds = ds.where(np.abs(ds["ssha"]) < limit, drop=True)
-        return ds
 
     def clean_date(self, date: datetime):
         """

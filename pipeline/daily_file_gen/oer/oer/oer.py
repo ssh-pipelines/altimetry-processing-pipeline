@@ -3,7 +3,6 @@ import logging
 import numpy as np
 import xarray as xr
 import os
-from glob import glob
 from dateutil.rrule import rrule, DAILY
 
 from oer.compute_polygon_correction import (
@@ -12,6 +11,18 @@ from oer.compute_polygon_correction import (
     apply_correction,
 )
 from utilities.aws_utils import aws_manager
+
+_DTYPE_OVERRIDES = {
+    "source_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
+    "nasa_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
+    "median_filter_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
+    "basin_flag": {"dtype": "int32", "_FillValue": np.iinfo(np.int32).max},
+    "pass": {"dtype": "int32", "_FillValue": np.iinfo(np.int32).max},
+    "cycle": {"dtype": "int32", "_FillValue": np.iinfo(np.int32).max},
+    "ssha": {"dtype": "float64", "_FillValue": np.finfo(np.float64).max},
+    "dac": {"dtype": "float64", "_FillValue": np.finfo(np.float64).max},
+    "oer": {"dtype": "float64", "_FillValue": np.finfo(np.float64).max},
+}
 
 
 class OerCorrection:
@@ -31,6 +42,7 @@ class OerCorrection:
             10  # set window, since xover files "look forward" in time
         )
         self.window_pad: int = 1  # padding to avoid edge effects at window end
+        self._tmp_files: list[str] = []
         logging.info(f"Starting job for {self.source} {self.date}")
 
     def save_ds(
@@ -40,10 +52,8 @@ class OerCorrection:
         Save xarray dataset as netCDF to /tmp
         """
         out_path = os.path.join("/tmp", local_filename)
-        if encoding:
-            ds.to_netcdf(out_path, encoding=encoding)
-        else:
-            ds.to_netcdf(out_path, engine="h5netcdf")
+        ds.to_netcdf(out_path, engine="h5netcdf", encoding=encoding)
+        self._tmp_files.append(out_path)
         return out_path
 
     def fetch_xovers(self, window_start: datetime, window_end: datetime, bucket: str) -> xr.Dataset:
@@ -65,15 +75,13 @@ class OerCorrection:
         if len(streams) == 0:
             raise RuntimeError("Unable to open any crossover files!")
         logging.info(f"Openining {len(streams)} xover files.")
-        try:
-            ds = xr.open_mfdataset(
-                streams, concat_dim="time1", combine="nested", decode_times=False
-            )
-        except ValueError:
-            # If all xovers are empty, just open one
-            ds = xr.open_mfdataset(
-                streams[0], concat_dim="time1", combine="nested", decode_times=False
-            )
+        ds = xr.open_mfdataset(
+            streams, concat_dim="time1", combine="nested", decode_times=False,
+            drop_variables=["lon", "lat"],
+        )
+        if ds["time1"].size == 0 and len(streams) > 1:
+            ds = xr.open_dataset(streams[0], decode_times=False,
+                                 drop_variables=["lon", "lat"])
         return ds
 
     def fetch_daily_file(self, bucket: str) -> xr.Dataset:
@@ -156,27 +164,17 @@ class OerCorrection:
             }
         }
         for var in ds.variables:
-            if var not in ["latitude", "longitude", "time", "basin_names_table"]:
+            if var == "time":
+                continue
+            elif var in ("latitude", "longitude"):
+                encoding[var] = {"complevel": 5, "zlib": True, "dtype": "float32", "_FillValue": None}
+            elif var != "basin_names_table":
                 encoding[var] = {"complevel": 5, "zlib": True}
-            elif "lat" in var or "lon" in var:
-                encoding[var] = {
-                    "complevel": 5,
-                    "zlib": True,
-                    "dtype": "float32",
-                    "_FillValue": None,
-                }
 
-            if any(
-                x in var for x in ["source_flag", "nasa_flag", "median_filter_flag"]
-            ):
-                encoding[var]["dtype"] = "int8"
-                encoding[var]["_FillValue"] = np.iinfo(np.int8).max
-            if any(x in var for x in ["basin_flag", "pass", "cycle"]):
-                encoding[var]["dtype"] = "int32"
-                encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-            if any(x in var for x in ["ssha", "dac", "oer"]):
-                encoding[var]["dtype"] = "float64"
-                encoding[var]["_FillValue"] = np.finfo(np.float64).max
+            for key, overrides in _DTYPE_OVERRIDES.items():
+                if key in var:
+                    encoding.setdefault(var, {}).update(overrides)
+                    break
 
         # Save the correction and upload to S3
         out_path = self.save_ds(ds, self.daily_file_filename, encoding)
@@ -207,7 +205,9 @@ class OerCorrection:
         self.apply_oer(daily_file_ds, correction_ds, bucket)
 
         # Cleanup files saved to /tmp
-        for f in glob("/tmp/*.nc"):
-            os.remove(f)
+        for f in self._tmp_files:
+            if os.path.exists(f):
+                os.remove(f)
+        self._tmp_files.clear()
 
         logging.info(f"OER complete for {self.source} {self.date}")

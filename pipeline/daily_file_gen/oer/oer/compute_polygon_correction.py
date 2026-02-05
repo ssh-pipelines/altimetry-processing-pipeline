@@ -1,6 +1,6 @@
 import numpy as np
 from datetime import datetime
-import pytz
+from datetime import timezone
 import xarray as xr
 import logging
 from scipy.interpolate import PPoly
@@ -19,18 +19,35 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     pgon_t_margin = 7200  # keep 2 hours of extra data to avoid jumps between days
     ssh_max_error = 0.3  # ignore absolute xover differences larger than this in meters
 
-    ref_timestamp = datetime(1990, 1, 1, tzinfo=pytz.UTC).timestamp()
-    cur_timestamp = date.replace(tzinfo=pytz.UTC).timestamp()
+    ref_timestamp = datetime(1990, 1, 1, tzinfo=timezone.utc).timestamp()
+    cur_timestamp = date.replace(tzinfo=timezone.utc).timestamp()
 
+    # Compute time arrays first for coarse pre-filtering
+    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
+    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
+
+    # Coarse pre-filter: keep only rows where at least one of psec1/psec2
+    # could contribute data within the expanded time window.
+    # The full pipeline stacks (psec1, psec2) and later filters by phours
+    # derived from mintime/maxtime of passes in the margin window, so we
+    # need rows where either time falls in a generous window.
+    coarse_lo = cur_timestamp - pgon_t_margin
+    coarse_hi = cur_timestamp + pgon_def_duration + pgon_t_margin
+    coarse_mask = (psec1 >= coarse_lo) | (psec1 < coarse_hi) | \
+                  (psec2 >= coarse_lo) | (psec2 < coarse_hi)
+    # Apply filter – use boolean indexing on the dataset's time1 dimension
+    if not np.all(coarse_mask):
+        xover_ds = xover_ds.isel(time1=coarse_mask)
+        psec1 = psec1[coarse_mask]
+        psec2 = psec2[coarse_mask]
+
+    # Now extract remaining arrays from the (potentially smaller) dataset
     cycle1 = xover_ds["cycle1"].values
     cycle2 = xover_ds["cycle2"].values
     pass1 = xover_ds["pass1"].values
     pass2 = xover_ds["pass2"].values
-    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
-    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
     ssh1 = xover_ds["ssh1"].values
     ssh2 = xover_ds["ssh2"].values
-    # xcds = np.array([xover_ds['lon'].values, xover_ds['lat'].values]).T
 
     # compute trackid from passnum & cyc
     trackid1 = cycle1 * 10000 + pass1
@@ -114,7 +131,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
                 {
                     "units": "Hours since "
                     + datetime.strftime(
-                        date.replace(tzinfo=pytz.UTC), "%Y-%m-%d %H:%M:%S %Z"
+                        date.replace(tzinfo=timezone.utc), "%Y-%m-%d %H:%M:%S %Z"
                     ),
                     "long_name": "Breaks in cubic spline",
                 },
@@ -234,7 +251,7 @@ def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
 
     daily_file_ds.attrs["product_generation_step"] = "2"
     daily_file_ds.attrs["history"] = (
-        f'Created on {datetime.now(tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S")}'
+        f'Created on {datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")}'
     )
 
     return daily_file_ds

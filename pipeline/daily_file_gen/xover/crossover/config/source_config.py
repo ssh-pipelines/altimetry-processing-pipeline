@@ -8,6 +8,7 @@ import yaml
 class SourceConfig:
     source: str
     satellite: str
+    crossover_type: str
     cycle_length: float
     window_size: int
     window_padding: int
@@ -24,6 +25,7 @@ def _load_sources() -> dict[str, SourceConfig]:
         configs[source_key] = SourceConfig(
             source=source_key,
             satellite=cfg["satellite"],
+            crossover_type=cfg["crossover_type"],
             cycle_length=cfg["cycle_length"],
             window_size=cfg["window_size"],
             window_padding=cfg["window_padding"],

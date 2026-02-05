@@ -7,3 +7,4 @@ h5py==3.13.0
 boto3
 s3fs
 dask==2025.5.1
+pyyaml

@@ -9,15 +9,12 @@ import logging
 from datetime import datetime, UTC
 
 from crossover.xover_ssh import xover_ssh
+from crossover.config.source_config import get_source_config
 from utilities.aws_utils import aws_manager
 
 
 EPOCH: np.datetime64 = np.datetime64("1990-01-01T00:00:00.000000")
-WINDOW_SIZE: int = 10
-WINDOW_PADDING: int = 2
-CYCLE_LENGTH: float = 9.9156
 ZERO_DIFF: np.timedelta64 = np.timedelta64(0, "ns")
-MAX_DIFF: np.timedelta64 = np.timedelta64(int(CYCLE_LENGTH * 86400000000000), "ns")
 
 
 @dataclass
@@ -80,9 +77,13 @@ class Crossover:
         self.next_day: np.datetime64 = self.day + np.timedelta64(1, "D")
         self.source: str = source
         self.df_version: str = df_version
+        self.config = get_source_config(source)
+        self.max_diff: np.timedelta64 = np.timedelta64(
+            int(self.config.cycle_length * 86400000000000), "ns"
+        )
         self.window_start: np.datetime64 = day
         self.window_end: np.datetime64 = day + np.timedelta64(
-            WINDOW_SIZE + WINDOW_PADDING, "D"
+            self.config.window_size + self.config.window_padding, "D"
         )
 
     def _valid_date(self, filepath: str) -> bool:
@@ -119,16 +120,10 @@ class Crossover:
     def extract_and_set_data(self):
         opened_streams = []
         for stream in self.streams:
-            ds = xr.open_dataset(stream, engine="h5netcdf")
-            ds = ds.drop_vars(
-                [
-                    "basin_flag",
-                    "median_filter_flag",
-                    "nasa_flag",
-                    "source_flag",
-                    "ssha",
-                    "dac",
-                ]
+            ds = xr.open_dataset(
+                stream,
+                engine="h5netcdf",
+                drop_variables=["basin_flag", "median_filter_flag", "nasa_flag", "source_flag", "ssha", "dac"],
             )
             opened_streams.append(ds)
 
@@ -141,14 +136,29 @@ class Crossover:
         self.ssh = ds["ssha_smoothed"].values.astype(np.float64)
         self.trackids = ds["cycle"].values.astype("int32") * 10000 + ds["pass"].values
 
-        self.unique_trackids = np.unique(self.trackids)
-        self.starts = np.array(
-            [
-                np.min(self.time[self.trackids == track_id])
-                for track_id in self.unique_trackids
-            ],
-            dtype="datetime64[ns]",
-        )
+        sort_idx = np.lexsort((self.time.view('i8'), self.trackids))
+        sorted_trackids = self.trackids[sort_idx]
+        sorted_time = self.time[sort_idx]
+
+        boundaries = np.diff(sorted_trackids) != 0
+        start_indices = np.concatenate([[0], np.where(boundaries)[0] + 1])
+
+        self.unique_trackids = sorted_trackids[start_indices]
+        self.starts = sorted_time[start_indices]
+
+        self._build_track_index()
+
+    def _build_track_index(self):
+        self.track_index = {}
+        sort_idx = np.argsort(self.trackids)
+        sorted_trackids = self.trackids[sort_idx]
+
+        changes = np.where(np.diff(sorted_trackids) != 0)[0] + 1
+        starts = np.concatenate([[0], changes])
+        ends = np.concatenate([changes, [len(sorted_trackids)]])
+
+        for i, tid in enumerate(sorted_trackids[starts]):
+            self.track_index[tid] = sort_idx[starts[i]:ends[i]]
 
     @staticmethod
     def _date_from_filename(filename: str) -> np.datetime64:
@@ -170,7 +180,7 @@ class Crossover:
             different_cycles = np.abs(track_1 - self.unique_trackids) > 1
             opposite_passes = (track_1 % 2) != (self.unique_trackids % 2)
             starts_diff = self.starts - self.starts[i]
-            within_window = (starts_diff <= MAX_DIFF) & (starts_diff > ZERO_DIFF)
+            within_window = (starts_diff <= self.max_diff) & (starts_diff > ZERO_DIFF)
             possible_tracks = self.unique_trackids[
                 different_cycles & opposite_passes & within_window
             ]
@@ -212,14 +222,14 @@ class Crossover:
         """
         Masks time, lonlat, and ssh arrays by track_id
         """
-        track_mask = self.trackids == track_id
+        idx = self.track_index[track_id]
         masked_time = (
-            (self.time[track_mask] - EPOCH).astype("timedelta64[ns]").astype("float64")
+            (self.time[idx] - EPOCH).astype("timedelta64[ns]").astype("float64")
         )
         masked_lonlat = np.column_stack(
-            (self.longitude[track_mask], self.latitude[track_mask])
+            (self.longitude[idx], self.latitude[idx])
         )
-        masked_ssh = self.ssh[track_mask]
+        masked_ssh = self.ssh[idx]
         return masked_time, masked_lonlat, masked_ssh
 
     def create_dataset(self) -> xr.Dataset:
@@ -235,7 +245,7 @@ class Crossover:
             coords={"time1": ("time1", self.crossover_data.time1)},
             attrs={
                 "title": f"{self.source} self-crossovers {self.day}",
-                "window_length": f"{(self.window_end - self.window_start).astype('int32')} days (nominal: {WINDOW_SIZE} days + {WINDOW_PADDING} days padding)",
+                "window_length": f"{(self.window_end - self.window_start).astype('int32')} days (nominal: {self.config.window_size} days + {self.config.window_padding} days padding)",
                 "created_on": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
                 "input_product_generation_steps": self.df_version[-1],
                 "satellite_names": self.source,

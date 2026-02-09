@@ -2,6 +2,7 @@ from datetime import datetime
 import json
 import logging
 from finalization.finalizer import Finalizer
+from config.source_config import get_available_sources
 
 
 def handler(event, context):
@@ -14,15 +15,20 @@ def handler(event, context):
 
     bucket = event.get("bucket")
     proc_date = event.get("date")
+    source = event.get("source")
 
-    if None in [bucket, proc_date]:
-        raise ValueError("One of date, or bucket job parameters missing.")
+    if None in [bucket, proc_date, source]:
+        raise ValueError("One of date, source, or bucket job parameters missing.")
+
+    available = get_available_sources()
+    if source not in available:
+        raise ValueError(f"Source '{source}' is not configured. Available sources: {available}")
 
     try:
         date = datetime.strptime(proc_date, "%Y-%m-%d").date()
 
-        logging.info(f"Finalizing daily file for {date.isoformat()}")
-        finalizer = Finalizer(date, bucket)
+        logging.info(f"Finalizing daily file for {date.isoformat()} (source={source})")
+        finalizer = Finalizer(date, source, bucket)
         finalizer.process(bucket)
         result = {"status": "success", "data": event}
         return result

@@ -1,0 +1,20 @@
+sources:
+  GSFC:
+    product_type: reference
+    offset: 0.0
+    start_date: "1992-10-13"
+    pass_flag:
+      mean_num: 15.0
+      rms_num: 25.0
+      mean_threshold: 0.1
+      rms_threshold: 0.27
+  S6:
+    product_type: reference
+    offset: 0.0291
+    start_date: "2024-01-20"
+    pass_flag:
+      mean_num: 15.0
+      rms_num: 25.0
+      mean_threshold: 0.1
+      rms_threshold: 0.27
+  # Future high-lat sources will be added here with product_type: high_latitude

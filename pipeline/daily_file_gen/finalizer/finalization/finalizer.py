@@ -8,18 +8,28 @@ import pandas as pd
 import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
-
-GSFC_START = date(1992, 10, 13)
-S6_START = date(2024, 1, 20)
-
-S6_ABSOLUTE_OFFSET = 0.0291 # Offset from GSFC in meters
+from config.source_config import get_source_config
 
 
 class Finalizer:
-    def __init__(self, processing_date: date, bucket: str):
+    def __init__(self, processing_date: date, source: str, bucket: str):
         self.processing_date: date = processing_date
-        self.source: str = "GSFC" if processing_date < S6_START else "S6"
+        self.source: str = source
+        self.config = get_source_config(source)
+        self._validate_date()
         self.bad_pass_df: pd.DataFrame = self._load_bad_passes(bucket)
+
+    def _validate_date(self):
+        if self.processing_date < self.config.start_date:
+            logging.warning(
+                f"Processing date {self.processing_date} is before "
+                f"{self.source} start date {self.config.start_date}"
+            )
+        if self.config.end_date and self.processing_date > self.config.end_date:
+            logging.warning(
+                f"Processing date {self.processing_date} is after "
+                f"{self.source} end date {self.config.end_date}"
+            )
 
     def _load_bad_passes(self, bucket: str) -> pd.DataFrame:
         s3_key = f"s3://{bucket}/aux_files/bad_passes/{self.source}/{self.processing_date.isoformat()}.json"
@@ -45,13 +55,41 @@ class Finalizer:
     def upload_df(self, local_path: str, dst_path: str):
         aws_manager.fs.upload(local_path, dst_path)
 
-    def process(self, bucket):
+    def _build_filename(self) -> str:
+        date_str = self.processing_date.strftime("%Y%m%d")
+        if self.config.product_type == "reference":
+            return f'{self.source}-SSH_alt_ref_at_v1_{date_str}.nc'
+        else:
+            return f'{self.source}-SSH_alt_hilat_at_v1_{date_str}.nc'
+
+    def _build_src_path(self, bucket: str, filename: str) -> str:
         year = str(self.processing_date.year)
-        filename = f'{self.source}-SSH_alt_ref_at_v1_{self.processing_date.strftime("%Y%m%d")}.nc'
-        logging.info(f"Processing {filename}")
-        src_s3_path = os.path.join(
+        return os.path.join(
             f"s3://{bucket}/daily_files/p2", self.source, year, filename
         )
+
+    def _build_dst_path(self, bucket: str, filename: str) -> str:
+        year = str(self.processing_date.year)
+        if self.config.product_type == "reference":
+            dst_filename = filename.replace(self.source, "NASA")
+            return os.path.join(
+                f"s3://{bucket}/daily_files/p3", year, dst_filename
+            )
+        else:
+            return os.path.join(
+                f"s3://{bucket}/daily_files/p3", self.source, year, filename
+            )
+
+    def _build_dst_filename(self, filename: str) -> str:
+        if self.config.product_type == "reference":
+            return filename.replace(self.source, "NASA")
+        else:
+            return filename
+
+    def process(self, bucket):
+        filename = self._build_filename()
+        logging.info(f"Processing {filename}")
+        src_s3_path = self._build_src_path(bucket, filename)
 
         try:
             local_filepath = self.get_daily_file(src_s3_path)
@@ -60,6 +98,7 @@ class Finalizer:
 
         ds = nc.Dataset(local_filepath, "r+")
 
+        pf = self.config.pass_flag
         ds.flagged_passes = "N/A"
         ds.pass_flag_notes = (
             "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are too large relative to self crossovers, "
@@ -68,10 +107,10 @@ class Finalizer:
             "crossover points with RMS larger than pass_flag_rms_threshold (meters). Passes that have been flagged are stored in the flagged_passes attribute "
             "as comma separated cycle/pass"
         )
-        ds.pass_flag_mean_num = 15.0
-        ds.pass_flag_rms_num = 25.0
-        ds.pass_flag_mean_threshold = 0.1
-        ds.pass_flag_rms_threshold = 0.27
+        ds.pass_flag_mean_num = pf.mean_num
+        ds.pass_flag_rms_num = pf.rms_num
+        ds.pass_flag_mean_threshold = pf.mean_threshold
+        ds.pass_flag_rms_threshold = pf.rms_threshold
 
         if not self.bad_pass_df.empty:
             ds = apply_bad_pass(ds, self.bad_pass_df)
@@ -79,33 +118,28 @@ class Finalizer:
         ds.product_generation_step = "3"
         ds.history = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")
 
-        if self.source == "S6":
-            # Remove any previously applied offset
+        # Remove any previously applied offset
+        if self.config.offset != 0.0:
             try:
                 if "absolute_offset_applied" in ds.ncattrs():
-                    ds.variables["ssha"][:] = ds.variables["ssha"][:] - float(
-                        ds.absolute_offset_applied
-                    )
-                    ds.variables["ssha_smoothed"][:] = ds.variables["ssha_smoothed"][
-                        :
-                    ] - float(ds.absolute_offset_applied)
+                    prev_offset = float(ds.absolute_offset_applied)
+                    if prev_offset != 0.0:
+                        ds.variables["ssha"][:] = ds.variables["ssha"][:] - prev_offset
+                        ds.variables["ssha_smoothed"][:] = (
+                            ds.variables["ssha_smoothed"][:] - prev_offset
+                        )
             except AttributeError as e:
                 logging.exception(f"Error finalizing {filename}: {e}")
-                pass
 
-            ds.variables["ssha"][:] = ds.variables["ssha"][:] + S6_ABSOLUTE_OFFSET
+            ds.variables["ssha"][:] = ds.variables["ssha"][:] + self.config.offset
             ds.variables["ssha_smoothed"][:] = (
-                ds.variables["ssha_smoothed"][:] + S6_ABSOLUTE_OFFSET
+                ds.variables["ssha_smoothed"][:] + self.config.offset
             )
 
-            ds.absolute_offset_applied = S6_ABSOLUTE_OFFSET
-        elif self.source == "GSFC":
-            ds.absolute_offset_applied = 0
+        ds.absolute_offset_applied = self.config.offset
 
-        dst_filename = filename.replace(self.source, "NASA")
-        dst_s3_path = os.path.join(
-            f"s3://{bucket}/daily_files/p3", year, dst_filename
-        )
+        dst_filename = self._build_dst_filename(filename)
+        dst_s3_path = self._build_dst_path(bucket, filename)
 
         ds.granule_id = dst_filename
 

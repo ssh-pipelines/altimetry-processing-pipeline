@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from datetime import date, datetime
@@ -16,15 +17,23 @@ S6_ABSOLUTE_OFFSET = 0.0291 # Offset from GSFC in meters
 
 class Finalizer:
     def __init__(self, processing_date: date, bucket: str):
-        self.bad_pass_df: pd.DataFrame = self._load_bad_passes(bucket)
         self.processing_date: date = processing_date
         self.source: str = "GSFC" if processing_date < S6_START else "S6"
+        self.bad_pass_df: pd.DataFrame = self._load_bad_passes(bucket)
 
     def _load_bad_passes(self, bucket: str) -> pd.DataFrame:
-        stream = aws_manager.fs.open(
-            f"s3://{bucket}/aux_files/bad_pass_list.csv"
-        )
-        return pd.read_csv(stream)
+        s3_key = f"s3://{bucket}/aux_files/bad_passes/{self.source}/{self.processing_date.isoformat()}.json"
+        if not aws_manager.fs.exists(s3_key):
+            logging.info(f"No bad pass file found at {s3_key}")
+            return pd.DataFrame(columns=["cycle", "pass"])
+        with aws_manager.fs.open(s3_key, "r") as f:
+            data = json.loads(f.read())
+        bad_passes = data.get("bad_passes", [])
+        if not bad_passes:
+            return pd.DataFrame(columns=["cycle", "pass"])
+        df = pd.DataFrame(bad_passes)
+        df = df.rename(columns={"pass_num": "pass"})
+        return df
 
     def get_daily_file(self, path) -> str:
         if aws_manager.fs.exists(path):
@@ -64,12 +73,8 @@ class Finalizer:
         ds.pass_flag_mean_threshold = 0.1
         ds.pass_flag_rms_threshold = 0.27
 
-        bad_pass_slice = self.bad_pass_df[
-            (self.bad_pass_df["source"] == self.source)
-            & (self.bad_pass_df["date"] == str(date))
-        ]
-        if not bad_pass_slice.empty:
-            ds = apply_bad_pass(ds, bad_pass_slice)
+        if not self.bad_pass_df.empty:
+            ds = apply_bad_pass(ds, self.bad_pass_df)
 
         ds.product_generation_step = "3"
         ds.history = datetime.now().strftime("Created on %Y-%m-%dT%H:%M:%S")

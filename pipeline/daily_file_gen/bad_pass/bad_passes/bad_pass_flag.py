@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List
 
@@ -9,13 +11,22 @@ from utilities.aws_utils import aws_manager
 
 
 class XoverProcessor:
+    REF_EPOCH = datetime(1990, 1, 1)
+    TRACKID_CYCLE_FACTOR = 10000
+    MAX_MEAN = 0.1
+    MAX_RMS = 0.27
+    N_MEAN = 15
+    N_RMS = 25
+    TIME_PAD_SECS = 3600
+    DAY_SECS = 86400
+
     def __init__(self, source: str, date: datetime):
         self.source = source
         self.date = date
         self.windowlen = 10
         self.windowpad = 1
-        self.window_start = date - timedelta(self.windowlen) - timedelta(self.windowpad)
-        self.window_end = date + timedelta(self.windowpad)
+        self.window_start = date - timedelta(days=self.windowlen) - timedelta(days=self.windowpad)
+        self.window_end = date + timedelta(days=self.windowpad)
 
     def get_files(self, bucket: str) -> Iterable[str]:
         window_range = []
@@ -32,80 +43,96 @@ class XoverProcessor:
         return window_range
 
     def open_file(self, file):
-        if "s3" in file:
+        if file.startswith("s3://"):
             return aws_manager.fs.open(file, "rb")
         return open(file, "rb")
 
     def load_all_data(self, files: Iterable[str]):
         logging.info("Loading all data...")
 
-        ref_tstamp = datetime(1990, 1, 1).timestamp()
+        ref_tstamp = self.REF_EPOCH.timestamp()
 
-        # Init np arrays with sufficient size
-        total_size = len(files) * 2000
-        cycle1, cycle2, pass1, pass2, psec1, psec2, ssh1, ssh2 = (
-            np.empty(total_size) for _ in range(8)
-        )
+        all_cycle1, all_cycle2 = [], []
+        all_pass1, all_pass2 = [], []
+        all_psec1, all_psec2 = [], []
+        all_ssh1, all_ssh2 = [], []
 
-        # Populate arrays
-        index = 0
         for file in files:
             with self.open_file(file) as f:
                 nc_file = nc.Dataset("dummy", memory=f.read())
-                size = len(nc_file["time1"])
-                if size == 0:
-                    continue
-                cycle1[index : index + size] = nc_file["cycle1"][:]
-                cycle2[index : index + size] = nc_file["cycle2"][:]
-                pass1[index : index + size] = nc_file["pass1"][:]
-                pass2[index : index + size] = nc_file["pass2"][:]
-                ssh1[index : index + size] = nc_file["ssh1"][:]
-                ssh2[index : index + size] = nc_file["ssh2"][:]
-                psec1[index : index + size] = nc_file["time1"][:] + ref_tstamp
-                psec2[index : index + size] = nc_file["time2"][:] + ref_tstamp
-            index += size
+                try:
+                    size = len(nc_file["time1"])
+                    if size == 0:
+                        continue
+                    all_cycle1.append(nc_file["cycle1"][:])
+                    all_cycle2.append(nc_file["cycle2"][:])
+                    all_pass1.append(nc_file["pass1"][:])
+                    all_pass2.append(nc_file["pass2"][:])
+                    all_ssh1.append(nc_file["ssh1"][:])
+                    all_ssh2.append(nc_file["ssh2"][:])
+                    all_psec1.append(nc_file["time1"][:] + ref_tstamp)
+                    all_psec2.append(nc_file["time2"][:] + ref_tstamp)
+                finally:
+                    nc_file.close()
 
-        # Crop arrays
-        cycle1 = cycle1[:index]
-        cycle2 = cycle2[:index]
-        pass1 = pass1[:index]
-        pass2 = pass2[:index]
-        psec1 = psec1[:index]
-        psec2 = psec2[:index]
-        ssh1 = ssh1[:index]
-        ssh2 = ssh2[:index]
+        if not all_ssh1:
+            self.dssh = np.array([])
+            self.psec = np.array([])
+            self.trackid = np.array([])
+            logging.info("Loading data complete (no data)")
+            return
+
+        cycle1 = np.concatenate(all_cycle1)
+        cycle2 = np.concatenate(all_cycle2)
+        pass1 = np.concatenate(all_pass1)
+        pass2 = np.concatenate(all_pass2)
+        psec1 = np.concatenate(all_psec1)
+        psec2 = np.concatenate(all_psec2)
+        ssh1 = np.concatenate(all_ssh1)
+        ssh2 = np.concatenate(all_ssh2)
 
         dssh0 = ssh1 - ssh2
         self.dssh = np.concatenate((dssh0, -dssh0))
         self.psec = np.concatenate((psec1, psec2))
-        self.trackid = np.concatenate((cycle1 * 10000 + pass1, cycle2 * 10000 + pass2))
+        self.trackid = np.concatenate(
+            (cycle1 * self.TRACKID_CYCLE_FACTOR + pass1,
+             cycle2 * self.TRACKID_CYCLE_FACTOR + pass2)
+        )
         logging.info("Loading data complete")
 
     def identify_bad_passes(self, currentdate: float) -> List[Dict[str, str]]:
-        max_mean = 0.1
-        max_rms = 0.27
-        nmean = 15
-        nrms = 25
-
         bad_passes = []
         ii = np.where(
-            (self.psec >= currentdate - 3600)
-            & (self.psec <= currentdate + 86400 + 3600)
+            (self.psec >= currentdate - self.TIME_PAD_SECS)
+            & (self.psec <= currentdate + self.DAY_SECS + self.TIME_PAD_SECS)
         )[0]
         tid_list = np.unique(self.trackid[ii])
+        min_points = min(self.N_MEAN, self.N_RMS)
 
         for tid in tid_list:
             jj = np.where(self.trackid == tid)[0]
-            if len(jj) >= min(nmean, nrms):
+            if len(jj) >= min_points:
                 xmean = np.mean(self.dssh[jj])
                 xrms = np.std(self.dssh[jj], ddof=1)
-                check_mean = (len(jj) > nmean) & (np.abs(xmean) > max_mean)
-                check_rms = (len(jj) > nrms) & (xrms > max_rms)
-                if check_mean | check_rms:
-                    cycle = str(int(np.floor(tid / 10000)))
-                    pass_num = str(int(tid % 10000))
+                check_mean = (len(jj) > self.N_MEAN) and (np.abs(xmean) > self.MAX_MEAN)
+                check_rms = (len(jj) > self.N_RMS) and (xrms > self.MAX_RMS)
+                if check_mean or check_rms:
+                    cycle = str(int(tid // self.TRACKID_CYCLE_FACTOR))
+                    pass_num = str(int(tid % self.TRACKID_CYCLE_FACTOR))
                     bad_passes.append({"cycle": cycle, "pass_num": pass_num})
         return bad_passes
+
+    def write_results_to_s3(self, results: dict, bucket: str) -> None:
+        """Write bad pass results JSON to s3://{bucket}/aux_files/bad_passes/{source}/{date}.json"""
+        source = results["source"]
+        date = results["date"]
+        s3_key = f"s3://{bucket}/aux_files/bad_passes/{source}/{date}.json"
+        local_path = f"/tmp/{source}_{date}_bad_passes.json"
+        with open(local_path, "w") as f:
+            json.dump(results, f)
+        aws_manager.upload_obj(local_path, s3_key)
+        os.remove(local_path)
+        logging.info(f"Wrote bad pass results to {s3_key}")
 
     def process(self, bucket: str):
         logging.info(f"Finding {self.source} bad passes for {self.date}")
@@ -122,4 +149,5 @@ class XoverProcessor:
             "source": self.source,
             "bad_passes": bad_passes,
         }
+        self.write_results_to_s3(formatted_results, bucket)
         return formatted_results

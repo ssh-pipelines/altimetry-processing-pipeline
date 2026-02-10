@@ -2,7 +2,7 @@ from datetime import datetime
 import json
 import logging
 from finalization.finalizer import Finalizer
-from config.source_config import get_available_sources
+from finalization.config.source_config import get_available_sources
 
 
 def handler(event, context):

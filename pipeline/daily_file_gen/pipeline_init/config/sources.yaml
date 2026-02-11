@@ -2,16 +2,16 @@ sources:
   GSFC:
     satellite: GSFC
     start_date: "1992-10-25"
-    s3_prefix: "daily_files/p3"
-    filename_pattern: "NASA-SSH_alt_ref_at_v1_{date8}.nc"
+    s3_prefix: "daily_files/p3/GSFC"
+    filename_pattern: "GSFC-SSH_alt_ref_at_v1_{date8}.nc"
     collections:
       - concept_id: C2901523432-POCLOUD
         priority: 1
   S6:
     satellite: S6
     start_date: "2024-01-20"
-    s3_prefix: "daily_files/p3"
-    filename_pattern: "NASA-SSH_alt_ref_at_v1_{date8}.nc"
+    s3_prefix: "daily_files/p3/S6"
+    filename_pattern: "S6-SSH_alt_ref_at_v1_{date8}.nc"
     collections:
       - concept_id: C3332203845-POCLOUD
         priority: 1
@@ -22,7 +22,7 @@ sources:
   S6B:
     satellite: S6B
     start_date: "2025-11-26"
-    s3_prefix: "daily_files/p3"
+    s3_prefix: "daily_files/p3/S6B"
     filename_pattern: "S6B_alt_ref_at_v1_{date8}.nc"
     collections:
       - concept_id: C3213767230-POCLOUD

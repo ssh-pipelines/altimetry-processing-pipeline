@@ -23,18 +23,16 @@ def surrounding_mondays(d: date) -> Tuple[date, date]:
 
 def lambda_handler(event, context):
     job_dates_dt = [date.fromisoformat(jd["date"]) for jd in event]
-
+    bucket = event[0]["bucket"]  # consistent across all jobs in a run
     end_date = last_sg_date()
-
     sg_jobs = set()
     for job_date in job_dates_dt:
         prev_monday, next_monday = surrounding_mondays(job_date)
-
         if prev_monday <= end_date:
             sg_jobs.add(prev_monday)
         if next_monday <= end_date:
             sg_jobs.add(next_monday)
-
-    intersection = [job.isoformat() for job in sg_jobs]
     
-    return intersection
+    return {
+        "jobs": [{"date": job.isoformat(), "bucket": bucket} for job in sorted(sg_jobs)]
+    }

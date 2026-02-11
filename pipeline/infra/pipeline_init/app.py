@@ -6,7 +6,7 @@ import re
 import boto3
 from cmr import GranuleQuery
 
-from pipeline_init.config.source_config import get_source_config, get_available_sources, PipelineInitSourceConfig
+from config.source_config import get_source_config, get_available_sources, PipelineInitSourceConfig
 
 session = boto3.Session()
 s3 = session.client("s3")

@@ -8,6 +8,7 @@ RUN pip install --upgrade pip \
 WORKDIR ${LAMBDA_TASK_ROOT}
 
 COPY pipeline/infra/pipeline_init/app.py .
+COPY pipeline/infra/pipeline_init/config/ config/
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}"
 

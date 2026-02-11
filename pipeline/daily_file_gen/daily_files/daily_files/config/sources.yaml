@@ -48,3 +48,22 @@ sources:
         source_label: "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
         reference: "https://doi.org/10.5067/S6AP4-2LRST"
+  S6B:
+    satellite: S6B
+    product_type: reference
+    filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
+    s3_prefix: "daily_files/p1"
+    source_mss: DTU18
+    target_mss: DTU21
+    mss_diff_file: DTU18_minus_DTU21.nc
+    empty_template: s6b_empty_template.nc
+    smoothing:
+      speed: 5.745
+      sigma: 15
+    collections:
+      - shortname: JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G
+        concept_id: C3213767230-POCLOUD
+        priority: 1
+        source_label: "Sentinel-6B/Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
+        source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G"
+        reference: "https://doi.org/10.5067/S6BP4-2LRST"

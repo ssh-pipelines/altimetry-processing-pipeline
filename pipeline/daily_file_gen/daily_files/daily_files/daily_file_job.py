@@ -52,6 +52,13 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         ingestor=S6Ingestor,
         processor=S6DailyFile,
     ),
+    "S6B": SourcePipeline(
+        enumerator=S6Enumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
+        ingestor=S6Ingestor,
+        processor=S6DailyFile,
+    ),
 }
 
 

@@ -17,4 +17,13 @@ sources:
       rms_num: 25.0
       mean_threshold: 0.1
       rms_threshold: 0.27
+  S6B:
+    product_type: reference
+    offset: 0.0  # TODO: determine S6B offset
+    start_date: "2025-01-01"  # TODO: confirm S6B start date
+    pass_flag:
+      mean_num: 15.0
+      rms_num: 25.0
+      mean_threshold: 0.1
+      rms_threshold: 0.27
   # Future high-lat sources will be added here with product_type: high_latitude

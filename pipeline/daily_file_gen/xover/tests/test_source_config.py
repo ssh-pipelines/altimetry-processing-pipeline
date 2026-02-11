@@ -11,6 +11,7 @@ class TestSourceConfig(unittest.TestCase):
         sources = get_available_sources()
         self.assertIn("GSFC", sources)
         self.assertIn("S6", sources)
+        self.assertIn("S6B", sources)
 
     def test_invalid_source_raises(self):
         with self.assertRaises(ValueError):
@@ -19,6 +20,7 @@ class TestSourceConfig(unittest.TestCase):
     def test_satellite_field(self):
         self.assertEqual(get_source_config("GSFC").satellite, "GSFC")
         self.assertEqual(get_source_config("S6").satellite, "S6")
+        self.assertEqual(get_source_config("S6B").satellite, "S6B")
 
     def test_gsfc_config_fields(self):
         cfg = get_source_config("GSFC")
@@ -39,3 +41,11 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.window_size, 10)
         self.assertEqual(cfg.window_padding, 2)
         self.assertEqual(cfg.max_pass_number, 9999)
+
+    def test_s6b_config_fields(self):
+        cfg = get_source_config("S6B")
+        self.assertIsInstance(cfg, SourceConfig)
+        self.assertEqual(cfg.source, "S6B")
+        self.assertEqual(cfg.satellite, "S6B")
+        self.assertEqual(cfg.crossover_type, "self")
+        self.assertEqual(cfg.cycle_length, 9.9156)

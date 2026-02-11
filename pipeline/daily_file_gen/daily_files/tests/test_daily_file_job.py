@@ -25,6 +25,7 @@ class TestSourceRegistry(unittest.TestCase):
     def test_registry_has_expected_sources(self):
         self.assertIn("GSFC", SOURCE_REGISTRY)
         self.assertIn("S6", SOURCE_REGISTRY)
+        self.assertIn("S6B", SOURCE_REGISTRY)
 
 
 class TestDailyFileJobInit(unittest.TestCase):

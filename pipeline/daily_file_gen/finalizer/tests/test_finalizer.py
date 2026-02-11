@@ -304,15 +304,16 @@ class _ProcessTestMixin:
 class TestProcessGSFC(unittest.TestCase, _ProcessTestMixin):
 
     @patch("finalization.finalizer.aws_manager")
-    def test_gsfc_upload_path_contains_nasa_and_p3(self, mock_aws):
+    def test_gsfc_upload_path_is_per_source(self, mock_aws):
         proc_date = date(2020, 3, 15)
         self._setup_process_mocks(mock_aws, source="GSFC")
         try:
             f = Finalizer(proc_date, "GSFC", "bucket")
             f.process("bucket")
             dst = mock_aws.fs.upload.call_args[0][1]
-            self.assertIn("NASA", dst)
-            self.assertIn("p3", dst)
+            self.assertIn("p3/GSFC/", dst)
+            self.assertIn("GSFC-SSH", dst)
+            self.assertNotIn("NASA", dst)
             self.assertIn("2020", dst)
         finally:
             self._cleanup()
@@ -413,7 +414,7 @@ class TestProcessAttributes(unittest.TestCase, _ProcessTestMixin):
             ds = nc.Dataset(self.uploaded_copy, "r")
             self.assertEqual(ds.product_generation_step, "3")
             self.assertIn("Created on", ds.history)
-            self.assertIn("NASA", ds.granule_id)
+            self.assertIn("GSFC", ds.granule_id)
             self.assertEqual(ds.pass_flag_mean_num, 15.0)
             self.assertEqual(ds.pass_flag_rms_num, 25.0)
             self.assertEqual(ds.pass_flag_mean_threshold, 0.1)
@@ -476,6 +477,42 @@ class TestProcessWithBadPasses(unittest.TestCase, _ProcessTestMixin):
             ds = nc.Dataset(self.uploaded_copy, "r")
             self.assertEqual(ds.variables["nasa_flag"][0], 1)
             self.assertIn("1/1", ds.flagged_passes)
+            ds.close()
+        finally:
+            self._cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Tests — process() S6B path (per-source output)
+# ---------------------------------------------------------------------------
+
+class TestProcessS6B(unittest.TestCase, _ProcessTestMixin):
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_s6b_upload_path_is_per_source(self, mock_aws):
+        proc_date = date(2025, 6, 1)
+        self._setup_process_mocks(mock_aws, source="S6B")
+        try:
+            f = Finalizer(proc_date, "S6B", "bucket")
+            f.process("bucket")
+            dst = mock_aws.fs.upload.call_args[0][1]
+            self.assertIn("p3/S6B/", dst)
+            self.assertIn("S6B", dst)
+            self.assertNotIn("NASA", dst)
+            self.assertIn("2025", dst)
+        finally:
+            self._cleanup()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_s6b_granule_id_uses_source_name(self, mock_aws):
+        proc_date = date(2025, 6, 1)
+        self._setup_process_mocks(mock_aws, source="S6B")
+        try:
+            f = Finalizer(proc_date, "S6B", "bucket")
+            f.process("bucket")
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            self.assertIn("S6B", ds.granule_id)
+            self.assertNotIn("NASA", ds.granule_id)
             ds.close()
         finally:
             self._cleanup()

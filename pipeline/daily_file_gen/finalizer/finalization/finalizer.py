@@ -70,21 +70,12 @@ class Finalizer:
 
     def _build_dst_path(self, bucket: str, filename: str) -> str:
         year = str(self.processing_date.year)
-        if self.config.product_type == "reference":
-            dst_filename = filename.replace(self.source, "NASA")
-            return os.path.join(
-                f"s3://{bucket}/daily_files/p3", year, dst_filename
-            )
-        else:
-            return os.path.join(
-                f"s3://{bucket}/daily_files/p3", self.source, year, filename
-            )
+        return os.path.join(
+            f"s3://{bucket}/daily_files/p3", self.source, year, filename
+        )
 
     def _build_dst_filename(self, filename: str) -> str:
-        if self.config.product_type == "reference":
-            return filename.replace(self.source, "NASA")
-        else:
-            return filename
+        return filename
 
     def process(self, bucket):
         filename = self._build_filename()

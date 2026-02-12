@@ -71,7 +71,7 @@ class TestSourceConfig(unittest.TestCase):
         cfg = get_source_config("GSFC")
         self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.offset, 0.0)
-        self.assertEqual(cfg.start_date, date(1992, 10, 13))
+        self.assertEqual(cfg.start_date, date(1992, 10, 25))
         self.assertIsNone(cfg.end_date)
         self.assertEqual(cfg.pass_flag.mean_num, 15.0)
         self.assertEqual(cfg.pass_flag.rms_num, 25.0)

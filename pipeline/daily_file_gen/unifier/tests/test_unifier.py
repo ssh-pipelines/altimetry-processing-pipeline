@@ -25,14 +25,12 @@ class TestSourceConfig(unittest.TestCase):
 
     def test_gsfc_config_values(self):
         cfg = get_source_config("GSFC")
-        self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.dst_prefix, "daily_files/p3/NASA-SSH")
         self.assertIn("{source}", cfg.src_filename_template)
         self.assertIn("NASA-SSH", cfg.dst_filename_template)
 
     def test_s6_config_values(self):
         cfg = get_source_config("S6")
-        self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.dst_prefix, "daily_files/p3/NASA-SSH")
 
     def test_unconfigured_source_raises(self):

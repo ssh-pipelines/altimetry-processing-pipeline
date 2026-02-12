@@ -2,7 +2,7 @@ from datetime import datetime
 import json
 import logging
 from finalization.finalizer import Finalizer
-from finalization.config.source_config import get_available_sources
+from finalization.config.source_config import get_available_sources, get_source_config
 
 
 def handler(event, context):
@@ -30,7 +30,12 @@ def handler(event, context):
         logging.info(f"Finalizing daily file for {date.isoformat()} (source={source})")
         finalizer = Finalizer(date, source, bucket)
         finalizer.process(bucket)
-        result = {"status": "success", "data": event}
+
+        config = get_source_config(source)
+        result = {
+            "status": "success",
+            "data": {**event, "product_type": config.product_type, "unify": config.unify},
+        }
         return result
     except Exception as e:
         error_response = {

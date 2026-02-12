@@ -4,6 +4,8 @@ from datetime import date
 
 import yaml
 
+from utilities.source_registry import get_source_entry
+
 
 @dataclass
 class PassFlagConfig:
@@ -17,6 +19,7 @@ class PassFlagConfig:
 class FinalizerSourceConfig:
     source: str
     product_type: str
+    unify: bool
     offset: float
     start_date: date
     end_date: date | None
@@ -31,10 +34,7 @@ def _load_sources() -> dict[str, FinalizerSourceConfig]:
     configs = {}
     for source_key, cfg in raw["sources"].items():
         pass_flag = PassFlagConfig(**cfg["pass_flag"])
-
-        start_date = cfg["start_date"]
-        if isinstance(start_date, str):
-            start_date = date.fromisoformat(start_date)
+        registry = get_source_entry(source_key)
 
         end_date = cfg.get("end_date")
         if isinstance(end_date, str):
@@ -42,9 +42,10 @@ def _load_sources() -> dict[str, FinalizerSourceConfig]:
 
         configs[source_key] = FinalizerSourceConfig(
             source=source_key,
-            product_type=cfg["product_type"],
+            product_type=registry.product_type,
+            unify=registry.unify,
             offset=cfg["offset"],
-            start_date=start_date,
+            start_date=registry.start_date,
             end_date=end_date,
             pass_flag=pass_flag,
         )

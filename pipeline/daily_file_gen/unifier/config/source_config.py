@@ -7,7 +7,6 @@ import yaml
 @dataclass
 class UnifierSourceConfig:
     source: str
-    product_type: str
     src_filename_template: str
     dst_filename_template: str
     dst_prefix: str
@@ -22,7 +21,6 @@ def _load_sources() -> dict[str, UnifierSourceConfig]:
     for source_key, cfg in raw["sources"].items():
         configs[source_key] = UnifierSourceConfig(
             source=source_key,
-            product_type=cfg["product_type"],
             src_filename_template=cfg["src_filename_template"],
             dst_filename_template=cfg["dst_filename_template"],
             dst_prefix=cfg["dst_prefix"],

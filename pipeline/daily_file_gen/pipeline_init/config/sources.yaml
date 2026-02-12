@@ -1,7 +1,6 @@
 sources:
   GSFC:
     satellite: GSFC
-    start_date: "1992-10-25"
     s3_prefix: "daily_files/p3/GSFC"
     filename_pattern: "GSFC-SSH_alt_ref_at_v1_{date8}.nc"
     collections:
@@ -9,7 +8,6 @@ sources:
         priority: 1
   S6:
     satellite: S6
-    start_date: "2024-01-20"
     s3_prefix: "daily_files/p3/S6"
     filename_pattern: "S6-SSH_alt_ref_at_v1_{date8}.nc"
     collections:
@@ -21,7 +19,6 @@ sources:
         priority: 3
   S6B:
     satellite: S6B
-    start_date: "2025-11-26"
     s3_prefix: "daily_files/p3/S6B"
     filename_pattern: "S6B_alt_ref_at_v1_{date8}.nc"
     collections:

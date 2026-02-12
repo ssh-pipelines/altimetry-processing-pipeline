@@ -1,5 +1,4 @@
 from datetime import datetime
-import json
 import logging
 
 import boto3
@@ -44,4 +43,4 @@ def handler(event, context):
     )
 
     logging.info(f"Unification complete for {source} {proc_date}")
-    return {"status": "success", "data": event}
+    return {"status": "success", "data": {**event, "source": "NASA-SSH"}}

@@ -4,6 +4,8 @@ from datetime import date
 
 import yaml
 
+from utilities.source_registry import get_source_entry
+
 
 @dataclass
 class CollectionConfig:
@@ -29,15 +31,12 @@ def _load_sources() -> dict[str, PipelineInitSourceConfig]:
     configs = {}
     for source_key, cfg in raw["sources"].items():
         collections = [CollectionConfig(**c) for c in cfg.get("collections", [])]
-
-        start_date = cfg["start_date"]
-        if isinstance(start_date, str):
-            start_date = date.fromisoformat(start_date)
+        registry = get_source_entry(source_key)
 
         configs[source_key] = PipelineInitSourceConfig(
             source=source_key,
             satellite=cfg["satellite"],
-            start_date=start_date,
+            start_date=registry.start_date,
             s3_prefix=cfg["s3_prefix"],
             filename_pattern=cfg["filename_pattern"],
             collections=collections,

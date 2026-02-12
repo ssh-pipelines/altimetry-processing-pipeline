@@ -1,0 +1,13 @@
+sources:
+  GSFC:
+    product_type: reference
+    unify: true
+    start_date: "1992-10-25"
+  S6:
+    product_type: reference
+    unify: true
+    start_date: "2024-01-20"
+  S6B:
+    product_type: reference
+    unify: false
+    start_date: "2025-11-26"

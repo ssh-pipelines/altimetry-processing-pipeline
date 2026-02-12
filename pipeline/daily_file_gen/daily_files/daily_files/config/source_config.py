@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from utilities.source_registry import get_source_entry
+
 
 @dataclass
 class SmoothingConfig:
@@ -43,13 +45,13 @@ def _load_sources() -> dict[str, SourceConfig]:
     configs = {}
     for source_key, cfg in raw["sources"].items():
         smoothing = SmoothingConfig(**cfg["smoothing"])
-
         collections = [CollectionConfig(**c) for c in cfg.get("collections", [])]
+        registry = get_source_entry(source_key)
 
         configs[source_key] = SourceConfig(
             source=source_key,
             satellite=cfg["satellite"],
-            product_type=cfg["product_type"],
+            product_type=registry.product_type,
             filename_template=cfg["filename_template"],
             s3_prefix=cfg["s3_prefix"],
             source_mss=cfg["source_mss"],

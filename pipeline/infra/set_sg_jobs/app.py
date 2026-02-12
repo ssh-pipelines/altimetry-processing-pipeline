@@ -18,21 +18,22 @@ def surrounding_mondays(d: date) -> Tuple[date, date]:
     prev_monday = d - timedelta(days=weekday)
     next_monday = prev_monday + timedelta(days=7)
 
-    return prev_monday, next_monday
+    return prev_monday.isoformat(), next_monday.isoformat()
 
 
 def lambda_handler(event, context):
-    job_dates_dt = [date.fromisoformat(jd["date"]) for jd in event]
-    bucket = event[0]["bucket"]  # consistent across all jobs in a run
+    bucket = event[0]["bucket"]
+    source = event[0]["source"]
     end_date = last_sg_date()
     sg_jobs = set()
-    for job_date in job_dates_dt:
-        prev_monday, next_monday = surrounding_mondays(job_date)
+    for job in event:
+        job_date_dt = date.fromisoformat(job["date"])
+        prev_monday, next_monday = surrounding_mondays(job_date_dt)
         if prev_monday <= end_date:
             sg_jobs.add(prev_monday)
         if next_monday <= end_date:
             sg_jobs.add(next_monday)
     
     return {
-        "jobs": [{"date": job.isoformat(), "bucket": bucket} for job in sorted(sg_jobs)]
+        "jobs": [{"date": job, "bucket": bucket, "source": source} for job in sorted(sg_jobs)]
     }

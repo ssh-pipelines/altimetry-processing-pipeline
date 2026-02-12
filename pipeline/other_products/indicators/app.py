@@ -1,29 +1,18 @@
 from datetime import datetime
 import json
 import logging
-from typing import List
 from indicators.compute_indicators import IndicatorProcessor
-from utilities.aws_utils import aws_manager
 
 
-def get_indicators_modtime() -> datetime:
+def build_sg_key(date_str: str, bucket: str, source: str) -> str:
     """
-    Get modified time of indicators file. If it doesn't exist return epoch time.
-
-    Currently a placeholder as we are processing ALL dates every time
+    Construct the deterministic S3 key for a simple grid file.
+    Mirrors the pattern in simple_grids/simple_gridder/gridder.py:28.
     """
-    return datetime(1970, 1, 1)
-
-
-def get_keys_to_process(base_mod_time: datetime, bucket: str) -> List[str]:
-    sg_modtimes = aws_manager.get_all_obj_meta(
-        f"s3://{bucket}/simple_grids/p3/*/*.nc"
-    )
-    return [
-        k
-        for k, v in sg_modtimes.items()
-        if v["LastModified"].replace(tzinfo=None) > base_mod_time
-    ]
+    date = datetime.strptime(date_str, "%Y-%m-%d")
+    year = str(date.year)
+    filename = f'{source}_alt_ref_simple_grid_v1_{date.strftime("%Y%m%d")}.nc'
+    return f"s3://{bucket}/simple_grids/{source}/{year}/{filename}"
 
 
 def handler(event, context):
@@ -34,24 +23,24 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    bucket = event.get("bucket")
-    if bucket is None:
-        raise ValueError("bucket job parameter missing.")
+    jobs = event.get("jobs")
+    if not jobs:
+        raise ValueError("'jobs' list is missing or empty.")
+
+    for i, job in enumerate(jobs):
+        for field in ("date", "bucket", "source"):
+            if field not in job:
+                raise ValueError(f"jobs[{i}] missing required field '{field}'.")
+
+    source = jobs[0]["source"]
+    bucket = jobs[0]["bucket"]
+
+    sg_keys = [build_sg_key(j["date"], j["bucket"], j["source"]) for j in jobs]
+    logging.info(f"{len(sg_keys)} simple grids to process for source={source}")
 
     try:
-        # Get existing indicators file mod time
-        base_mod_time = get_indicators_modtime()
-        logging.info(f"Indicators file mod time: {base_mod_time}")
-
-        keys_to_process = get_keys_to_process(base_mod_time, bucket)
-        logging.info(f"{len(keys_to_process)} simple grids require processing")
-
-        if keys_to_process:
-            # process simple grids and update indicators file
-            IndicatorProcessor(keys_to_process).run(bucket)
-
-        result = {"status": "success", "data": event}
-        return result
+        IndicatorProcessor(sg_keys, source).run(bucket)
+        return {"status": "success", "data": event}
     except Exception as e:
         error_response = {
             "status": "error",

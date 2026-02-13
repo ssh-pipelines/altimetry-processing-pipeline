@@ -123,10 +123,10 @@ class XoverProcessor:
         return bad_passes
 
     def write_results_to_s3(self, results: dict, bucket: str) -> None:
-        """Write bad pass results JSON to s3://{bucket}/aux_files/bad_passes/{source}/{date}.json"""
+        """Write bad pass results JSON to s3://{bucket}/bad_passes/{source}/{date}.json"""
         source = results["source"]
         date = results["date"]
-        s3_key = f"s3://{bucket}/aux_files/bad_passes/{source}/{date}.json"
+        s3_key = f"s3://{bucket}/bad_passes/{source}/{date}.json"
         local_path = f"/tmp/{source}_{date}_bad_passes.json"
         with open(local_path, "w") as f:
             json.dump(results, f)
@@ -149,5 +149,6 @@ class XoverProcessor:
             "source": self.source,
             "bad_passes": bad_passes,
         }
-        self.write_results_to_s3(formatted_results, bucket)
+        if bad_passes:
+            self.write_results_to_s3(formatted_results, bucket)
         return formatted_results

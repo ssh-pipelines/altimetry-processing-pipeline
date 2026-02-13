@@ -11,3 +11,7 @@ sources:
     product_type: reference
     unify: false
     start_date: "2025-11-26"
+  NASA-SSH:
+    product_type: reference
+    unify: false
+    start_date: "1992-10-25"

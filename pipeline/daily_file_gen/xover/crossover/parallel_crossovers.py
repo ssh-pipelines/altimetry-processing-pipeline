@@ -10,6 +10,7 @@ from datetime import datetime, UTC
 from crossover.xover_ssh import xover_ssh
 from crossover.config.source_config import get_source_config
 from utilities.aws_utils import aws_manager
+from utilities.source_registry import daily_filename_prefix
 
 
 EPOCH: np.datetime64 = np.datetime64("1990-01-01T00:00:00.000000")
@@ -94,15 +95,13 @@ class Crossover:
         self.window_end: np.datetime64 = day + np.timedelta64(self.config.window_size + self.config.window_padding, "D")
 
     def stream_files(self, bucket: str) -> Iterable[TextIOWrapper]:
-        # File version is hardcoded to v1 throughout the repo
-        FILENAME_VERSION = "v1"
-
         streams = []
         date = self.window_start
+        prefix = daily_filename_prefix(self.source)
         while date <= self.window_end:
             date_str = np.datetime_as_string(date, unit="D").replace("-", "")
             year = np.datetime_as_string(date, unit="Y")
-            filename = f"{self.source}-SSH_alt_ref_at_{FILENAME_VERSION}_{date_str}.nc"
+            filename = f"{prefix}_{date_str}.nc"
             key = f"s3://{bucket}/daily_files/{self.df_version}/{self.source}/{year}/{filename}"
 
             if aws_manager.key_exists(key):

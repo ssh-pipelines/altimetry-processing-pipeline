@@ -2,14 +2,14 @@ sources:
   GSFC:
     satellite: GSFC
     s3_prefix: "daily_files/p3/GSFC"
-    filename_pattern: "GSFC-SSH_alt_ref_at_v1_{date8}.nc"
+    filename_pattern: "GSFC_alt_ref_at_v1_{date8}.nc"
     collections:
       - concept_id: C2901523432-POCLOUD
         priority: 1
   S6:
     satellite: S6
     s3_prefix: "daily_files/p3/S6"
-    filename_pattern: "S6-SSH_alt_ref_at_v1_{date8}.nc"
+    filename_pattern: "S6_alt_ref_at_v1_{date8}.nc"
     collections:
       - concept_id: C3332203845-POCLOUD
         priority: 1

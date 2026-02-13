@@ -8,6 +8,7 @@ import pandas as pd
 import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
+from utilities.source_registry import daily_filename_prefix
 from config.source_config import get_source_config
 
 
@@ -32,15 +33,18 @@ class Finalizer:
             )
 
     def _load_bad_passes(self, bucket: str) -> pd.DataFrame:
-        s3_key = f"s3://{bucket}/aux_files/bad_passes/{self.source}/{self.processing_date.isoformat()}.json"
+        s3_key = f"s3://{bucket}/bad_passes/{self.source}/{self.processing_date.isoformat()}.json"
         if not aws_manager.fs.exists(s3_key):
-            logging.info(f"No bad pass file found at {s3_key}")
             return pd.DataFrame(columns=["cycle", "pass"])
+        
+        logging.info(f"Bad pass file found at {s3_key}")
         with aws_manager.fs.open(s3_key, "r") as f:
             data = json.loads(f.read())
+            
         bad_passes = data.get("bad_passes", [])
         if not bad_passes:
             return pd.DataFrame(columns=["cycle", "pass"])
+        
         df = pd.DataFrame(bad_passes)
         df = df.rename(columns={"pass_num": "pass"})
         return df
@@ -57,10 +61,7 @@ class Finalizer:
 
     def _build_filename(self) -> str:
         date_str = self.processing_date.strftime("%Y%m%d")
-        if self.config.product_type == "reference":
-            return f'{self.source}-SSH_alt_ref_at_v1_{date_str}.nc'
-        else:
-            return f'{self.source}-SSH_alt_hilat_at_v1_{date_str}.nc'
+        return f'{daily_filename_prefix(self.source)}_{date_str}.nc'
 
     def _build_src_path(self, bucket: str, filename: str) -> str:
         year = str(self.processing_date.year)

@@ -8,6 +8,7 @@ from typing import Tuple, Optional
 
 from simple_gridder.gridding import Gridder
 from utilities.aws_utils import aws_manager
+from utilities.source_registry import daily_filename_prefix
 
 
 class SimpleGridderJob:
@@ -54,10 +55,7 @@ class SimpleGridderJob:
         return streamed_objects, streamed_filenames
 
     def generate_keys(self):
-        if self.source == "NASA-SSH":
-            prefix = f"s3://{self.bucket}/daily_files/p3"
-        else:
-            prefix = os.path.join(f"s3://{self.bucket}/daily_files/p2", self.source)
+        prefix = f"s3://{self.bucket}/daily_files/p3/{self.source}"
 
         dates_in_window = np.arange(
             self.start_date.strftime("%Y-%m-%d"),
@@ -67,10 +65,7 @@ class SimpleGridderJob:
         keys = []
         for date in dates_in_window:
             date_dt = datetime.strptime(str(date), "%Y-%m-%d")
-            if self.source == "NASA-SSH":
-                filename = f'NASA-SSH_alt_ref_at_v1_{date_dt.strftime("%Y%m%d")}.nc'
-            else:
-                filename = f'{self.source}-SSH_alt_ref_at_v1_{date_dt.strftime("%Y%m%d")}.nc'
+            filename = f'{daily_filename_prefix(self.source)}_{date_dt.strftime("%Y%m%d")}.nc'
             key = os.path.join(prefix, str(date_dt.year), filename)
             keys.append(key)
         logging.info(f"Generated {len(keys)} keys")

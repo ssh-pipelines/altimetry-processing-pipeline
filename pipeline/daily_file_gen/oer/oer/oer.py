@@ -11,6 +11,7 @@ from oer.compute_polygon_correction import (
     apply_correction,
 )
 from utilities.aws_utils import aws_manager
+from utilities.source_registry import daily_filename_prefix
 
 _DTYPE_OVERRIDES = {
     "source_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
@@ -37,7 +38,7 @@ class OerCorrection:
         self.source: str = source
         self.date: datetime = date
         self.bucket: str = bucket
-        self.daily_file_filename = f"{source}-SSH_alt_ref_at_v1_{date.strftime('%Y%m%d')}.nc"
+        self.daily_file_filename = f"{daily_filename_prefix(source)}_{date.strftime('%Y%m%d')}.nc"
         self.window_len: int = 10  # set window, since xover files "look forward" in time
         self.window_pad: int = 1  # padding to avoid edge effects at window end
         logging.info(f"Starting job for {self.source} {self.date}")

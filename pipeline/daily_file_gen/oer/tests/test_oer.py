@@ -86,7 +86,7 @@ class ConsistencyTestCase(unittest.TestCase):
 
         # Load daily file
         daily_file_ds = xr.open_dataset(
-            os.path.join(tmp_inputs, "S6-SSH_alt_ref_at_v1_20250101.nc")
+            os.path.join(tmp_inputs, "S6_alt_ref_at_v1_20250101.nc")
         )
 
         # Step 2: evaluate correction
@@ -107,7 +107,7 @@ class ConsistencyTestCase(unittest.TestCase):
             os.path.join(tmp_output, "oer_correction_S6_2025-01-01.nc"),
         )
         cls.ref_p2 = xr.open_dataset(
-            os.path.join(tmp_output, "S6-SSH_alt_ref_at_v1_20250101.nc"),
+            os.path.join(tmp_output, "S6_alt_ref_at_v1_20250101.nc"),
         )
 
     @classmethod

@@ -54,7 +54,7 @@ class TestUnifierHandler(unittest.TestCase):
         from app import handler
 
         mock_config = MagicMock()
-        mock_config.src_filename_template = "{source}-SSH_alt_ref_at_v1_{date8}.nc"
+        mock_config.src_filename_template = "{source}_alt_ref_at_v1_{date8}.nc"
         mock_config.dst_filename_template = "NASA-SSH_alt_ref_at_v1_{date8}.nc"
         mock_config.dst_prefix = "daily_files/p3/NASA-SSH"
         mock_get_config.return_value = mock_config
@@ -70,7 +70,7 @@ class TestUnifierHandler(unittest.TestCase):
             Bucket="my-bucket",
             CopySource={
                 "Bucket": "my-bucket",
-                "Key": "daily_files/p3/GSFC/2020/GSFC-SSH_alt_ref_at_v1_20200315.nc",
+                "Key": "daily_files/p3/GSFC/2020/GSFC_alt_ref_at_v1_20200315.nc",
             },
             Key="daily_files/p3/NASA-SSH/2020/NASA-SSH_alt_ref_at_v1_20200315.nc",
         )
@@ -81,7 +81,7 @@ class TestUnifierHandler(unittest.TestCase):
         from app import handler
 
         mock_config = MagicMock()
-        mock_config.src_filename_template = "{source}-SSH_alt_ref_at_v1_{date8}.nc"
+        mock_config.src_filename_template = "{source}_alt_ref_at_v1_{date8}.nc"
         mock_config.dst_filename_template = "NASA-SSH_alt_ref_at_v1_{date8}.nc"
         mock_config.dst_prefix = "daily_files/p3/NASA-SSH"
         mock_get_config.return_value = mock_config
@@ -97,7 +97,7 @@ class TestUnifierHandler(unittest.TestCase):
             Bucket="my-bucket",
             CopySource={
                 "Bucket": "my-bucket",
-                "Key": "daily_files/p3/S6/2025/S6-SSH_alt_ref_at_v1_20250210.nc",
+                "Key": "daily_files/p3/S6/2025/S6_alt_ref_at_v1_20250210.nc",
             },
             Key="daily_files/p3/NASA-SSH/2025/NASA-SSH_alt_ref_at_v1_20250210.nc",
         )

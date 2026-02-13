@@ -5,6 +5,7 @@ import logging
 from scipy.interpolate import PPoly
 
 from oer.oerfit import oerfit
+from utilities.source_registry import daily_filename_prefix
 
 
 def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:
@@ -182,7 +183,7 @@ def evaluate_correction(polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date:
         coords={"time": ("time", daily_file_ds["time"].data, daily_file_ds["time"].attrs)},
         attrs={
             "title": f"{source} Orbit Error Reduction, interpolated onto ssh",
-            "subtitle": f"created for {source}-SSH_alt_ref_at_v1_{date.strftime('%Y%m%d')}.nc",
+            "subtitle": f"created for {daily_filename_prefix(source)}_{date.strftime('%Y%m%d')}.nc",
         },
     )
     ds["time"].encoding["units"] = daily_file_ds["time"].encoding["units"]

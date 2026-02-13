@@ -23,7 +23,10 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    jobs = event.get("jobs")
+    if isinstance(event, list):
+        jobs = event
+    else:
+        jobs = event.get("jobs")
     if not jobs:
         raise ValueError("'jobs' list is missing or empty.")
 

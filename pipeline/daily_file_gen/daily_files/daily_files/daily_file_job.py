@@ -81,7 +81,6 @@ class DailyFileJob:
         self.date: datetime = datetime.strptime(date, "%Y-%m-%d")
         self.source: str = source
         self.source_config: SourceConfig = get_source_config(source)
-        self.satellite: str = self.source_config.satellite
 
         if source not in SOURCE_REGISTRY:
             raise SourceNotSupported(f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}")
@@ -176,7 +175,7 @@ def make_empty(job: DailyFileJob) -> xr.Dataset:
 
 def _get_output_filename(job: DailyFileJob) -> str:
     return job.source_config.filename_template.format(
-        satellite=job.satellite,
+        source=job.source,
         date=job.date.strftime("%Y%m%d"),
     )
 
@@ -188,7 +187,7 @@ def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
 
     s3_output_path = os.path.join(
         f"s3://{bucket}/{job.source_config.s3_prefix}",
-        job.satellite,
+        job.source,
         str(job.date.year),
         filename,
     )

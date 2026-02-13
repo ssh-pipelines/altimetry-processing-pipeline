@@ -39,7 +39,6 @@ class TestDailyFileJobInit(unittest.TestCase):
         job = DailyFileJob("2023-12-17", "GSFC")
         self.assertEqual(job.date, datetime(2023, 12, 17))
         self.assertEqual(job.source, "GSFC")
-        self.assertEqual(job.satellite, "GSFC")
 
 
 class TestGetOutputFilename(unittest.TestCase):
@@ -57,7 +56,6 @@ class TestAcquirePhase(unittest.TestCase):
         job.date = datetime(2023, 12, 17)
         job.source = "GSFC"
         job.source_config = get_source_config("GSFC")
-        job.satellite = job.source_config.satellite
         return job
 
     def test_acquire_returns_none_when_no_granules(self):

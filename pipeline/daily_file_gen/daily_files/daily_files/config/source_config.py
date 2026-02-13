@@ -25,7 +25,6 @@ class CollectionConfig:
 @dataclass
 class SourceConfig:
     source: str
-    satellite: str
     product_type: str
     filename_template: str
     s3_prefix: str
@@ -50,7 +49,6 @@ def _load_sources() -> dict[str, SourceConfig]:
 
         configs[source_key] = SourceConfig(
             source=source_key,
-            satellite=cfg["satellite"],
             product_type=registry.product_type,
             filename_template=cfg["filename_template"],
             s3_prefix=cfg["s3_prefix"],

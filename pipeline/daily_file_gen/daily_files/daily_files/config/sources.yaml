@@ -1,7 +1,6 @@
 sources:
   GSFC:
-    satellite: GSFC
-    filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU15
     target_mss: DTU21
@@ -17,8 +16,7 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V52"
         reference: "https://doi.org/10.5067/ALTUG-TJ152"
   S6:
-    satellite: S6
-    filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21
@@ -47,8 +45,7 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
         reference: "https://doi.org/10.5067/S6AP4-2LRST"
   S6B:
-    satellite: S6B
-    filename_template: "{satellite}-SSH_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21

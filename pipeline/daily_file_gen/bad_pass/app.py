@@ -23,7 +23,11 @@ def handler(event, context):
     try:
         xover_processor = XoverProcessor(source, datetime.fromisoformat(proc_date))
         bad_pass_results = xover_processor.process(bucket)
-        return bad_pass_results
+        return {
+            "date": proc_date,
+            "source": source,
+            "count": len(bad_pass_results["bad_passes"]),
+        }
     except Exception as e:
         error_response = {
             "status": "error",

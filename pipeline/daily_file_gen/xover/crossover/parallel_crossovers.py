@@ -143,6 +143,14 @@ class Crossover:
         self.ssh = np.concatenate(ssh_chunks).astype(np.float64)
         self.trackids = np.concatenate(cycle_chunks).astype("int32") * 10000 + np.concatenate(pass_chunks)
 
+        if len(self.time) == 0:
+            logging.info("No valid data in window, will produce empty crossover file")
+            self.unique_trackids = np.array([], dtype="int32")
+            self.starts = np.array([], dtype="datetime64[ns]")
+            self.track_index = {}
+            self._track_data_cache = {}
+            return
+
         sort_idx = np.lexsort((self.time.view("i8"), self.trackids))
         sorted_trackids = self.trackids[sort_idx]
         sorted_time = self.time[sort_idx]

@@ -255,5 +255,61 @@ class EmptyInputTestCase(unittest.TestCase):
         self.assertEqual(self.ds.attrs["satellite_names"], "GSFC")
 
 
+class AllNaNInputTestCase(unittest.TestCase):
+    """Test crossover output when daily files exist but all SSH values are NaN."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmpdir = tempfile.mkdtemp()
+        cls.day = np.datetime64("2006-11-01")
+        cls.source = "GSFC"
+        cls.df_version = "p1"
+
+        # Create a minimal daily file where all SSH values are NaN
+        n = 10
+        nan_ds = xr.Dataset(
+            {
+                "ssha_smoothed": ("time", np.full(n, np.nan)),
+                "longitude": ("time", np.linspace(0, 10, n)),
+                "latitude": ("time", np.linspace(-5, 5, n)),
+                "cycle": ("time", np.ones(n, dtype="int32")),
+                "pass": ("time", np.ones(n, dtype="int32")),
+            },
+            coords={"time": cls.day + np.arange(n).astype("timedelta64[D]")},
+        )
+        cls.nan_file = os.path.join(cls.tmpdir, "nan_daily.nc")
+        nan_ds.to_netcdf(cls.nan_file, engine="h5netcdf")
+        nan_ds.close()
+
+        cls.processor = Crossover(cls.day, cls.source, cls.df_version)
+        cls.processor.crossover_data = CrossoverData.init()
+        cls.processor.streams = [cls.nan_file]
+
+        cls.processor.extract_and_set_data()
+        cls.processor.search_day_for_crossovers()
+        cls.ds = cls.processor.create_dataset()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if hasattr(cls, "tmpdir"):
+            shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def test_valid_length(self):
+        self.assertEqual(len(self.ds.time1), 0)
+
+    def test_netcdf_vars(self):
+        self.assertIn("time1", self.ds.dims)
+        self.assertIn("time2", self.ds.data_vars)
+        self.assertIn("ssh1", self.ds.data_vars)
+        self.assertIn("ssh2", self.ds.data_vars)
+
+    def test_saves_to_netcdf(self):
+        out_path = os.path.join(self.tmpdir, "output.nc")
+        self.ds.to_netcdf(out_path, engine="h5netcdf")
+        loaded = xr.open_dataset(out_path, engine="h5netcdf")
+        self.assertEqual(len(loaded.time1), 0)
+        loaded.close()
+
+
 if __name__ == "__main__":
     unittest.main()

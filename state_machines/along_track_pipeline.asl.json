@@ -24,8 +24,7 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "Fail",
-          "ResultPath": "$.error"
+          "Next": "Fail"
         }
       ]
     },

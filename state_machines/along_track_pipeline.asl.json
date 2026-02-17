@@ -1,0 +1,176 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "Init pipeline",
+  "States": {
+    "Init pipeline": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-pipeline_init:$LATEST",
+      "Next": "Daily File Execution",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.Timeout",
+            "Lambda.Unknown",
+            "Lambda.AWSLambdaException"
+          ],
+          "BackoffRate": 3,
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "Comment": "Timeout retry"
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Daily File Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-daily_file-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Xover 1 Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Xover 1 Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-xover-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}",
+          "df_version": "p1"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "OER Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "OER Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-oer-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}",
+          "df_version": "p1"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Xover 2 Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Xover 2 Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-xover-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}",
+          "df_version": "p2"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Bad Pass Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Bad Pass Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-bad_pass-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Finalizer Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Finalizer Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-finalizer-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}"
+        }
+      },
+      "Output": {
+        "jobs_key": "{% $states.input.jobs_key %}",
+        "bucket": "{% $states.input.bucket %}",
+        "source": "{% $states.input.source %}",
+        "unify": "{% $states.input.unify %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ],
+      "End": true
+    },
+    "Fail": {
+      "Type": "Fail"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "Map",
+  "States": {
+    "Map": {
+      "Type": "Map",
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
+        },
+        "StartAt": "Invoke Finalizer",
+        "States": {
+          "Invoke Finalizer": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Output": "{% $states.result.Payload %}",
+            "Arguments": {
+              "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-finalizer:$LATEST",
+              "Payload": "{% $states.input %}"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 1,
+                "MaxAttempts": 3,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ItemReader": {
+        "Resource": "arn:aws:states:::s3:getObject",
+        "ReaderConfig": {
+          "InputType": "JSON"
+        },
+        "Arguments": {
+          "Bucket": "{% $states.input.bucket %}",
+          "Key": "{% $states.input.jobs_key %}"
+        }
+      },
+      "ResultWriter": {
+        "Resource": "arn:aws:states:::s3:putObject",
+        "Arguments": {
+          "Bucket": "{% $states.input.bucket %}",
+          "Prefix": "pipeline_runs/results/finalizer"
+        }
+      },
+      "MaxConcurrency": 100,
+      "Label": "Finalizer",
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "Along Track Execution",
+  "States": {
+    "Along Track Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-along_track-sm",
+        "Input": "{% $states.input %}"
+      },
+      "Next": "Need Unification?",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Need Unification?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Next": "Unifier Execution",
+          "Condition": "{% $states.input.Output.unify = true %}"
+        }
+      ],
+      "Default": "SG Execution"
+    },
+    "Unifier Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-unifier",
+        "Input": "{% $states.input.Output %}"
+      },
+      "Next": "SG Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "SG Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-sg-sm",
+        "Input": "{% $states.input.Output %}"
+      },
+      "End": true,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Fail": {
+      "Type": "Fail"
+    }
+  }
+}

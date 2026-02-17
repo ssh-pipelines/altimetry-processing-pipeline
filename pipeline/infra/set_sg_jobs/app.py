@@ -1,5 +1,10 @@
+import json
 from datetime import date, timedelta
 from typing import Tuple
+
+import boto3
+
+s3 = boto3.client("s3")
 
 
 def last_sg_date(today = date.today()) -> date:
@@ -12,7 +17,7 @@ def last_sg_date(today = date.today()) -> date:
         latest_simple_grid_date -= timedelta(weeks=1)
     return latest_simple_grid_date
 
-        
+
 def surrounding_mondays(d: date) -> Tuple[date, date]:
     weekday = d.weekday()  # Monday=0, Sunday=6
     prev_monday = d - timedelta(days=weekday)
@@ -22,18 +27,33 @@ def surrounding_mondays(d: date) -> Tuple[date, date]:
 
 
 def lambda_handler(event, context):
-    bucket = event[0]["bucket"]
-    source = event[0]["source"]
+    bucket = event["bucket"]
+    jobs_key = event["jobs_key"]
+    source = event["source"]
+
+    # Read manifest from S3
+    resp = s3.get_object(Bucket=bucket, Key=jobs_key)
+    jobs = json.loads(resp["Body"].read())
+
     end_date = last_sg_date()
     sg_jobs = set()
-    for job in event:
+    for job in jobs:
         job_date_dt = date.fromisoformat(job["date"])
         prev_monday, next_monday = surrounding_mondays(job_date_dt)
         if prev_monday <= end_date:
             sg_jobs.add(prev_monday.isoformat())
         if next_monday <= end_date:
             sg_jobs.add(next_monday.isoformat())
-    
-    return {
-        "jobs": [{"date": job, "bucket": bucket, "source": source} for job in sorted(sg_jobs)]
-    }
+
+    filtered_jobs = [{"date": d, "bucket": bucket, "source": source} for d in sorted(sg_jobs)]
+
+    # Write filtered manifest to S3
+    new_key = jobs_key.replace("/jobs.json", "/sg_jobs.json")
+    s3.put_object(
+        Bucket=bucket,
+        Key=new_key,
+        Body=json.dumps(filtered_jobs),
+        ContentType="application/json",
+    )
+
+    return {"jobs_key": new_key, "bucket": bucket, "source": source}

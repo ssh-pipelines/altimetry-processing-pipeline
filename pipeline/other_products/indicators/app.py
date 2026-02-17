@@ -1,7 +1,12 @@
 from datetime import datetime
 import json
 import logging
+
+import boto3
+
 from indicators.compute_indicators import IndicatorProcessor
+
+s3 = boto3.client("s3")
 
 
 def build_sg_key(date_str: str, bucket: str, source: str) -> str:
@@ -23,27 +28,24 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    if isinstance(event, list):
-        jobs = event
-    else:
-        jobs = event.get("jobs")
+    bucket = event["bucket"]
+    jobs_key = event["jobs_key"]
+    source = event["source"]
+
+    # Read jobs from S3 manifest
+    resp = s3.get_object(Bucket=bucket, Key=jobs_key)
+    jobs = json.loads(resp["Body"].read())
+
     if not jobs:
-        raise ValueError("'jobs' list is missing or empty.")
+        logging.info("No jobs to process, returning early.")
+        return {"status": "success"}
 
-    for i, job in enumerate(jobs):
-        for field in ("date", "bucket", "source"):
-            if field not in job:
-                raise ValueError(f"jobs[{i}] missing required field '{field}'.")
-
-    source = jobs[0]["source"]
-    bucket = jobs[0]["bucket"]
-
-    sg_keys = [build_sg_key(j["date"], j["bucket"], j["source"]) for j in jobs]
+    sg_keys = [build_sg_key(j["date"], bucket, source) for j in jobs]
     logging.info(f"{len(sg_keys)} simple grids to process for source={source}")
 
     try:
         IndicatorProcessor(sg_keys, source).run(bucket)
-        return {"status": "success", "data": event}
+        return {"status": "success"}
     except Exception as e:
         error_response = {
             "status": "error",

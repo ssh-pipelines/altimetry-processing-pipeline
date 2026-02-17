@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+import json
 import logging
 import re
 
@@ -210,9 +211,25 @@ def handler(event, context):
             jobs.append({
                 "date": date.date().isoformat(),
                 "source": source,
-                "satellite": config.satellite,
                 "bucket": bucket,
             })
 
     logging.info(f"Generated {len(jobs)} jobs for processing")
-    return {"jobs": jobs}
+
+    # Write jobs manifest to S3
+    run_id = datetime.now().strftime("%Y%m%dT%H%M%S")
+    jobs_key = f"pipeline_runs/{source}/{run_id}/jobs.json"
+    s3.put_object(
+        Bucket=bucket,
+        Key=jobs_key,
+        Body=json.dumps(jobs),
+        ContentType="application/json",
+    )
+    logging.info(f"Wrote manifest to s3://{bucket}/{jobs_key}")
+
+    return {
+        "jobs_key": jobs_key,
+        "bucket": bucket,
+        "source": source,
+        "unify": config.unify,
+    }

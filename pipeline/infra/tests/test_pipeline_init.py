@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from datetime import datetime, date
+import json
 import sys
 import os
 
@@ -14,6 +15,7 @@ from pipeline.infra.pipeline_init.app import (
     daily_file_end_date,
     chunk_dates_by_year,
     handler,
+    s3,
 )
 from pipeline.infra.pipeline_init.config.source_config import (
     get_source_config,
@@ -21,6 +23,15 @@ from pipeline.infra.pipeline_init.config.source_config import (
     PipelineInitSourceConfig,
     CollectionConfig,
 )
+
+
+def get_manifest_from_s3_mock(mock_s3):
+    """Extract the jobs list written to S3 via put_object."""
+    put_calls = [c for c in mock_s3.put_object.call_args_list]
+    if not put_calls:
+        return []
+    body = put_calls[-1].kwargs.get("Body") or put_calls[-1][1].get("Body")
+    return json.loads(body)
 
 
 class TestDateUtilities(unittest.TestCase):
@@ -86,6 +97,7 @@ class TestSourceConfig(unittest.TestCase):
         self.assertTrue(cfg.s3_prefix)
         self.assertTrue(cfg.filename_pattern)
         self.assertEqual(len(cfg.collections), 1)
+        self.assertTrue(cfg.unify)
 
     def test_s6_config_has_multiple_collections(self):
         cfg = get_source_config("S6")
@@ -100,6 +112,7 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.source, "S6B")
         self.assertEqual(cfg.satellite, "S6B")
         self.assertIsInstance(cfg.start_date, date)
+        self.assertFalse(cfg.unify)
 
     def test_collection_config_fields(self):
         cfg = get_source_config("S6")
@@ -111,6 +124,9 @@ class TestSourceConfig(unittest.TestCase):
 
 class TestHandler(unittest.TestCase):
     """Test the main Lambda handler function"""
+
+    def setUp(self):
+        s3.put_object.reset_mock()
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
     @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
@@ -148,15 +164,22 @@ class TestHandler(unittest.TestCase):
         mock_daily_files.assert_not_called()
         mock_cmr.assert_not_called()
 
-        jobs = result["jobs"]
+        # Return is manifest ref, not jobs array
+        self.assertIn("jobs_key", result)
+        self.assertEqual(result["bucket"], "test-bucket")
+        self.assertEqual(result["source"], "S6")
+        self.assertIn("unify", result)
+
+        # Verify jobs written to S3
+        jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 3)
         self.assertEqual(jobs[0]["date"], "2024-01-20")
         self.assertEqual(jobs[1]["date"], "2024-01-21")
         self.assertEqual(jobs[2]["date"], "2024-01-22")
         for job in jobs:
             self.assertEqual(job["source"], "S6")
-            self.assertEqual(job["satellite"], "S6")
             self.assertEqual(job["bucket"], "test-bucket")
+            self.assertNotIn("satellite", job)
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
     @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
@@ -174,7 +197,7 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        jobs = result["jobs"]
+        jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[0]["date"], "2024-01-20")
         self.assertEqual(jobs[0]["source"], "S6")
@@ -197,7 +220,7 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        jobs = result["jobs"]
+        jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 1)
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
@@ -218,7 +241,7 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        jobs = result["jobs"]
+        jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 0)
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
@@ -236,7 +259,7 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        jobs = result["jobs"]
+        jobs = get_manifest_from_s3_mock(s3)
         earliest = min(job["date"] for job in jobs)
         self.assertEqual(earliest, "1992-10-25")
 
@@ -253,9 +276,13 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        # Should produce jobs starting from S6 config start_date (2024-01-20)
-        if result["jobs"]:
-            earliest = min(job["date"] for job in result["jobs"])
+        # Return is manifest ref
+        self.assertIn("jobs_key", result)
+        self.assertEqual(result["source"], "S6")
+
+        jobs = get_manifest_from_s3_mock(s3)
+        if jobs:
+            earliest = min(job["date"] for job in jobs)
             self.assertGreaterEqual(earliest, "2024-01-20")
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
@@ -273,7 +300,7 @@ class TestHandler(unittest.TestCase):
         }
         result = handler(event, None)
 
-        jobs = result["jobs"]
+        jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 4)
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
@@ -284,6 +311,7 @@ class TestHandler(unittest.TestCase):
         mock_cmr.return_value = {}
 
         for source in get_available_sources():
+            s3.put_object.reset_mock()
             event = {
                 "bucket": "test-bucket",
                 "source": source,
@@ -292,7 +320,45 @@ class TestHandler(unittest.TestCase):
                 "end": "2025-01-01",
             }
             result = handler(event, None)
-            self.assertIn("jobs", result)
+            self.assertIn("jobs_key", result)
+            self.assertIn("unify", result)
+
+    @patch('pipeline.infra.pipeline_init.app.query_cmr')
+    @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
+    def test_handler_manifest_key_format(self, mock_daily_files, mock_cmr):
+        """Manifest key follows expected pattern"""
+        event = {
+            "bucket": "test-bucket",
+            "source": "S6",
+            "force_update": True,
+            "start": "2024-01-20",
+            "end": "2024-01-20",
+        }
+        result = handler(event, None)
+
+        self.assertTrue(result["jobs_key"].startswith("pipeline_runs/S6/"))
+        self.assertTrue(result["jobs_key"].endswith("/jobs.json"))
+
+    @patch('pipeline.infra.pipeline_init.app.query_cmr')
+    @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
+    def test_handler_returns_unify_flag(self, mock_daily_files, mock_cmr):
+        """Handler returns unify flag from source config"""
+        event = {
+            "bucket": "test-bucket",
+            "source": "GSFC",
+            "force_update": True,
+            "start": "1992-10-25",
+            "end": "1992-10-25",
+        }
+        result = handler(event, None)
+        self.assertTrue(result["unify"])
+
+        s3.put_object.reset_mock()
+        event["source"] = "S6B"
+        event["start"] = "2025-11-26"
+        event["end"] = "2025-11-26"
+        result = handler(event, None)
+        self.assertFalse(result["unify"])
 
 
 if __name__ == '__main__':

@@ -11,6 +11,7 @@ class SourceRegistryEntry:
     product_type: str
     unify: bool
     start_date: date
+    end_date: date | None = None
 
 
 def _load_registry() -> dict[str, SourceRegistryEntry]:
@@ -24,11 +25,16 @@ def _load_registry() -> dict[str, SourceRegistryEntry]:
         if isinstance(start_date, str):
             start_date = date.fromisoformat(start_date)
 
+        end_date = cfg.get("end_date")
+        if isinstance(end_date, str):
+            end_date = date.fromisoformat(end_date)
+
         entries[source_key] = SourceRegistryEntry(
             source=source_key,
             product_type=cfg["product_type"],
             unify=cfg.get("unify", False),
             start_date=start_date,
+            end_date=end_date,
         )
     return entries
 

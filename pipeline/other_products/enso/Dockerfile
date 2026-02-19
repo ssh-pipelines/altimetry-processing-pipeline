@@ -5,6 +5,7 @@ ARG CARTOPY_DATA_DIR=/opt/cartopy_data
 
 ENV CARTOPY_OFFLINE=true
 ENV CARTOPY_DATA_DIR=$CARTOPY_DATA_DIR
+ENV MPLCONFIGDIR=/tmp/matplotlib
 
 # Copy and install requirements
 COPY $ROOT_DIR/requirements.txt .

@@ -41,6 +41,7 @@ def start_job(date: datetime, bucket: str, source: str):
         src = f"/tmp/{filename}"
         dst = f"s3://{bucket}/enso_grids/{source}/{filename}"
         aws_manager.upload_obj(src, dst)
+        os.remove(src)
 
         # Make maps
         mapper.make_maps(grid_ds)
@@ -50,11 +51,13 @@ def start_job(date: datetime, bucket: str, source: str):
         src = f"/tmp/{filename}"
         dst = f"s3://{bucket}/maps/enso_maps/{source}/ortho/{filename}"
         aws_manager.upload_obj(src, dst)
+        os.remove(src)
 
         filename = f'ENSO_plate_{date_str}.png'
         src = f"/tmp/{filename}"
         dst = f"s3://{bucket}/maps/enso_maps/{source}/plate/{filename}"
         aws_manager.upload_obj(src, dst)
+        os.remove(src)
 
     except Exception as e:
         logging.exception(f"Error processing {date}: {e}")

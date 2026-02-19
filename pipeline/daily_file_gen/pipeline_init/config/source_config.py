@@ -21,6 +21,7 @@ class PipelineInitSourceConfig:
     s3_prefix: str
     filename_pattern: str
     unify: bool = False
+    end_date: date | None = None
     collections: list[CollectionConfig] = field(default_factory=list)
 
 
@@ -41,6 +42,7 @@ def _load_sources() -> dict[str, PipelineInitSourceConfig]:
             s3_prefix=cfg["s3_prefix"],
             filename_pattern=cfg["filename_pattern"],
             unify=registry.unify,
+            end_date=registry.end_date,
             collections=collections,
         )
     return configs

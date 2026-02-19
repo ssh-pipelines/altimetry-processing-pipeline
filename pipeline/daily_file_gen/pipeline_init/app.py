@@ -174,6 +174,13 @@ def handler(event, context):
         end_date = daily_file_end_date()
         logging.info(f"Using default range: {start_date.date()} to {end_date.date()}")
 
+    # Cap end date to source's collection end date if configured
+    if config.end_date is not None:
+        source_end = datetime.combine(config.end_date, datetime.min.time())
+        if end_date > source_end:
+            end_date = source_end
+            logging.info(f"Capped end date to source end: {end_date.date()}")
+
     # Generate the list of dates
     lookback_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
     logging.info(f"Checking {len(lookback_dates)} dates between {start_date.date()} and {end_date.date()}")

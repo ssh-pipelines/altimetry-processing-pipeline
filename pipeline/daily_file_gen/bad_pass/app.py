@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import logging
+
 from bad_passes.bad_pass_flag import XoverProcessor
 
 
@@ -12,17 +13,21 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    bucket = event.get("bucket")   
+    bucket = event.get("bucket")
     proc_date = event.get("date")
     source = event.get("source")
-    
+
     if None in [bucket, proc_date, source]:
         raise ValueError("One of date, source, or bucket job parameters missing.")
 
     try:
         xover_processor = XoverProcessor(source, datetime.fromisoformat(proc_date))
         bad_pass_results = xover_processor.process(bucket)
-        return bad_pass_results
+        return {
+            "date": proc_date,
+            "source": source,
+            "count": len(bad_pass_results["bad_passes"]),
+        }
     except Exception as e:
         error_response = {
             "status": "error",

@@ -1,0 +1,26 @@
+sources:
+  GSFC:
+    satellite: GSFC
+    s3_prefix: "daily_files/p3/GSFC"
+    filename_pattern: "GSFC_alt_ref_at_v1_{date8}.nc"
+    collections:
+      - concept_id: C2901523432-POCLOUD
+        priority: 1
+  S6:
+    satellite: S6
+    s3_prefix: "daily_files/p3/S6"
+    filename_pattern: "S6_alt_ref_at_v1_{date8}.nc"
+    collections:
+      - concept_id: C3332203845-POCLOUD
+        priority: 1
+      - concept_id: C3332203819-POCLOUD
+        priority: 2
+      - concept_id: C1968979561-POCLOUD
+        priority: 3
+  S6B:
+    satellite: S6B
+    s3_prefix: "daily_files/p3/S6B"
+    filename_pattern: "S6B_alt_ref_at_v1_{date8}.nc"
+    collections:
+      - concept_id: C3213767230-POCLOUD
+        priority: 1

@@ -1,20 +1,74 @@
+from dataclasses import dataclass
 from datetime import datetime
 import logging
 import os
-from typing import Iterable
+from typing import Type
 import numpy as np
 import xarray as xr
 
 from utilities.aws_utils import aws_manager
 
-from daily_files.fetching.fetcher import Fetcher
-from daily_files.fetching.cmr_query import CMRGranule
-from daily_files.fetching.gsfc_fetch import GSFCFetch
-from daily_files.fetching.s6_fetch import S6Fetch
+from daily_files.config.paths import REF_FILES_DIR
+from daily_files.config.source_config import SourceConfig, get_source_config
+from daily_files.config.dataset_schema import assert_valid_dataset
+from daily_files.fetching.enumerator import Enumerator
+from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
+from daily_files.fetching.downloader import (
+    Downloader,
+    S3Downloader,
+    get_podaac_s3_credentials,
+)
 
-from daily_files.processing.daily_file import DailyFile
+from daily_files.ingestion.ingest import IngestedData, Ingestor
+from daily_files.ingestion.gsfc_ingest import GSFCIngestor
+from daily_files.ingestion.s6_ingest import S6Ingestor
+
+from daily_files.processing.daily_file import DailyFile, get_base_global_attrs
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
 from daily_files.processing.s6_daily_file import S6DailyFile
+
+
+@dataclass(frozen=True)
+class SourcePipeline:
+    enumerator: Type[Enumerator]
+    downloader: Type[Downloader]
+    downloader_kwargs: dict
+    ingestor: Type[Ingestor]
+    processor: Type[DailyFile]
+
+
+SOURCE_REGISTRY: dict[str, SourcePipeline] = {
+    "GSFC": SourcePipeline(
+        enumerator=GSFCEnumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
+        ingestor=GSFCIngestor,
+        processor=GSFCDailyFile,
+    ),
+    "S6": SourcePipeline(
+        enumerator=S6Enumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
+        ingestor=S6Ingestor,
+        processor=S6DailyFile,
+    ),
+    "S6B": SourcePipeline(
+        enumerator=S6Enumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
+        ingestor=S6Ingestor,
+        processor=S6DailyFile,
+    ),
+}
+
+
+@dataclass
+class AcquiredData:
+    """Result of the data acquisition phase."""
+
+    ingested_data: IngestedData
+    collection_ids: list[str]
+    granule_titles: list[str]
 
 
 class SourceNotSupported(Exception):
@@ -22,44 +76,56 @@ class SourceNotSupported(Exception):
 
 
 class DailyFileJob:
-    SOURCE_MAPPINGS = {
-        "GSFC": {"fetcher": GSFCFetch, "processor": GSFCDailyFile},
-        "S6": {"fetcher": S6Fetch, "processor": S6DailyFile},
-    }
-
-    def __init__(self, date: str, source: str, satellite: str):
+    def __init__(self, date: str, source: str):
         logging.info(f"Starting {source} job for {date}")
         self.date: datetime = datetime.strptime(date, "%Y-%m-%d")
         self.source: str = source
-        self.satellite: str = satellite
-        self.fetch_type: Fetcher = self.get_fetcher(source)
-        self.processor: DailyFile = self.get_processor(source)
+        self.source_config: SourceConfig = get_source_config(source)
 
-    @classmethod
-    def get_fetcher(cls, source: str) -> Fetcher:
-        try:
-            fetcher = cls.SOURCE_MAPPINGS[source]["fetcher"]
-            logging.debug(f"Using {fetcher} fetcher")
-        except KeyError:
-            raise SourceNotSupported(f"{source} is not currently supported")
-        return fetcher
+        if source not in SOURCE_REGISTRY:
+            raise SourceNotSupported(f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}")
 
-    @classmethod
-    def get_processor(cls, source: str) -> DailyFile:
-        try:
-            processor = cls.SOURCE_MAPPINGS[source]["processor"]
-            logging.debug(f"Using {processor} processor")
-        except KeyError:
-            raise SourceNotSupported(f"{source} is not currently supported")
-        return processor
+        pipeline = SOURCE_REGISTRY[source]
+        self.enumerator_cls = pipeline.enumerator
+        self.downloader_cls = pipeline.downloader
+        self.downloader_kwargs = pipeline.downloader_kwargs
+        self.ingestor_cls = pipeline.ingestor
+        self.processor_cls = pipeline.processor
 
-    def fetch_granules(self):
-        logging.info("Fetching granules...")
-        self.fetcher = self.fetch_type(self.date)
-        self.granules: Iterable[CMRGranule] = self.fetcher.granules
+    def acquire(self, bucket: str) -> AcquiredData | None:
+        """Phase 1: Enumerate granules, download files, and ingest into normalized form."""
+        logging.info("Enumerating granules...")
+        enumerator = self.enumerator_cls(self.date, self.source_config)
+        file_refs = enumerator.enumerate()
+
+        if not file_refs:
+            return None
+
+        downloader = self.downloader_cls(**self.downloader_kwargs)
+        file_objs = downloader.download_all(file_refs)
+
+        ingestor = self.ingestor_cls()
+        ingested_data = ingestor.ingest(file_objs, bucket=bucket)
+
+        return AcquiredData(
+            ingested_data=ingested_data,
+            collection_ids=[f.collection_id for f in file_refs],
+            granule_titles=[f.title for f in file_refs],
+        )
+
+    def process(self, acquired: AcquiredData) -> xr.Dataset:
+        """Phase 2: Process ingested data into a daily file dataset."""
+        return self.processor_cls(
+            acquired.ingested_data,
+            self.date,
+            self.source_config,
+            acquired.collection_ids,
+            source_files=", ".join(acquired.granule_titles),
+        ).ds
 
 
 def save_ds(ds: xr.Dataset, output_path: str):
+    assert_valid_dataset(ds)
     ds = ds.set_coords(["latitude", "longitude"])
     encoding = {
         "time": {
@@ -93,51 +159,35 @@ def save_ds(ds: xr.Dataset, output_path: str):
     ds.to_netcdf(output_path, encoding=encoding)
 
 
-def work(job: DailyFileJob, bucket: str) -> xr.Dataset:
-    """
-    Opens and processes granules via direct S3 paths
-    """
-    file_objs = [job.fetcher.fetch(granule.s3_url) for granule in job.granules]
-    collection_ids = [granule.collection_id for granule in job.granules]
-    daily_ds = job.processor(file_objs, job.date, collection_ids, bucket).ds
-    daily_ds.attrs["source_files"] = ", ".join([granule.title for granule in job.granules])
-    return daily_ds
-
-
 def make_empty(job: DailyFileJob) -> xr.Dataset:
     """
     In the event no data is found we still want an empty daily file with the expected metadata.
     """
     logging.info(f"No {job.source} data found for {job.date}. Using template file.")
-    daily_ds = xr.open_dataset(
-        os.path.join(
-            "daily_files",
-            "ref_files",
-            "empty_templates",
-            f"{job.source.lower()}_empty_template.nc",
-        )
-    )
-    creation_time = datetime.now().isoformat(timespec="seconds")
-    daily_ds.attrs["date_created"] = creation_time
-    daily_ds.attrs["history"] = f"Created on {creation_time}"
-    daily_ds.attrs["id"] = "10.5067/NSREF-AT0V1"
-    daily_ds.attrs["source"] = ""
-    daily_ds.attrs["source_files"] = ""
-    daily_ds.attrs["source_url"] = ""
+    daily_ds = xr.open_dataset(os.path.join(REF_FILES_DIR, "empty_templates", job.source_config.empty_template))
+    base_attrs = get_base_global_attrs()
+    daily_ds.attrs.update(base_attrs)
     daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
     daily_ds.attrs["time_coverage_end"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"
     return daily_ds
 
 
+def _get_output_filename(job: DailyFileJob) -> str:
+    return job.source_config.filename_template.format(
+        source=job.source,
+        date=job.date.strftime("%Y%m%d"),
+    )
+
+
 def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
-    filename = f'{job.satellite}-SSH_alt_ref_at_v1_{job.date.strftime("%Y%m%d")}.nc'
+    filename = _get_output_filename(job)
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
     s3_output_path = os.path.join(
-        f"s3://{bucket}/daily_files/p1",
-        job.satellite,
+        f"s3://{bucket}/{job.source_config.s3_prefix}",
+        job.source,
         str(job.date.year),
         filename,
     )
@@ -145,12 +195,17 @@ def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
     logging.info("Job complete.")
     daily_ds.close()
 
-def start_job(date: str, source: str, satellite: str, bucket: str):
-    daily_file_job = DailyFileJob(date, source, satellite)
-    daily_file_job.fetch_granules()
-    if len(daily_file_job.granules) > 0:
-        daily_ds = work(daily_file_job, bucket)
-    else:
-        daily_ds = make_empty(daily_file_job)
 
-    upload_ds(daily_ds, daily_file_job, bucket)
+def start_job(date: str, source: str, bucket: str):
+    job = DailyFileJob(date, source)
+
+    # Phase 1: Acquire data
+    acquired = job.acquire(bucket)
+
+    # Phase 2: Process into daily file
+    if acquired:
+        daily_ds = job.process(acquired)
+    else:
+        daily_ds = make_empty(job)
+
+    upload_ds(daily_ds, job, bucket)

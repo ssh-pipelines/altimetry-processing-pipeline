@@ -19,10 +19,11 @@ def handler(event, context):
     if None in [proc_date, source, bucket]:
         raise ValueError("One of date, source, or bucket job parameters missing.")
 
+    date = datetime.strptime(proc_date, "%Y-%m-%d")
+
     try:
-        date = datetime.strptime(proc_date, "%Y-%m-%d")
-        oer_job = OerCorrection(source, date)
-        oer_job.run(bucket)
+        oer_job = OerCorrection(source, date, bucket)
+        oer_job.run()
         result = {"status": "success", "data": event}
         return result
     except Exception as e:

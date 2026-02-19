@@ -18,7 +18,6 @@ source "$UTIL/load_env.sh"
 # -----------------------------
 NO_CLEANUP=false
 RELEASE_VERSION=""
-DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,7 +30,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --dry-run)
-            DRY_RUN=true
+            export DRY_RUN=1
             shift
             ;;
         *)
@@ -40,8 +39,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-export DRY_RUN
 
 if [ -z "$RELEASE_VERSION" ]; then
     echo "Error: --version X.Y.Z is required"
@@ -77,7 +74,9 @@ export REGISTRY=$("$UTIL/ecr_login.sh")
 # -----------------------------
 # Optional cleanup
 # -----------------------------
-if [ "$NO_CLEANUP" = false ] && [ -z "$DRY_RUN" ]; then
+if [ "$NO_CLEANUP" = true ] || [ -n "$DRY_RUN" ]; then
+    echo "Skipping cleanup (flag: --no-cleanup or DRY_RUN mode)"
+else
     echo "Cleaning up local prod images..."
     for IMAGE in "${IMAGES[@]}"; do
         docker rmi "$REGISTRY/prod/$IMAGE:$RELEASE_VERSION" || true
@@ -88,9 +87,6 @@ if [ "$NO_CLEANUP" = false ] && [ -z "$DRY_RUN" ]; then
         # Remove *all* dev-tagged images for this image
         docker images "$REGISTRY/dev/$IMAGE" -q | xargs -r docker rmi || true
     done
-
-else
-    echo "Skipping cleanup (flag: --no-cleanup or DRY_RUN mode)"
 fi
 
 echo "Production release complete: version $RELEASE_VERSION"

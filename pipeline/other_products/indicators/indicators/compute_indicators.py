@@ -1,4 +1,5 @@
 import logging
+import os
 from os.path import basename, join
 from typing import List
 import warnings
@@ -42,8 +43,9 @@ def running_mean(data: np.ndarray, time: np.ndarray, window=28.1) -> np.ndarray:
 
 
 class IndicatorProcessor:
-    def __init__(self, sg_keys: List[str]):
+    def __init__(self, sg_keys: List[str], source: str):
         self.grid_keys = sg_keys
+        self.source = source
         self.patterns = [Pattern("enso"), Pattern("pdo"), Pattern("iod")]
         self.grid_cell_areas = self._open_grid_cell_areas()
         self.trend_ds = xr.open_dataset("ref_files/BH_offset_and_trend_v0_new_grid.nc")
@@ -112,9 +114,9 @@ class IndicatorProcessor:
 
         indicator_data = {"time": dt_to_dec(date)}
 
-        # Compute GMSL
+        # Compute GMSL (raw = before 1993 normalization)
         gmsl = self.calc_gmsl(masked_ssha[lat_idx])
-        indicator_data["gmsl"] = gmsl
+        indicator_data["raw_gmsl"] = gmsl
 
         # Remove trend and seasonal cycle in prep for indicator computation
         detrended_deseasoned = self.detrend_deseason(date, masked_ssha)
@@ -139,17 +141,75 @@ class IndicatorProcessor:
             indicator_data[pattern.name] = B_hat[0]
         return indicator_data
 
-    def generate_ds(self, computed_indicators: dict) -> xr.Dataset:
+    def load_cached_indicators(self, bucket: str) -> List[dict]:
+        """
+        Load previously computed indicator records from the cached NetCDF on S3.
+        Returns a list of dicts with keys: time, raw_gmsl, enso, pdo, iod.
+        """
+        cache_key = f"s3://{bucket}/indicators/{self.source}/indicators.nc"
+        if not aws_manager.key_exists(cache_key):
+            logging.info("No cached indicators found — starting fresh.")
+            return []
+
+        logging.info(f"Loading cached indicators from {cache_key}")
+        stream = aws_manager.stream_obj(cache_key)
+        tmp_path = "/tmp/cached_indicators.nc"
+        with open(tmp_path, "wb") as f:
+            f.write(stream.read())
+
+        ds = xr.open_dataset(tmp_path)
+        os.remove(tmp_path)
+
+        records = []
+        for t in ds["time"].values:
+            record = {"time": float(t)}
+            # Legacy fallback: pre-migration caches have 'gmsl' instead of 'raw_gmsl'
+            if "raw_gmsl" in ds:
+                record["raw_gmsl"] = float(ds["raw_gmsl"].sel(time=t).values)
+            elif "gmsl" in ds:
+                record["raw_gmsl"] = float(ds["gmsl"].sel(time=t).values)
+            else:
+                logging.warning(f"Cache missing gmsl/raw_gmsl for time={t}, skipping")
+                continue
+            for var in ["enso", "pdo", "iod"]:
+                if var in ds:
+                    record[var] = float(ds[var].sel(time=t).values)
+            records.append(record)
+
+        ds.close()
+        return records
+
+    @staticmethod
+    def merge_indicators(cached: List[dict], new: List[dict]) -> List[dict]:
+        """
+        Merge cached and new indicator records. New values overwrite cached
+        at the same time point. Result is sorted by time.
+        """
+        merged = {r["time"]: r for r in cached}
+        for r in new:
+            merged[r["time"]] = r
+        return sorted(merged.values(), key=lambda r: r["time"])
+
+    def generate_ds(self, computed_indicators: list) -> xr.Dataset:
         df = pd.DataFrame(computed_indicators)
 
-        # Set GMSL to 1993 zero mean
-        mean_1993 = df[(df["time"] >= 1993) & (df["time"] < 1994)]["gmsl"].mean()
-        df["gmsl"] = df["gmsl"] - mean_1993
+        # Compute normalized GMSL: zero-mean over 1993
+        records_1993 = df[(df["time"] >= 1993) & (df["time"] < 1994)]["raw_gmsl"]
+        if len(records_1993) > 0:
+            mean_1993 = records_1993.mean()
+        else:
+            logging.warning(
+                "No 1993 data available for GMSL normalization — using raw values."
+            )
+            mean_1993 = 0.0
+
+        df["gmsl"] = df["raw_gmsl"] - mean_1993
 
         indicators_ds = xr.Dataset.from_dataframe(df.set_index("time"))
         indicators_ds = indicators_ds.sortby("time")
         indicators_ds["time"].attrs = {"units": "Date in decimal year format"}
         indicators_ds["gmsl"].attrs = {"units": "cm"}
+        indicators_ds["raw_gmsl"].attrs = {"units": "cm"}
 
         decimal_years_to_datetimes = np.vectorize(dec_to_dt)
         smoothed_gmsl = running_mean(
@@ -172,7 +232,7 @@ class IndicatorProcessor:
         # Convert results to xarray Dataset
         indicators_ds = self.generate_ds(computed_indicators)
 
-        indicators_prefix = f"s3://{bucket}/indicators/"
+        indicators_prefix = f"s3://{bucket}/indicators/{self.source}/"
 
         # Make and upload netcdf
         nc_path = "/tmp/indicators.nc"
@@ -208,7 +268,7 @@ class IndicatorProcessor:
             )
             aws_manager.upload_obj(archive_path, s3_archive_path)
 
-            # Generate and upload archivel .mp file
+            # Generate and upload archival .mp file
             mp_path = generate_mp(first_time, last_time, archive_path, shortname)
             s3_mp_path = join(
                 indicators_prefix, "archive", indicator_name.upper(), basename(mp_path)
@@ -218,12 +278,20 @@ class IndicatorProcessor:
     def run(self, bucket: str):
         logging.info("Beginning indicators calculations...")
 
+        # Load cached indicators
+        cached_indicators = self.load_cached_indicators(bucket)
+        logging.info(f"Loaded {len(cached_indicators)} cached indicator records")
+
         computed_indicators = []
 
         # Process each grid
         for grid_key in self.grid_keys:
             date = datetime.strptime(grid_key.split("_")[-1][:8], "%Y%m%d")
             if date < datetime(1993, 1, 1):
+                continue
+
+            if not aws_manager.key_exists(grid_key):
+                logging.warning(f"Simple grid not found on S3: {grid_key}, skipping.")
                 continue
 
             logging.info(f"Processing {grid_key}")
@@ -247,4 +315,14 @@ class IndicatorProcessor:
             except Exception as e:
                 logging.exception(f"Error processing cycle {grid_key}. {e}")
 
-        self.format_and_upload(computed_indicators, bucket)
+        # Merge new results with cached
+        merged = self.merge_indicators(cached_indicators, computed_indicators)
+        logging.info(
+            f"Merged {len(computed_indicators)} new + {len(cached_indicators)} cached "
+            f"= {len(merged)} total records"
+        )
+
+        if merged:
+            self.format_and_upload(merged, bucket)
+        else:
+            logging.warning("No indicator records to output.")

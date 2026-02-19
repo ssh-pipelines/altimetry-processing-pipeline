@@ -19,7 +19,9 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
             {"ssha": (("time"), cls.ssha), "nasa_flag": (("time"), cls.flag)},
             {"time": cls.time},
         )
-        cls.smooth_ds: xr.Dataset = ssha_smoothing(cls.og_ds, datetime(2020, 1, 1))
+        cls.smooth_ds: xr.Dataset = ssha_smoothing(
+            cls.og_ds, datetime(2020, 1, 1), "GSFC"
+        )
 
     def test_mirror_nans(self):
         arr = np.array([1, np.nan, 2, 3])

@@ -1,17 +1,21 @@
 import numpy as np
-from datetime import datetime
-import pytz
+from datetime import datetime, timezone
 import xarray as xr
 import logging
 from scipy.interpolate import PPoly
 
 from oer.oerfit import oerfit
+from utilities.source_registry import daily_filename_prefix
 
 
-def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
-    """
-    Function to create single polygon
-    Needs to pull xovers from bucket first
+def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:
+    """Fit a cubic-spline orbit-error polygon to self-crossover differences.
+
+    Extracts SSH crossover pairs from *xover_ds*, filters to the target day
+    (with a 2-hour margin), and fits a piecewise cubic spline via ``oerfit``.
+    Returns a dataset containing spline coefficients, breakpoints, and
+    per-interval diagnostics.  If no crossover data falls within the day
+    window, all coefficients are set to zero.
     """
     logging.info("Creating polygon")
 
@@ -19,18 +23,17 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     pgon_t_margin = 7200  # keep 2 hours of extra data to avoid jumps between days
     ssh_max_error = 0.3  # ignore absolute xover differences larger than this in meters
 
-    ref_timestamp = datetime(1990, 1, 1, tzinfo=pytz.UTC).timestamp()
-    cur_timestamp = date.replace(tzinfo=pytz.UTC).timestamp()
+    ref_timestamp = datetime(1990, 1, 1, tzinfo=timezone.utc).timestamp()
+    cur_timestamp = date.replace(tzinfo=timezone.utc).timestamp()
 
+    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
+    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
     cycle1 = xover_ds["cycle1"].values
     cycle2 = xover_ds["cycle2"].values
     pass1 = xover_ds["pass1"].values
     pass2 = xover_ds["pass2"].values
-    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
-    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
     ssh1 = xover_ds["ssh1"].values
     ssh2 = xover_ds["ssh2"].values
-    # xcds = np.array([xover_ds['lon'].values, xover_ds['lat'].values]).T
 
     # compute trackid from passnum & cyc
     trackid1 = cycle1 * 10000 + pass1
@@ -50,8 +53,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     # pick times for spline fit: first find all passes with data
     # within 2 hour window before & after the current day.
     iilimit = np.where(
-        (psec >= cur_timestamp - pgon_t_margin)
-        & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
+        (psec >= cur_timestamp - pgon_t_margin) & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
     )[0]
 
     # case of no data in this day, make a polynomial that's all zeros
@@ -65,15 +67,11 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     else:
         # make list of passes in this time window & find min/max times for them
         cplist, iitrack = np.unique(trackid[iilimit], return_index=True)
-        # mintime = min(phours[np.where(trackid == np.min(cplist))])
-        # maxtime = max(phours[np.where(trackid == np.max(cplist))])
         mintime = min(phours[trackid == np.min(cplist)])
         maxtime = max(phours[trackid == np.max(cplist)])
 
         # find list of data in this time window & abs(dssh) < ssh_max_error
-        iitoday = np.where(
-            (phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error)
-        )[0]
+        iitoday = np.where((phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error))[0]
 
         # sort index by time
         ii = np.argsort(phours[iitoday])
@@ -83,9 +81,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
         hpmin = np.arange(-5, mintime, 0.3)
         hpmax = np.arange(maxtime, 29, 0.3)
         phours_pad = np.concatenate((hpmin, phours[iitoday], hpmax))
-        dssh_pad = np.concatenate(
-            (np.zeros_like(hpmin), dssh[iitoday], np.zeros_like(hpmax))
-        )
+        dssh_pad = np.concatenate((np.zeros_like(hpmin), dssh[iitoday], np.zeros_like(hpmax)))
         trackid_pad = np.concatenate(
             (
                 np.full_like(hpmin, trackid[iitoday[0]]),
@@ -113,9 +109,7 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
                 tbrk,
                 {
                     "units": "Hours since "
-                    + datetime.strftime(
-                        date.replace(tzinfo=pytz.UTC), "%Y-%m-%d %H:%M:%S %Z"
-                    ),
+                    + datetime.strftime(date.replace(tzinfo=timezone.utc), "%Y-%m-%d %H:%M:%S %Z"),
                     "long_name": "Breaks in cubic spline",
                 },
             ),
@@ -152,9 +146,12 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str):
     return ds
 
 
-def evaluate_correction(
-    polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date: datetime, source: str
-):
+def evaluate_correction(polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:
+    """Evaluate the spline polygon at each daily-file time step.
+
+    Returns a dataset with a single ``oer`` variable representing the
+    additive orbit-error correction (add to SSH to reduce orbit error).
+    """
     logging.info("Evaluating correction")
 
     # load coefs and tbreaks from polynomial file
@@ -162,9 +159,7 @@ def evaluate_correction(
 
     # compute hours since start of this day
     ssh_time = daily_file_ds["time"].values
-    hours_since_start = (ssh_time - np.datetime64(date)).astype(
-        "timedelta64[s]"
-    ).astype(int) / 3600
+    hours_since_start = (ssh_time - np.datetime64(date)).astype("timedelta64[s]").astype(int) / 3600
 
     # compute orbit error reduction, as additive correction to ssh
     oer = -1 * pp(hours_since_start)
@@ -185,31 +180,27 @@ def evaluate_correction(
                 },
             )
         },
-        coords={
-            "time": ("time", daily_file_ds["time"].data, daily_file_ds["time"].attrs)
-        },
+        coords={"time": ("time", daily_file_ds["time"].data, daily_file_ds["time"].attrs)},
         attrs={
             "title": f"{source} Orbit Error Reduction, interpolated onto ssh",
-            "subtitle": f'created for {source}-SSH_alt_ref_at_v1_{date.strftime("%Y%m%d")}.nc',
+            "subtitle": f"created for {daily_filename_prefix(source)}_{date.strftime('%Y%m%d')}.nc",
         },
     )
     ds["time"].encoding["units"] = daily_file_ds["time"].encoding["units"]
     return ds
 
 
-def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
-    """
-    - Add OER to SSH
-    - Add OER to SSH_SMOOTHED
-    - Copy OER variable to daily file
-    - Increment processing metadata
+def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset) -> xr.Dataset:
+    """Apply the OER correction to a daily file dataset (in-place).
+
+    Adds the ``oer`` variable to ``ssha`` and ``ssha_smoothed``, copies the
+    ``oer`` variable into the daily file, and sets ``product_generation_step``
+    to ``"2"``.  Raises ``ValueError`` if the time dimensions do not match.
     """
     logging.info("Applying correction")
 
     if len(correction_ds["time"]) != len(daily_file_ds["time"]):
-        raise ValueError(
-            "Unable to apply correction. Differing sizes between correction and daily file."
-        )
+        raise ValueError("Unable to apply correction. Differing sizes between correction and daily file.")
 
     daily_file_ds["oer"] = (("time"), correction_ds["oer"].values)
     daily_file_ds["oer"].attrs = {
@@ -225,16 +216,10 @@ def apply_correction(daily_file_ds: xr.Dataset, correction_ds: xr.Dataset):
         daily_file_ds["ssha"].values += correction_ds["oer"].values
         daily_file_ds["ssha_smoothed"].values += correction_ds["oer"].values
 
-    daily_file_ds["ssha"].attrs["orbit_error_correction"] = (
-        "oer variable added to reduce orbit error"
-    )
-    daily_file_ds["ssha_smoothed"].attrs["orbit_error_correction"] = (
-        "oer variable added to reduce orbit error"
-    )
+    daily_file_ds["ssha"].attrs["orbit_error_correction"] = "oer variable added to reduce orbit error"
+    daily_file_ds["ssha_smoothed"].attrs["orbit_error_correction"] = "oer variable added to reduce orbit error"
 
     daily_file_ds.attrs["product_generation_step"] = "2"
-    daily_file_ds.attrs["history"] = (
-        f'Created on {datetime.now(tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S")}'
-    )
+    daily_file_ds.attrs["history"] = f"Created on {datetime.now(tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')}"
 
     return daily_file_ds

@@ -27,6 +27,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 for IMAGE in "${IMAGES[@]}"; do
     DIR=$(find pipeline -type d -name "$IMAGE" | head -1)
     FULL="$REGISTRY/prod/$IMAGE:$RELEASE_VERSION"
+    REPO_NAME="prod/$IMAGE"
 
     if [ -z "$DRY_RUN" ]; then
         echo "Building: $FULL"
@@ -38,10 +39,17 @@ for IMAGE in "${IMAGES[@]}"; do
             --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
             --load -t "$FULL"
 
+        echo "Ensuring ECR repository exists: $REPO_NAME"
+        if ! aws ecr describe-repositories --repository-names "$REPO_NAME" >/dev/null 2>&1; then
+            echo "Creating ECR repository: $REPO_NAME"
+            aws ecr create-repository --repository-name "$REPO_NAME"
+        fi
+
         echo "Pushing: $FULL"
         docker push "$FULL"
     else
         echo "[DRY-RUN] Would build: $FULL from $DIR"
+        echo "[DRY-RUN] Would ensure ECR repository exists: $REPO_NAME"
         echo "[DRY-RUN] Would push: $FULL"
     fi
 done

@@ -123,6 +123,7 @@ class ENSOMapper:
 
         outpath = f'/tmp/ENSO_ortho_{str(date).replace("-","")}.png'
         plt.savefig(outpath, bbox_inches="tight", pad_inches=0.5)
+        plt.close(fig)
 
     def plot_plate(self, enso_ds, date, vmin=-180, vmax=180):
         fig = plt.figure(figsize=(20, 8))
@@ -169,6 +170,7 @@ class ENSOMapper:
 
         outpath = f'/tmp/ENSO_plate_{str(date).replace("-","")}.png'
         plt.savefig(outpath, bbox_inches="tight", pad_inches=0.5)
+        plt.close(fig)
 
     def make_maps(self, ds: xr.Dataset):
         date_dt = datetime.strptime(str(ds.time.values)[:10], "%Y-%m-%d").date()

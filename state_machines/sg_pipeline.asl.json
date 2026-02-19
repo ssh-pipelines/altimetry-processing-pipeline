@@ -1,0 +1,103 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "Set SG Jobs",
+  "States": {
+    "Set SG Jobs": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-set_sg_jobs:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Next": "Simple Grids Execution",
+      "Comment": "Reads manifest from S3, filters dates, writes filtered manifest",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Simple Grids Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-simple_grids-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "ENSO Execution",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "ENSO Execution": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-enso-sm",
+        "Input": {
+          "jobs_key": "{% $states.input.jobs_key %}",
+          "bucket": "{% $states.input.bucket %}",
+          "source": "{% $states.input.source %}"
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Indicators",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Indicators": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-indicators:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Fail"
+        }
+      ],
+      "End": true
+    },
+    "Fail": {
+      "Type": "Fail"
+    }
+  }
+}

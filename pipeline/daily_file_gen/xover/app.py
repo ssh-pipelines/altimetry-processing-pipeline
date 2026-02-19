@@ -3,19 +3,23 @@ import logging
 from typing import Tuple
 import numpy as np
 from crossover.parallel_crossovers import Crossover
+from crossover.config.source_config import get_source_config
 
 
-def parse_params(params: dict) -> Tuple[np.datetime64, str, str, str]:
-    try:
-        date = np.datetime64(params.get("date"))
-    except Exception as e:
-        raise ValueError(f"Unable to parse date: {e}")
-    source = params.get("source")
-    df_version = params.get("df_version")
+_CROSSOVER_PROCESSORS = {
+    "self": Crossover,
+}
 
-    if None in [date, source, df_version]:
-        raise ValueError(f"Missing job parameters: {df_version = },{source = },{date = }")
-    return date, source, df_version
+
+def get_processor(day: np.datetime64, source: str, df_version: str) -> Crossover:
+    config = get_source_config(source)
+    crossover_type = config.crossover_type
+    if crossover_type not in _CROSSOVER_PROCESSORS:
+        raise ValueError(
+            f"No processor for crossover_type '{crossover_type}' "
+            f"(source '{source}'). Available types: {list(_CROSSOVER_PROCESSORS.keys())}"
+        )
+    return _CROSSOVER_PROCESSORS[crossover_type](day, source, df_version)
 
 
 def handler(event, context):
@@ -36,7 +40,7 @@ def handler(event, context):
     # Step Function processing
     try:
         date = np.datetime64(proc_date)
-        processor = Crossover(date, source, df_version)
+        processor = get_processor(date, source, df_version)
         processor.run(bucket)
         result = {"status": "success", "data": event}
         return result

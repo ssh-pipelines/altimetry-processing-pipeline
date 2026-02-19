@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # Load .env file if it exists
-ENV_FILE="$(dirname "$0")/../../.env"
+ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.env"
 
 if [ -f "$ENV_FILE" ]; then
     export $(grep -v '^#' "$ENV_FILE" | xargs)

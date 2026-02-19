@@ -8,34 +8,38 @@ from typing import Tuple, Optional
 
 from simple_gridder.gridding import Gridder
 from utilities.aws_utils import aws_manager
+from utilities.source_registry import daily_filename_prefix
 
 
 class SimpleGridderJob:
-    def __init__(self, date: str, source: Optional[str], resolution: Optional[str]):
+    def __init__(self, date: str, bucket: str, source: Optional[str], resolution: Optional[str]):
         logging.info(f"Starting {source} job for {date}")
         self.center_date: datetime = datetime.strptime(date, "%Y-%m-%d")
         self.start_date: datetime = self.center_date - timedelta(5)
         self.end_date: datetime = self.start_date + timedelta(9)
-        self.source: Optional[str] = source
-        self.resolution: Optional[str] = resolution
-        if self.source:
-            base_filename = f"{self.source}_alt_ref_simple_grid_v1" 
+        
+        self.bucket: str = bucket
+        
+        if source is None:
+            self.source: str = "NASA-SSH"
         else:
-            base_filename = "NASA-SSH_alt_ref_simple_grid_v1"
-            
+            self.source: str = source
+
+        self.filename = f'{self.source}_alt_ref_simple_grid_v1_{self.center_date.strftime("%Y%m%d")}.nc'        
+        self.dst = f"s3://{self.bucket}/simple_grids/{self.source}/{str(self.center_date.year)}/{self.filename}"
+        
         if resolution == "quart":
-            base_filename = base_filename.replace("simple_grid_v1", "simple_grid_quart_v1")
+            self.filename = self.filename.replace("simple_grid_v1", "simple_grid_quart_v1")
+            self.dst = self.dst.replace("simple_grids/", "simple_grids/quart_deg/")
 
-        self.filename = f'{base_filename}_{self.center_date.strftime("%Y%m%d")}.nc'
-
-    def fetch_daily_files(self, bucket: str) -> Tuple[list[TextIOWrapper], list[str]]:
+    def fetch_daily_files(self) -> Tuple[list[TextIOWrapper], list[str]]:
         """
         Stream daily files from s3
         """
 
         streamed_objects = []
         streamed_filenames = []
-        window_keys = self.generate_keys(bucket)
+        window_keys = self.generate_keys()
         for key in window_keys:
             try:
                 if aws_manager.key_exists(key):
@@ -50,11 +54,8 @@ class SimpleGridderJob:
 
         return streamed_objects, streamed_filenames
 
-    def generate_keys(self, bucket: str):
-        if self.source is None:
-            prefix = f"s3://{bucket}/daily_files/p3"
-        else:
-            prefix = os.path.join(f"s3://{bucket}/daily_files/p2", self.source)
+    def generate_keys(self):
+        prefix = f"s3://{self.bucket}/daily_files/p3/{self.source}"
 
         dates_in_window = np.arange(
             self.start_date.strftime("%Y-%m-%d"),
@@ -64,10 +65,7 @@ class SimpleGridderJob:
         keys = []
         for date in dates_in_window:
             date_dt = datetime.strptime(str(date), "%Y-%m-%d")
-            if self.source is None:
-                filename = f'NASA-SSH_alt_ref_at_v1_{date_dt.strftime("%Y%m%d")}.nc'
-            else:
-                filename = f'{self.source}-SSH_alt_ref_at_v1_{date_dt.strftime("%Y%m%d")}.nc'
+            filename = f'{daily_filename_prefix(self.source)}_{date_dt.strftime("%Y%m%d")}.nc'
             key = os.path.join(prefix, str(date_dt.year), filename)
             keys.append(key)
         logging.info(f"Generated {len(keys)} keys")
@@ -99,20 +97,10 @@ class SimpleGridderJob:
         encoding = self.ds_encoding(ds)
         ds.to_netcdf(filepath, encoding=encoding)
 
-    def upload_grid(self, bucket: str):
+    def upload_grid(self):
         filepath = os.path.join("/tmp", self.filename)
-
-        bucket_path = f"s3://{bucket}/simple_grids"
-        if self.source is None:
-            if self.resolution == "quart":
-                dst = os.path.join(bucket_path, "quart", str(self.center_date.year), self.filename)
-            else:
-                dst = os.path.join(bucket_path, "p3", str(self.center_date.year), self.filename)
-        else:
-            dst = os.path.join(bucket_path, "p2", self.source, str(self.center_date.year), self.filename)
-
-        logging.info(f"Uploading {filepath} to {dst}")
-        aws_manager.upload_obj(filepath, dst)
+        logging.info(f"Uploading {filepath} to {self.dst}")
+        aws_manager.upload_obj(filepath, self.dst)
 
 
 def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
@@ -121,8 +109,8 @@ def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
     - source: str | Iterable[str] The name(s) of along track sources to include in the grid
     """
 
-    simple_gridder_job = SimpleGridderJob(date, source, resolution)
-    df_objs, filenames = simple_gridder_job.fetch_daily_files(bucket)
+    simple_gridder_job = SimpleGridderJob(date, bucket, source, resolution)
+    df_objs, filenames = simple_gridder_job.fetch_daily_files()
 
     if not filenames:
         logging.info(f"No daily files found or opened for {source} on {date}")
@@ -140,4 +128,4 @@ def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
     ds = gridder.make_grid(simple_gridder_job.filename)
 
     simple_gridder_job.save_grid(ds)
-    simple_gridder_job.upload_grid(bucket)
+    simple_gridder_job.upload_grid()

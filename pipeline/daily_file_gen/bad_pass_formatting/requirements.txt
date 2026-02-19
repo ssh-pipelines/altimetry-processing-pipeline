@@ -1,4 +1,0 @@
-pandas
-numpy==1.26.2
-boto3
-s3fs

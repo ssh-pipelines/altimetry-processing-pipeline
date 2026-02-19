@@ -1,157 +1,183 @@
-import logging
-from typing import Iterable
+import sys
 import unittest
-import pandas as pd
-import xarray as xr
-import numpy as np
-import netCDF4 as nc
-from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
+# Mock external dependencies not available in test venv
+_aws_mock = MagicMock()
+sys.modules.setdefault("utilities", _aws_mock)
+sys.modules.setdefault("utilities.aws_utils", _aws_mock)
+
+_pyresample_mock = MagicMock()
+sys.modules.setdefault("pyresample", _pyresample_mock)
+sys.modules.setdefault("pyresample.utils", _pyresample_mock)
+
+from app import build_sg_key
 from indicators.compute_indicators import IndicatorProcessor
-from glob import glob
 
 
-def decimal_year_to_datetime(decimal_years):
-    """Convert an array of decimal years to datetime objects."""
-    dates = []
-    for year_decimal in decimal_years:
-        year = int(year_decimal)
-        days = (year_decimal - year) * 365.25  # Convert fraction to days
-        date = datetime(year, 1, 1) + timedelta(days=days)
-        dates.append(date)
-    return np.array(dates)
-
-
-def running_mean(data, time, window=28.1):
-    """
-    Compute a 60-day smoothed version of the input data using a running mean.
-    The window is 28.1 days before and after, and it shrinks near the edges.
-
-    Parameters:
-        data (np.ndarray): 1D NumPy array of data points.
-        time (np.ndarray): 1D NumPy array of time points (in days).
-        window (float): Half-window size in days (default: 28.1 days).
-
-    Returns:
-        np.ndarray: Smoothed data array of the same length as input.
-    """
-    smoothed = np.full_like(data, np.nan)  # Initialize output with NaNs
-    for i in range(len(data)):
-        # Define dynamic window range
-        lower_bound = time[i] - timedelta(days=window)
-        upper_bound = time[i] + timedelta(days=window)
-        # Find indices within window
-        indices = (time >= lower_bound) & (time <= upper_bound)
-        # Compute mean over valid indices
-        smoothed[i] = np.nanmean(np.array(data)[indices]) if np.any(indices) else np.nan
-
-    return smoothed
-
-
-def create_lines(ds: xr.Dataset, indicator_name: str) -> Iterable[str]:
-    """
-    Creates list of formatted strings consisting of
-    date, enso, pdo, and iod values per string.
-    """
-    lines = []
-    for time in ds["time"]:
-        time_slice = ds.sel(time=time)
-        indicator_value = time_slice[indicator_name].values
-        if indicator_name == "gmsl":
-            smoothed_gmsl = time_slice["smoothed_gmsl"].values
-            lines.append(f"{time:<12.7f} {indicator_value:>12f} {smoothed_gmsl:>12f}\n")
-        else:
-            lines.append(f"{time:<12.7f} {indicator_value:>12f}\n")
-    return lines
-
-
-def generate_txt(ds: xr.Dataset, indicator_name: str):
-    lines = create_lines(ds, indicator_name)
-
-    with open(f"ref_files/txt_templates/NASA_SSH_{indicator_name.upper()}_INDICATOR.txt", "r") as template:
-        with open(f"{indicator_name}.txt", "w") as f:
-            template_header = template.readlines()
-            template_header = [
-                hdr.replace("PLACEHOLDER_CREATION_DATE", datetime.now().date().isoformat()) for hdr in template_header
-            ]
-            f.writelines(template.readlines())
-            f.write("\n")
-            f.writelines(lines)
-
-
-class EndToEndGSFCProcessingTestCase(unittest.TestCase):
-    temp_dir: str
-    daily_ds: xr.Dataset
-
-    class Granule:
-        def __init__(self, title) -> None:
-            self.title = title
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        logging.root.handlers = []
-        logging.basicConfig(
-            level="INFO",
-            format="[%(levelname)s] %(asctime)s - %(message)s",
-            handlers=[logging.StreamHandler()],
+class TestBuildSgKey(unittest.TestCase):
+    def test_basic_key(self):
+        key = build_sg_key("2024-03-15", "my-bucket", "NASA-SSH")
+        self.assertEqual(
+            key,
+            "s3://my-bucket/simple_grids/NASA-SSH/2024/"
+            "NASA-SSH_alt_ref_simple_grid_v1_20240315.nc",
         )
 
-        sg_keys = [
-            "tests/test_granules/NASA-SSH_alt_ref_simple_grid_v1_20241111.nc",
-            "tests/test_granules/NASA-SSH_alt_ref_simple_grid_v1_20250106.nc",
+    def test_different_source(self):
+        key = build_sg_key("2025-01-06", "prod-bucket", "S6")
+        self.assertEqual(
+            key,
+            "s3://prod-bucket/simple_grids/S6/2025/"
+            "S6_alt_ref_simple_grid_v1_20250106.nc",
+        )
+
+    def test_year_boundary(self):
+        key = build_sg_key("1993-01-01", "b", "GSFC")
+        self.assertIn("/1993/", key)
+        self.assertIn("19930101", key)
+
+
+class TestMergeIndicators(unittest.TestCase):
+    def test_empty_cache_returns_new(self):
+        new = [
+            {"time": 2024.5, "raw_gmsl": 1.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3},
         ]
-        sg_keys = sorted(glob("data/from_podaac_bucket/NASA_SSH_REF_SIMPLE_GRID_V1/*.nc"))
+        result = IndicatorProcessor.merge_indicators([], new)
+        self.assertEqual(result, new)
 
-        ind_proc = IndicatorProcessor(sg_keys)
+    def test_empty_new_returns_cached(self):
+        cached = [
+            {"time": 2024.0, "raw_gmsl": 1.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3},
+        ]
+        result = IndicatorProcessor.merge_indicators(cached, [])
+        self.assertEqual(result, cached)
 
-        cls.computed_indicators = []
+    def test_both_empty(self):
+        result = IndicatorProcessor.merge_indicators([], [])
+        self.assertEqual(result, [])
 
-        # Process each grid
-        for grid_key in ind_proc.grid_keys:
-            date = datetime.strptime(grid_key.split("_")[-1][:8], "%Y%m%d")
-            if date < datetime(1993, 1, 1):
-                continue
+    def test_new_overwrites_cached_at_same_time(self):
+        cached = [
+            {"time": 2024.0, "raw_gmsl": 1.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3},
+            {"time": 2024.5, "raw_gmsl": 2.0, "enso": 0.4, "pdo": 0.5, "iod": 0.6},
+        ]
+        new = [
+            {"time": 2024.5, "raw_gmsl": 9.9, "enso": 9.9, "pdo": 9.9, "iod": 9.9},
+        ]
+        result = IndicatorProcessor.merge_indicators(cached, new)
+        self.assertEqual(len(result), 2)
+        # The time=2024.5 record should have the new values
+        record_2024_5 = [r for r in result if r["time"] == 2024.5][0]
+        self.assertAlmostEqual(record_2024_5["raw_gmsl"], 9.9)
 
-            logging.info(f"Processing {grid_key}")
-            try:
-                cycle_ds = nc.Dataset(grid_key, "r")
-                latitudes = cycle_ds.variables["latitude"][:]
-                lat_idx = np.where((latitudes >= -66) & (latitudes <= 66))[0]
-                counts = cycle_ds.variables["counts"][lat_idx]
+    def test_append_new_times(self):
+        cached = [{"time": 2024.0, "raw_gmsl": 1.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3}]
+        new = [{"time": 2025.0, "raw_gmsl": 2.0, "enso": 0.4, "pdo": 0.5, "iod": 0.6}]
+        result = IndicatorProcessor.merge_indicators(cached, new)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["time"], 2024.0)
+        self.assertEqual(result[1]["time"], 2025.0)
 
-                if not ind_proc.validate_counts(counts):
-                    logging.warning(f"Too much data missing from {date.strftime('%Y-%m-%d')} cycle. Skipping.")
-                    continue
+    def test_sorted_output(self):
+        cached = [
+            {"time": 2025.0, "raw_gmsl": 3.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3},
+            {"time": 2023.0, "raw_gmsl": 1.0, "enso": 0.1, "pdo": 0.2, "iod": 0.3},
+        ]
+        new = [
+            {"time": 2024.0, "raw_gmsl": 2.0, "enso": 0.4, "pdo": 0.5, "iod": 0.6},
+        ]
+        result = IndicatorProcessor.merge_indicators(cached, new)
+        times = [r["time"] for r in result]
+        self.assertEqual(times, sorted(times))
 
-                indicator_values = ind_proc.process_cycle(date, cycle_ds)
-                cls.computed_indicators.append(indicator_values)
 
-            except Exception as e:
-                logging.exception(f"Error processing cycle {grid_key}. {e}")
+class TestGenerateDs(unittest.TestCase):
+    """Test generate_ds without requiring ref_files (bypass __init__)."""
 
-        # Test appending to existing data
-        df = pd.DataFrame(cls.computed_indicators)
+    @staticmethod
+    def _make_processor():
+        """Create an IndicatorProcessor without triggering file-dependent __init__."""
+        proc = object.__new__(IndicatorProcessor)
+        proc.source = "TEST"
+        return proc
 
-        # Set GMSL to 1993 zero mean
-        mean_1993 = df[(df["time"] >= 1993) & (df["time"] < 1994)]["gmsl"].mean()
-        df["gmsl"] = df["gmsl"] - mean_1993
+    def _make_records(self, times, raw_gmsl_values):
+        """Helper to build indicator record dicts."""
+        return [
+            {
+                "time": t,
+                "raw_gmsl": g,
+                "enso": 0.0,
+                "pdo": 0.0,
+                "iod": 0.0,
+            }
+            for t, g in zip(times, raw_gmsl_values)
+        ]
 
-        indicators_ds = xr.Dataset.from_dataframe(df.set_index("time"))
-        indicators_ds = indicators_ds.sortby("time")
-        indicators_ds["time"].attrs = {"units": "Date in decimal year format"}
-        indicators_ds["gmsl"].attrs = {"units": "cm"}
+    def test_1993_normalization(self):
+        proc = self._make_processor()
+        # Create records spanning 1993 with known raw_gmsl
+        times = [1993.0, 1993.5, 1994.0, 1995.0]
+        raw_vals = [10.0, 12.0, 14.0, 16.0]
+        records = self._make_records(times, raw_vals)
 
-        smoothed_gmsl = running_mean(
-            indicators_ds["gmsl"].values,
-            decimal_year_to_datetime(indicators_ds["time"].values),
-        )
-        indicators_ds["smoothed_gmsl"] = (["time"], smoothed_gmsl, {"units": "cm"})
+        ds = proc.generate_ds(records)
 
-        for indicator_name in ["gmsl", "enso", "iod", "pdo"]:
-            generate_txt(indicators_ds, indicator_name)
+        # Mean of 1993 raw_gmsl = (10 + 12) / 2 = 11
+        expected_mean = 11.0
+        for t, raw in zip(times, raw_vals):
+            gmsl_val = float(ds["gmsl"].sel(time=t).values)
+            self.assertAlmostEqual(gmsl_val, raw - expected_mean, places=5)
 
-        indicators_ds.to_netcdf("indicators.nc")
+    def test_raw_gmsl_preserved(self):
+        proc = self._make_processor()
+        times = [1993.0, 1994.0]
+        raw_vals = [10.0, 20.0]
+        records = self._make_records(times, raw_vals)
 
-    def test_file_date_coverage(self):
-        self.assertGreaterEqual(self.daily_ds["time"].values.min(), np.datetime64("1995-06-07"))
-        self.assertLessEqual(self.daily_ds["time"].values.max(), np.datetime64("1995-06-07T23:59:59"))
+        ds = proc.generate_ds(records)
+
+        self.assertIn("raw_gmsl", ds)
+        for t, raw in zip(times, raw_vals):
+            self.assertAlmostEqual(
+                float(ds["raw_gmsl"].sel(time=t).values), raw, places=5
+            )
+
+    def test_missing_1993_guard(self):
+        proc = self._make_processor()
+        # Only data from 1995+, no 1993 records
+        times = [1995.0, 1996.0]
+        raw_vals = [5.0, 7.0]
+        records = self._make_records(times, raw_vals)
+
+        ds = proc.generate_ds(records)
+
+        # With no 1993 data, gmsl should equal raw_gmsl (mean_1993 = 0)
+        for t, raw in zip(times, raw_vals):
+            self.assertAlmostEqual(
+                float(ds["gmsl"].sel(time=t).values), raw, places=5
+            )
+
+    def test_smoothed_gmsl_present(self):
+        proc = self._make_processor()
+        times = [1993.0, 1993.5, 1994.0]
+        raw_vals = [10.0, 12.0, 14.0]
+        records = self._make_records(times, raw_vals)
+
+        ds = proc.generate_ds(records)
+        self.assertIn("smoothed_gmsl", ds)
+        self.assertEqual(len(ds["smoothed_gmsl"]), 3)
+
+    def test_sorted_by_time(self):
+        proc = self._make_processor()
+        # Provide records out of order
+        records = self._make_records([1995.0, 1993.0, 1994.0], [3.0, 1.0, 2.0])
+
+        ds = proc.generate_ds(records)
+        times = ds["time"].values.tolist()
+        self.assertEqual(times, sorted(times))
+
+
+if __name__ == "__main__":
+    unittest.main()

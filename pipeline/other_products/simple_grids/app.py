@@ -14,7 +14,7 @@ def handler(event, context):
     source = event.get("source")
     resolution = event.get("resolution")
 
-    if None in [date, source, bucket]:
+    if None in [date, bucket]:
         raise ValueError("One of date, or bucket job parameters missing.")
     try:
         start_job(date, source, resolution, bucket)

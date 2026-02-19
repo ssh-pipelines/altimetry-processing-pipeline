@@ -82,7 +82,7 @@ class TestSourceConfig(unittest.TestCase):
         cfg = get_source_config("S6")
         self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.offset, S6_OFFSET)
-        self.assertEqual(cfg.start_date, date(2024, 1, 20))
+        self.assertEqual(cfg.start_date, date(2024, 1, 21))
 
     def test_invalid_source_raises(self):
         with self.assertRaises(ValueError):

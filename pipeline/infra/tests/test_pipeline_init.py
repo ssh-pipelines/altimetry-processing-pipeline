@@ -156,8 +156,8 @@ class TestHandler(unittest.TestCase):
             "bucket": "test-bucket",
             "source": "S6",
             "force_update": True,
-            "start": "2024-01-20",
-            "end": "2024-01-22",
+            "start": "2024-01-21",
+            "end": "2024-01-23",
         }
         result = handler(event, None)
 
@@ -173,9 +173,9 @@ class TestHandler(unittest.TestCase):
         # Verify jobs written to S3
         jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 3)
-        self.assertEqual(jobs[0]["date"], "2024-01-20")
-        self.assertEqual(jobs[1]["date"], "2024-01-21")
-        self.assertEqual(jobs[2]["date"], "2024-01-22")
+        self.assertEqual(jobs[0]["date"], "2024-01-21")
+        self.assertEqual(jobs[1]["date"], "2024-01-22")
+        self.assertEqual(jobs[2]["date"], "2024-01-23")
         for job in jobs:
             self.assertEqual(job["source"], "S6")
             self.assertEqual(job["bucket"], "test-bucket")
@@ -186,37 +186,37 @@ class TestHandler(unittest.TestCase):
     def test_handler_creates_jobs_for_missing_files(self, mock_daily_files, mock_cmr):
         mock_daily_files.return_value = {}
         mock_cmr.return_value = {
-            datetime(2024, 1, 20).date(): datetime(2024, 1, 20, 12, 0, 0),
+            datetime(2024, 1, 21).date(): datetime(2024, 1, 21, 12, 0, 0),
         }
 
         event = {
             "bucket": "test-bucket",
             "source": "S6",
-            "start": "2024-01-20",
-            "end": "2024-01-20",
+            "start": "2024-01-21",
+            "end": "2024-01-21",
         }
         result = handler(event, None)
 
         jobs = get_manifest_from_s3_mock(s3)
         self.assertEqual(len(jobs), 1)
-        self.assertEqual(jobs[0]["date"], "2024-01-20")
+        self.assertEqual(jobs[0]["date"], "2024-01-21")
         self.assertEqual(jobs[0]["source"], "S6")
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
     @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
     def test_handler_creates_jobs_for_updated_granules(self, mock_daily_files, mock_cmr):
         mock_daily_files.return_value = {
-            datetime(2024, 1, 20).date(): datetime(2024, 1, 20, 10, 0, 0),
+            datetime(2024, 1, 21).date(): datetime(2024, 1, 21, 10, 0, 0),
         }
         mock_cmr.return_value = {
-            datetime(2024, 1, 20).date(): datetime(2024, 1, 20, 14, 0, 0),
+            datetime(2024, 1, 21).date(): datetime(2024, 1, 21, 14, 0, 0),
         }
 
         event = {
             "bucket": "test-bucket",
             "source": "S6",
-            "start": "2024-01-20",
-            "end": "2024-01-20",
+            "start": "2024-01-21",
+            "end": "2024-01-21",
         }
         result = handler(event, None)
 
@@ -227,17 +227,17 @@ class TestHandler(unittest.TestCase):
     @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
     def test_handler_skips_up_to_date_files(self, mock_daily_files, mock_cmr):
         mock_daily_files.return_value = {
-            datetime(2024, 1, 20).date(): datetime(2024, 1, 20, 14, 0, 0),
+            datetime(2024, 1, 21).date(): datetime(2024, 1, 21, 14, 0, 0),
         }
         mock_cmr.return_value = {
-            datetime(2024, 1, 20).date(): datetime(2024, 1, 20, 10, 0, 0),
+            datetime(2024, 1, 21).date(): datetime(2024, 1, 21, 10, 0, 0),
         }
 
         event = {
             "bucket": "test-bucket",
             "source": "S6",
-            "start": "2024-01-20",
-            "end": "2024-01-20",
+            "start": "2024-01-21",
+            "end": "2024-01-21",
         }
         result = handler(event, None)
 
@@ -283,7 +283,7 @@ class TestHandler(unittest.TestCase):
         jobs = get_manifest_from_s3_mock(s3)
         if jobs:
             earliest = min(job["date"] for job in jobs)
-            self.assertGreaterEqual(earliest, "2024-01-20")
+            self.assertGreaterEqual(earliest, "2024-01-21")
 
     @patch('pipeline.infra.pipeline_init.app.query_cmr')
     @patch('pipeline.infra.pipeline_init.app.query_daily_files_for_year')
@@ -331,8 +331,8 @@ class TestHandler(unittest.TestCase):
             "bucket": "test-bucket",
             "source": "S6",
             "force_update": True,
-            "start": "2024-01-20",
-            "end": "2024-01-20",
+            "start": "2024-01-21",
+            "end": "2024-01-21",
         }
         result = handler(event, None)
 

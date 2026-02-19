@@ -41,11 +41,17 @@ def lambda_handler(event, context):
         job_date_dt = date.fromisoformat(job["date"])
         prev_monday, next_monday = surrounding_mondays(job_date_dt)
         if prev_monday <= end_date:
-            sg_jobs.add(prev_monday.isoformat())
+            sg_jobs.add(prev_monday)
         if next_monday <= end_date:
-            sg_jobs.add(next_monday.isoformat())
+            sg_jobs.add(next_monday)
 
-    filtered_jobs = [{"date": d, "bucket": bucket, "source": source} for d in sorted(sg_jobs)]
+    # Simple grids uses a 10-day window: [monday - 5, monday + 4].
+    # Discard any Monday whose window has no overlap with the actual daily file dates,
+    # otherwise simple grids silently skips the date and downstream stages (ENSO) fail.
+    min_job_date = min(date.fromisoformat(job["date"]) for job in jobs)
+    sg_jobs = {m for m in sg_jobs if m + timedelta(days=4) >= min_job_date}
+
+    filtered_jobs = [{"date": d.isoformat(), "bucket": bucket, "source": source} for d in sorted(sg_jobs)]
 
     # Write filtered manifest to S3
     new_key = jobs_key.replace("/jobs.json", "/sg_jobs.json")

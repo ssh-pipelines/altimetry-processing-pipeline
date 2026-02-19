@@ -50,10 +50,10 @@
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {
           "Bucket": "{% $states.input.bucket %}",
-          "Prefix": "pipeline_runs/results/bad_pass"
+          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/bad_pass') %}"
         }
       },
-      "MaxConcurrency": 100,
+      "MaxConcurrency": 500,
       "Label": "BadPass",
       "End": true
     }

@@ -50,10 +50,10 @@
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {
           "Bucket": "{% $states.input.bucket %}",
-          "Prefix": "pipeline_runs/results/unifier"
+          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/unifier') %}"
         }
       },
-      "MaxConcurrency": 100,
+      "MaxConcurrency": 500,
       "Label": "Unifier",
       "Next": "Rewrite Manifest"
     },
@@ -63,8 +63,8 @@
       "Arguments": {
         "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-rewrite_manifest:$LATEST",
         "Payload": {
-          "jobs_key": "{% $states.input.jobs_key %}",
-          "bucket": "{% $states.input.bucket %}",
+          "jobs_key": "{% $states.context.Execution.Input.jobs_key %}",
+          "bucket": "{% $states.context.Execution.Input.bucket %}",
           "new_source": "NASA-SSH"
         }
       },

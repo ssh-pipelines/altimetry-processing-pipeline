@@ -51,10 +51,10 @@
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {
           "Bucket": "{% $states.input.bucket %}",
-          "Prefix": "pipeline_runs/results/finalizer"
+          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/finalizer') %}"
         }
       },
-      "MaxConcurrency": 100,
+      "MaxConcurrency": 500,
       "Label": "Finalizer",
       "End": true
     }

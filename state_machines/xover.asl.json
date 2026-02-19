@@ -52,10 +52,10 @@
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {
           "Bucket": "{% $states.input.bucket %}",
-          "Prefix": "pipeline_runs/results/xover"
+          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/xover') %}"
         }
       },
-      "MaxConcurrency": 100,
+      "MaxConcurrency": 500,
       "Label": "Xover",
       "End": true
     }

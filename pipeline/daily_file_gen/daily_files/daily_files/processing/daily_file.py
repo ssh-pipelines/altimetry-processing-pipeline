@@ -136,9 +136,7 @@ class DailyFile(ABC):
             return
         mss_path = os.path.join(REF_FILES_DIR, "mss_diffs", self.mss_name)
         mss_correction = self.get_mss_values(mss_path)
-        self.ds["ssha"].values = (
-            self.ds["ssha"].values + self._source_mss_correction() + mss_correction
-        )
+        self.ds["ssha"].values = self.ds["ssha"].values + self._source_mss_correction() + mss_correction
         self._post_mss_swap()
 
     def _source_mss_correction(self) -> np.ndarray:
@@ -243,9 +241,7 @@ class DailyFile(ABC):
     def make_ssha_smoothed(self, date: datetime):
         self.ds = ssha_smoothing(self.ds, date, self.source_config.source)
 
-    def make_lonlat_points(
-        self, lats: np.ndarray, lons: np.ndarray
-    ) -> gpd.GeoDataFrame:
+    def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """
         Convert lat lon values to shapely Point objects and wrap
         as georeferenced GeoDataFrame.
@@ -260,20 +256,12 @@ class DailyFile(ABC):
         """ """
         logging.info("Mapping data points to their respective basin")
 
-        poly_df = gpd.read_file(
-            os.path.join(REF_FILES_DIR, "basin", "new_basin_lake_polygons.shp")
-        )
+        poly_df = gpd.read_file(os.path.join(REF_FILES_DIR, "basin", "new_basin_lake_polygons.shp"))
 
         # Format basin ids and names for basin_names_table
-        names = (
-            poly_df["name"]
-            .apply(lambda x: x.replace("'", " ").replace(",", " -"))
-            .values
-        )
+        names = poly_df["name"].apply(lambda x: x.replace("'", " ").replace(",", " -")).values
         basin_ids = poly_df["feature_id"].astype(str).values
-        basin_table = np.array(
-            [f"{basin},{name}" for basin, name in zip(basin_ids, names)]
-        )
+        basin_table = np.array([f"{basin},{name}" for basin, name in zip(basin_ids, names)])
         basin_table = np.insert(basin_table, 0, "0,Land", axis=0)
         self.ds["basin_names_table"] = (
             ("basins"),
@@ -283,20 +271,13 @@ class DailyFile(ABC):
         if len(self.ds["time"]) == 0:
             self.ds["ssha_smoothed"] = (("time"), np.array([], dtype="float64"))
             self.ds["basin_flag"] = (("time"), np.array([], dtype="int32"))
-            self.ds["basin_flag"].attrs["flag_values"] = np.array(
-                basin_ids, dtype=np.int32
-            )
+            self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
             self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
-                [
-                    name.replace(": ", ":").replace(" ", "_").replace(":", "_")
-                    for name in names
-                ]
+                [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
             )
             return
 
-        points_df = self.make_lonlat_points(
-            self.ds["latitude"].values, self.ds["longitude"].values
-        )
+        points_df = self.make_lonlat_points(self.ds["latitude"].values, self.ds["longitude"].values)
         join_df = gpd.sjoin(points_df, poly_df, how="left", predicate="within")
         self.ds["basin_flag"] = (
             ("time"),
@@ -304,19 +285,12 @@ class DailyFile(ABC):
         )
         self.ds["basin_flag"].attrs["flag_values"] = np.array(basin_ids, dtype=np.int32)
         self.ds["basin_flag"].attrs["flag_meanings"] = " ".join(
-            [
-                name.replace(": ", ":").replace(" ", "_").replace(":", "_")
-                for name in names
-            ]
+            [name.replace(": ", ":").replace(" ", "_").replace(":", "_") for name in names]
         )
 
     def apply_basin_to_nasa(self):
         self.ds["nasa_flag"].values[
-            (
-                (self.ds["basin_flag"] == 0)
-                | (self.ds["basin_flag"] == 1003)
-                | (self.ds["basin_flag"] == 190)
-            )
+            ((self.ds["basin_flag"] == 0) | (self.ds["basin_flag"] == 1003) | (self.ds["basin_flag"] == 190))
         ] = 1
 
     def set_var_attrs(self):
@@ -423,14 +397,10 @@ class DailyFile(ABC):
         """
         global_attrs = get_base_global_attrs(source_files=self.source_files)
         global_attrs["time_coverage_start"] = (
-            str(self.ds["time"].values[0])[:19] + "Z"
-            if len(self.ds["time"]) > 0
-            else "N/A"
+            str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A"
         )
         global_attrs["time_coverage_end"] = (
-            str(self.ds["time"].values[-1])[:19] + "Z"
-            if len(self.ds["time"]) > 0
-            else "N/A"
+            str(self.ds["time"].values[-1])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A"
         )
 
         for k, v in global_attrs.items():
@@ -449,27 +419,30 @@ class DailyFile(ABC):
     def set_source_attrs(self):
         """Sets source-specific global attributes from collection metadata.
         Subclasses can override to add extra attributes (call super first)."""
-        sources = set()
-        source_urls = set()
-        references = set()
+        if self.source_config.collections:
+            sources = set()
+            source_urls = set()
+            references = set()
 
-        collections_by_id = {c.concept_id: c for c in self.source_config.collections}
-        for collection_id in self.collection_ids:
-            col = collections_by_id[collection_id]
-            sources.add(col.source_label)
-            source_urls.add(col.source_url)
-            references.add(col.reference)
+            collections_by_id = {c.concept_id: c for c in self.source_config.collections}
+            for collection_id in self.collection_ids:
+                col = collections_by_id[collection_id]
+                sources.add(col.source_label)
+                source_urls.add(col.source_url)
+                references.add(col.reference)
 
-        self.ds.attrs["source"] = ", and ".join(sorted(sources))
-        self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
-        self.ds.attrs["references"] = ", and ".join(sorted(references))
+            self.ds.attrs["source"] = ", and ".join(sorted(sources))
+            self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
+            self.ds.attrs["references"] = ", and ".join(sorted(references))
+        else:
+            self.ds.attrs["source"] = self.source_config.source_label
+            self.ds.attrs["source_url"] = self.source_config.source_url
+            self.ds.attrs["references"] = self.source_config.reference
         self.ds.attrs["mean_sea_surface"] = self.target_mss
 
         if self.ds.attrs["time_coverage_start"] == "N/A":
-            self.ds.attrs["time_coverage_start"] = (
-                self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-            )
+            self.ds.attrs["time_coverage_start"] = self.date.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         if self.ds.attrs["time_coverage_end"] == "N/A":
-            self.ds.attrs["time_coverage_end"] = (
-                self.date + timedelta(days=1) - timedelta(seconds=1)
-            ).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+            self.ds.attrs["time_coverage_end"] = (self.date + timedelta(days=1) - timedelta(seconds=1)).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ) + "Z"

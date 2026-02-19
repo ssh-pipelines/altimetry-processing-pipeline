@@ -51,3 +51,25 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.source_mss, "DTU18")
         self.assertEqual(cfg.empty_template, "s6b_empty_template.nc")
         self.assertIsInstance(cfg.smoothing, SmoothingConfig)
+
+    def test_cmr_sources_default_discovery_type(self):
+        for source in ["GSFC", "S6", "S6B"]:
+            cfg = get_source_config(source)
+            self.assertEqual(cfg.discovery_type, "cmr", f"{source} should have discovery_type 'cmr'")
+
+    def test_example_s3_config(self):
+        cfg = get_source_config("EXAMPLE_S3")
+        self.assertIsInstance(cfg, SourceConfig)
+        self.assertEqual(cfg.source, "EXAMPLE_S3")
+        self.assertEqual(cfg.discovery_type, "s3_bucket")
+        self.assertEqual(cfg.source_bucket, "example-source-bucket")
+        self.assertEqual(cfg.source_prefix_pattern, "data/{source}/{year}")
+        self.assertEqual(cfg.source_filename_pattern, "{source}_{date8}.nc")
+        self.assertEqual(cfg.source_label, "Example S3-hosted dataset")
+        self.assertEqual(cfg.source_url, "https://example.com/dataset")
+        self.assertEqual(cfg.reference, "https://doi.org/10.0000/example")
+        self.assertEqual(len(cfg.collections), 0)
+
+    def test_example_s3_in_available_sources(self):
+        sources = get_available_sources()
+        self.assertIn("EXAMPLE_S3", sources)

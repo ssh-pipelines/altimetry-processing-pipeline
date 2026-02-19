@@ -24,3 +24,10 @@ sources:
     collections:
       - concept_id: C3213767230-POCLOUD
         priority: 1
+  EXAMPLE_S3:
+    satellite: EXAMPLE_S3
+    s3_prefix: "daily_files/p3/EXAMPLE_S3"
+    filename_pattern: "EXAMPLE_S3_alt_ref_at_v1_{date8}.nc"
+    source_bucket: "example-source-bucket"
+    source_prefix_pattern: "data/{source}/{year}"
+    source_filename_pattern: "{source}_{date8}.nc"

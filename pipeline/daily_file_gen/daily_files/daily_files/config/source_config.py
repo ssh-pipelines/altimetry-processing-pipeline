@@ -34,6 +34,13 @@ class SourceConfig:
     empty_template: str
     smoothing: SmoothingConfig
     collections: list[CollectionConfig] = field(default_factory=list)
+    discovery_type: str = "cmr"
+    source_bucket: str | None = None
+    source_prefix_pattern: str | None = None
+    source_filename_pattern: str | None = None
+    source_label: str = ""
+    source_url: str = ""
+    reference: str = ""
 
 
 def _load_sources() -> dict[str, SourceConfig]:
@@ -58,6 +65,13 @@ def _load_sources() -> dict[str, SourceConfig]:
             empty_template=cfg["empty_template"],
             smoothing=smoothing,
             collections=collections,
+            discovery_type=registry.discovery_type,
+            source_bucket=cfg.get("source_bucket"),
+            source_prefix_pattern=cfg.get("source_prefix_pattern"),
+            source_filename_pattern=cfg.get("source_filename_pattern"),
+            source_label=cfg.get("source_label", ""),
+            source_url=cfg.get("source_url", ""),
+            reference=cfg.get("reference", ""),
         )
     return configs
 
@@ -70,9 +84,7 @@ def get_source_config(source: str) -> SourceConfig:
     if not _SOURCE_CONFIGS:
         _SOURCE_CONFIGS = _load_sources()
     if source not in _SOURCE_CONFIGS:
-        raise ValueError(
-            f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}"
-        )
+        raise ValueError(f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}")
     return _SOURCE_CONFIGS[source]
 
 

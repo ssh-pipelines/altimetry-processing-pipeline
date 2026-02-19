@@ -12,6 +12,7 @@ class SourceRegistryEntry:
     unify: bool
     start_date: date
     end_date: date | None = None
+    discovery_type: str = "cmr"
 
 
 def _load_registry() -> dict[str, SourceRegistryEntry]:
@@ -35,6 +36,7 @@ def _load_registry() -> dict[str, SourceRegistryEntry]:
             unify=cfg.get("unify", False),
             start_date=start_date,
             end_date=end_date,
+            discovery_type=cfg.get("discovery_type", "cmr"),
         )
     return entries
 

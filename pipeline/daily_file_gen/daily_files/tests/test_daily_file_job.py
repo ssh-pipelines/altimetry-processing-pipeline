@@ -12,20 +12,28 @@ from daily_files.daily_file_job import (
     _get_output_filename,
 )
 from daily_files.fetching.enumerator import FileRef
+from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
 from daily_files.ingestion.ingest import IngestedData
 
 
 class TestSourceRegistry(unittest.TestCase):
     def test_registry_entries_are_source_pipelines(self):
         for key, pipeline in SOURCE_REGISTRY.items():
-            self.assertIsInstance(
-                pipeline, SourcePipeline, f"{key} is not a SourcePipeline"
-            )
+            self.assertIsInstance(pipeline, SourcePipeline, f"{key} is not a SourcePipeline")
 
     def test_registry_has_expected_sources(self):
         self.assertIn("GSFC", SOURCE_REGISTRY)
         self.assertIn("S6", SOURCE_REGISTRY)
         self.assertIn("S6B", SOURCE_REGISTRY)
+        self.assertIn("EXAMPLE_S3", SOURCE_REGISTRY)
+
+    def test_example_s3_uses_s3_bucket_enumerator(self):
+        pipeline = SOURCE_REGISTRY["EXAMPLE_S3"]
+        self.assertIs(pipeline.enumerator, S3BucketEnumerator)
+
+    def test_example_s3_uses_iam_credentials(self):
+        pipeline = SOURCE_REGISTRY["EXAMPLE_S3"]
+        self.assertIsNone(pipeline.downloader_kwargs["credentials_fn"])
 
 
 class TestDailyFileJobInit(unittest.TestCase):
@@ -60,9 +68,7 @@ class TestAcquirePhase(unittest.TestCase):
 
     def test_acquire_returns_none_when_no_granules(self):
         job = self._make_job()
-        job.enumerator_cls = MagicMock(
-            return_value=MagicMock(enumerate=MagicMock(return_value=[]))
-        )
+        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=[])))
         job.downloader_cls = MagicMock()
         job.downloader_kwargs = {}
         job.ingestor_cls = MagicMock()
@@ -85,9 +91,7 @@ class TestAcquirePhase(unittest.TestCase):
                 collection_id="C123",
             ),
         ]
-        job.enumerator_cls = MagicMock(
-            return_value=MagicMock(enumerate=MagicMock(return_value=file_refs))
-        )
+        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=file_refs)))
 
         mock_downloader = MagicMock()
         mock_downloader.download_all.return_value = [MagicMock()]

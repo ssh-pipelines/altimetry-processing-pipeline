@@ -13,6 +13,7 @@ from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
 from daily_files.fetching.enumerator import Enumerator
 from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
+from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
 from daily_files.fetching.downloader import (
     Downloader,
     S3Downloader,
@@ -58,6 +59,13 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
         ingestor=S6Ingestor,
         processor=S6DailyFile,
+    ),
+    "EXAMPLE_S3": SourcePipeline(
+        enumerator=S3BucketEnumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": None},
+        ingestor=GSFCIngestor,
+        processor=GSFCDailyFile,
     ),
 }
 

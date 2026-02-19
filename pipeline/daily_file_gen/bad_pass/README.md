@@ -1,13 +1,83 @@
 # Bad Pass Flagging
 
-Note: Does not currently support running for date coverage longer than 3 years due to runtime. In order to reprocess all of GSFC for example you must submit multiple 3 year invocations. It is currently directly invoked but will be redeployed to better support handling of longer date ranges rendering the above unneccesary.
+Identifies satellite passes with anomalous crossover residuals and writes the flagged results to S3. Runs as an AWS Lambda function, invoked once per date via a Distributed Map in the `bad_pass.asl.json` Step Function.
 
-Inputs:
+## How it works
 
-Optional GSFC:
-- gsfc_start: "YYYY-MM-DD"
-- gsfc_end: "YYYY-MM-DD"
+For each processing date, the Lambda:
 
-Default S6:
-- s6_start = "YYYY-MM-DD" (defualts to 60 days prior to date of runtime)
-- s6_end = "YYYY-MM-DD" (defualts to date of runtime)
+1. **Gathers crossover files** from a sliding window (10 days back + 1 day pad on each side) under `s3://{bucket}/crossovers/p2/{source}/{year}/`.
+2. **Loads crossover data** (cycle, pass, time, SSH) from the netCDF files and computes SSH differences (`ssh1 - ssh2`) for every crossover point.
+3. **Flags bad passes** by grouping crossover points by track ID (`cycle * 10000 + pass`) and checking two thresholds:
+   - **Mean**: If `n > 15` points and `|mean(dssh)| > 0.1` m
+   - **RMS**: If `n > 25` points and `std(dssh) > 0.27` m
+4. **Writes results** to `s3://{bucket}/bad_passes/{source}/{date}.json` (only when bad passes are found).
+
+A static list of known bad passes is also maintained in `bad_passes/bad_pass_list.csv`.
+
+## Directory structure
+
+```
+bad_pass/
+├── app.py                        # Lambda handler
+├── bad_passes/
+│   ├── bad_pass_flag.py          # XoverProcessor — core logic
+│   └── bad_pass_list.csv         # Static list of known bad passes
+├── tests/
+│   └── test_bad_pass_flag.py     # Unit tests
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
+
+## Lambda input
+
+The Lambda receives one item from the jobs manifest per invocation:
+
+```json
+{
+  "bucket": "my-bucket",
+  "date": "2024-01-15",
+  "source": "GSFC"
+}
+```
+
+All three fields are required.
+
+## Lambda output
+
+```json
+{
+  "date": "2024-01-15",
+  "source": "GSFC",
+  "count": 2
+}
+```
+
+## S3 paths
+
+| Path | Description |
+|------|-------------|
+| `crossovers/p2/{source}/{year}/xovers_{source}-{date}.nc` | Input crossover files (read) |
+| `bad_passes/{source}/{date}.json` | Output bad pass results (write) |
+
+## Step Function
+
+Defined in `state_machines/bad_pass.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `bad_pass` Lambda for each date. Results are written to `pipeline_runs/results/bad_pass/` in S3.
+
+## Running tests
+
+From the `bad_pass/` directory:
+
+```bash
+source .venv/bin/activate  # or use the devcontainer
+python -m unittest discover -s tests -t . -v
+```
+
+## Dependencies
+
+Key libraries (see `requirements.txt`):
+
+- `netCDF4` / `h5netcdf` / `h5py` — reading crossover netCDF files
+- `numpy` — numerical computation
+- `boto3` / `s3fs` — AWS S3 access

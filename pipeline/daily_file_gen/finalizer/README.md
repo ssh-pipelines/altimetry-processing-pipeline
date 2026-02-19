@@ -4,92 +4,116 @@ Produces level-3 (P3) daily files from level-2 (P2) inputs. Applies a source-spe
 
 Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON event.
 
-## Usage
+## How it works
 
-**Lambda event parameters:**
+For each processing date, the Lambda:
 
-| Parameter | Example      | Description                     |
-|-----------|--------------|---------------------------------|
-| `date`    | `2025-01-01` | Processing day (ISO 8601)       |
-| `source`  | `S6`         | Satellite source (`S6`, `GSFC`) |
-| `bucket`  | `my-bucket`  | S3 bucket for input/output      |
+1. **Validates the source** against `finalization/config/sources.yaml` and checks the processing date falls within the source's configured date range.
+2. **Loads bad passes** from `s3://{bucket}/bad_passes/{source}/{date}.json` (optional; returns an empty DataFrame if absent).
+3. **Downloads the P2 daily file** from `s3://{bucket}/daily_files/p2/{source}/{year}/`.
+4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold`, and `pass_flag_notes` from the source config.
+5. **Applies bad-pass flags** — sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
+6. **Handles the absolute offset** — if the source offset is non-zero, removes any previously applied offset (via `absolute_offset_applied` attribute) and adds the configured one to both `ssha` and `ssha_smoothed`.
+7. **Sets global attributes** — `product_generation_step = "3"`, `history`, `granule_id`, `absolute_offset_applied`, and sorts all global attributes alphabetically (case-insensitive).
+8. **Uploads** the finalized P3 file to S3 and removes the local temp copy.
 
-Available sources are defined in `finalization/config/sources.yaml`. The handler validates the `source` parameter against this config at invocation time.
+On success, the handler returns `product_type` and `unify` from the source config alongside the original event fields, which downstream steps (e.g., the unifier) use to decide further processing.
 
-**Inputs:**
-- P2 daily file from `s3://{bucket}/daily_files/p2/{source}/{year}/`
-- Bad-pass JSON from `s3://{bucket}/aux_files/bad_passes/{source}/{date}.json` (optional; skipped if absent)
-
-**Outputs:**
-- P3 daily file uploaded to `s3://{bucket}/daily_files/p3/{year}/` (reference products, with `NASA` prefix) or `s3://{bucket}/daily_files/p3/{source}/{year}/` (high-latitude products)
-
-## Project Structure
+## Directory structure
 
 ```
 finalizer/
-  app.py                                # Lambda handler (entry point)
-  requirements.txt
-  Dockerfile
-  finalization/
-    finalizer.py                        # Finalizer class: S3 I/O, offset, bad-pass flagging, metadata
-    config/
-      __init__.py
-      sources.yaml                      # Per-source config (offset, date range, pass-flag thresholds)
-      source_config.py                  # Dataclasses + YAML loader (lazy-cached)
-  tests/
-    __init__.py                         # Adds finalization/ to sys.path for test imports
-    test_finalizer.py                   # Unit tests (config, source param, bad passes, process, attributes)
+├── app.py                              # Lambda handler (entry point)
+├── finalization/
+│   ├── finalizer.py                    # Finalizer class + apply_bad_pass()
+│   └── config/
+│       ├── __init__.py
+│       ├── sources.yaml                # Per-source config (offset, pass-flag thresholds)
+│       └── source_config.py            # Dataclasses + YAML loader (lazy-cached)
+├── tests/
+│   ├── __init__.py                     # Adds finalization/ to sys.path for test imports
+│   └── test_finalizer.py              # Unit tests
+├── Dockerfile
+├── requirements.txt
+└── README.md
 ```
 
-## How It Works
+## Lambda input
 
-1. **`app.handler()`** -- Extracts `date`, `source`, and `bucket` from the event. Validates `source` against the YAML config. Constructs a `Finalizer` and calls `process()`.
-2. **`Finalizer.__init__()`** -- Loads the source config, validates the processing date against the source's configured date range, and loads the bad-pass list from S3 (returns an empty DataFrame if no file exists).
-3. **`process()`** -- Downloads the P2 daily file, then:
-   - Writes pass-flag metadata attributes (`pass_flag_mean_num`, `pass_flag_rms_num`, etc.) from the source config.
-   - Applies bad-pass flags: sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
-   - Handles the absolute offset: if the source offset is non-zero, removes any previously applied offset and adds the configured one. Records the value in `absolute_offset_applied`.
-   - Sets `product_generation_step = "3"`, updates `history` and `granule_id`, and sorts global attributes alphabetically (case-insensitive).
-   - Uploads the finalized file to S3 and removes the local temp copy.
+The Lambda receives one item from the jobs manifest per invocation:
 
-## Source Configuration
+```json
+{
+  "bucket": "my-bucket",
+  "date": "2025-01-15",
+  "source": "S6"
+}
+```
 
-Sources are defined in `finalization/config/sources.yaml` and loaded via dataclasses in `source_config.py`. Each source specifies:
+All three fields are required. Available sources are defined in `finalization/config/sources.yaml`.
 
-| Field           | Description                                              |
-|-----------------|----------------------------------------------------------|
-| `product_type`  | `reference` or `high_latitude` (controls output path)    |
-| `offset`        | Absolute offset applied to `ssha`/`ssha_smoothed` (m)    |
-| `start_date`    | Earliest valid processing date for this source           |
-| `end_date`      | Latest valid processing date (optional)                  |
-| `pass_flag`     | Thresholds: `mean_num`, `rms_num`, `mean_threshold`, `rms_threshold` |
+## Lambda output
+
+```json
+{
+  "status": "success",
+  "data": {
+    "bucket": "my-bucket",
+    "date": "2025-01-15",
+    "source": "S6",
+    "product_type": "reference",
+    "unify": true
+  }
+}
+```
+
+## S3 paths
+
+| Path | Description |
+|------|-------------|
+| `daily_files/p2/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Input P2 daily file (read) |
+| `bad_passes/{source}/{date}.json` | Bad-pass list from upstream stage (read, optional) |
+| `daily_files/p3/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Output P3 daily file (write) |
+
+Filename prefix is determined by the global source registry (`utilities/source_registry.py`): `{source}_alt_ref_at_v1` for reference products, `{source}_alt_hilat_at_v1` for high-latitude products.
+
+## Source configuration
+
+Each source has settings at two levels:
+
+**Global registry** (`utilities/sources.yaml`) — shared fields inherited by all stages: `product_type`, `unify`, `start_date`, `end_date`.
+
+**Stage-local config** (`finalization/config/sources.yaml`) — finalizer-specific fields merged with the global registry:
+
+| Field       | Description                                              |
+|-------------|----------------------------------------------------------|
+| `offset`    | Absolute offset applied to `ssha`/`ssha_smoothed` (m)    |
+| `pass_flag` | Thresholds: `mean_num`, `rms_num`, `mean_threshold`, `rms_threshold` |
 
 Current sources:
 
-| Source | Product Type | Offset  | Start Date |
-|--------|-------------|---------|------------|
-| GSFC   | reference   | 0.0     | 1992-10-13 |
-| S6     | reference   | 0.0291  | 2024-01-20 |
+| Source | Product Type | Offset  | Start Date | End Date   |
+|--------|-------------|---------|------------|------------|
+| GSFC   | reference   | 0.0     | 1992-10-25 | 2024-01-20 |
+| S6     | reference   | 0.0291  | 2024-01-21 |            |
+| S6B    | reference   | 0.0     | 2025-11-26 |            |
 
-To add a new source, add an entry to `sources.yaml`. No code changes required.
+To add a new source, add an entry to `utilities/sources.yaml` first, then add the finalizer-specific entry to `finalization/config/sources.yaml`. No code changes required.
 
-## Development
+## Step Function
+
+Defined in `state_machines/finalizer.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `finalizer` Lambda for each date. Results are written to `pipeline_runs/results/finalizer/` in S3.
+
+## Running tests
+
+From the `finalizer/` directory:
 
 ```bash
-cd pipeline/daily_file_gen/finalizer
-
-# Create venv and install dependencies
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run tests
+source .venv/bin/activate  # or use the devcontainer
 python -m unittest discover -s tests -t . -v
 ```
 
-### Tests
-
-`test_finalizer.py` covers:
+### Test coverage
 
 | Test class                | What it tests                                                    |
 |---------------------------|------------------------------------------------------------------|
@@ -98,7 +122,17 @@ python -m unittest discover -s tests -t . -v
 | `TestLoadBadPasses`       | Missing file returns empty DF, empty list, column rename, S3 key format |
 | `TestGetDailyFile`        | Download when exists, raises when not found                      |
 | `TestApplyBadPass`        | Flag matching cycle/pass, `flagged_passes` attr, `ssha_smoothed` NaN, no-match |
-| `TestProcessGSFC`         | Upload path contains `NASA` and `p3`, offset is zero             |
+| `TestProcessGSFC`         | Per-source upload path, offset is zero                           |
 | `TestProcessS6`           | Offset applied, previous offset removed before applying          |
 | `TestProcessAttributes`   | `product_generation_step`, `history`, `granule_id`, pass-flag attrs, attribute sort |
 | `TestProcessWithBadPasses`| Bad passes applied during `process()`                            |
+| `TestProcessS6B`          | Per-source upload path, granule ID uses source name              |
+
+## Dependencies
+
+Key libraries (see `requirements.txt`):
+
+- `netCDF4` / `h5netcdf` / `h5py` — reading and writing daily file NetCDFs
+- `numpy` / `pandas` — numerical computation and bad-pass DataFrames
+- `boto3` / `s3fs` — AWS S3 access
+- `pyyaml` — source config loading

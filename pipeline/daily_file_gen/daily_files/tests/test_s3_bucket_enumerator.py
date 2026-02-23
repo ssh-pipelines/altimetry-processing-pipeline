@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
@@ -136,3 +137,128 @@ class TestEnumerate(unittest.TestCase):
         enum = S3BucketEnumerator(datetime(2023, 7, 15), cfg)
         refs = enum.enumerate()
         self.assertEqual(len(refs), 0)
+
+
+CYCLE_INDEX = {
+    "cycle_001.nc": {"start": "2023-07-01", "end": "2023-07-10"},
+    "cycle_002.nc": {"start": "2023-07-11", "end": "2023-07-20"},
+    "cycle_003.nc": {"start": "2023-07-21", "end": "2023-07-31"},
+}
+
+
+class TestEnumerateWithCycleIndex(unittest.TestCase):
+    def _make_paginator(self, pages):
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = pages
+        return mock_paginator
+
+    def _mock_get_object(self, index_data):
+        body = MagicMock()
+        body.read.return_value = json.dumps(index_data).encode()
+        return {"Body": body}
+
+    @patch("daily_files.fetching.s3_bucket_enumerator.boto3")
+    def test_returns_file_for_date_within_cycle(self, mock_boto3):
+        cfg = _make_source_config(cycle_index_key="data/EXAMPLE_S3/cycle_index.json")
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_object.return_value = self._mock_get_object(CYCLE_INDEX)
+        mock_client.get_paginator.return_value = self._make_paginator(
+            [
+                {
+                    "Contents": [
+                        {
+                            "Key": "data/EXAMPLE_S3/2023/cycle_002.nc",
+                            "LastModified": datetime(2023, 8, 1, 12, 0, 0),
+                        },
+                    ]
+                }
+            ]
+        )
+
+        enum = S3BucketEnumerator(datetime(2023, 7, 15), cfg)
+        refs = enum.enumerate()
+
+        self.assertEqual(len(refs), 1)
+        self.assertEqual(refs[0].title, "cycle_002.nc")
+        self.assertEqual(refs[0].access_url, "s3://example-source-bucket/data/EXAMPLE_S3/2023/cycle_002.nc")
+        self.assertEqual(refs[0].time_start, "2023-07-11T00:00:00Z")
+        self.assertEqual(refs[0].time_end, "2023-07-20T23:59:59Z")
+
+    @patch("daily_files.fetching.s3_bucket_enumerator.boto3")
+    def test_returns_both_files_when_date_spans_boundary(self, mock_boto3):
+        # Date falls on the boundary of two cycles (end of cycle_001, start of cycle_002)
+        index = {
+            "cycle_001.nc": {"start": "2023-07-01", "end": "2023-07-15"},
+            "cycle_002.nc": {"start": "2023-07-15", "end": "2023-07-25"},
+        }
+        cfg = _make_source_config(cycle_index_key="data/EXAMPLE_S3/cycle_index.json")
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_object.return_value = self._mock_get_object(index)
+        mock_client.get_paginator.return_value = self._make_paginator(
+            [
+                {
+                    "Contents": [
+                        {
+                            "Key": "data/EXAMPLE_S3/2023/cycle_001.nc",
+                            "LastModified": datetime(2023, 8, 1, 12, 0, 0),
+                        },
+                        {
+                            "Key": "data/EXAMPLE_S3/2023/cycle_002.nc",
+                            "LastModified": datetime(2023, 8, 2, 12, 0, 0),
+                        },
+                    ]
+                }
+            ]
+        )
+
+        enum = S3BucketEnumerator(datetime(2023, 7, 15), cfg)
+        refs = enum.enumerate()
+
+        self.assertEqual(len(refs), 2)
+        titles = {r.title for r in refs}
+        self.assertEqual(titles, {"cycle_001.nc", "cycle_002.nc"})
+
+    @patch("daily_files.fetching.s3_bucket_enumerator.boto3")
+    def test_returns_empty_when_date_outside_all_cycles(self, mock_boto3):
+        cfg = _make_source_config(cycle_index_key="data/EXAMPLE_S3/cycle_index.json")
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_object.return_value = self._mock_get_object(CYCLE_INDEX)
+        mock_client.get_paginator.return_value = self._make_paginator([{}])
+
+        enum = S3BucketEnumerator(datetime(2023, 8, 15), cfg)
+        refs = enum.enumerate()
+
+        self.assertEqual(len(refs), 0)
+
+    @patch("daily_files.fetching.s3_bucket_enumerator.boto3")
+    def test_dispatches_to_cycle_index_path_when_key_set(self, mock_boto3):
+        cfg = _make_source_config(cycle_index_key="data/EXAMPLE_S3/cycle_index.json")
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_object.return_value = self._mock_get_object(CYCLE_INDEX)
+        mock_client.get_paginator.return_value = self._make_paginator([{}])
+
+        enum = S3BucketEnumerator(datetime(2023, 7, 5), cfg)
+        enum.enumerate()
+
+        # Should have called get_object for the cycle index
+        mock_client.get_object.assert_called_once_with(
+            Bucket="example-source-bucket",
+            Key="data/EXAMPLE_S3/cycle_index.json",
+        )
+
+    @patch("daily_files.fetching.s3_bucket_enumerator.boto3")
+    def test_does_not_use_cycle_index_when_key_not_set(self, mock_boto3):
+        cfg = _make_source_config(cycle_index_key=None)
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_paginator.return_value = self._make_paginator([{}])
+
+        enum = S3BucketEnumerator(datetime(2023, 7, 15), cfg)
+        enum.enumerate()
+
+        # Should NOT have called get_object (no cycle index)
+        mock_client.get_object.assert_not_called()

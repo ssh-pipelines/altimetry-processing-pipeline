@@ -70,6 +70,15 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.reference, "https://doi.org/10.0000/example")
         self.assertEqual(len(cfg.collections), 0)
 
+    def test_example_s3_cycle_index_key(self):
+        cfg = get_source_config("EXAMPLE_S3")
+        self.assertEqual(cfg.cycle_index_key, "data/EXAMPLE_S3/cycle_index.json")
+
+    def test_cmr_sources_have_no_cycle_index_key(self):
+        for source in ["GSFC", "S6", "S6B"]:
+            cfg = get_source_config(source)
+            self.assertIsNone(cfg.cycle_index_key, f"{source} should not have cycle_index_key")
+
     def test_example_s3_in_available_sources(self):
         sources = get_available_sources()
         self.assertIn("EXAMPLE_S3", sources)

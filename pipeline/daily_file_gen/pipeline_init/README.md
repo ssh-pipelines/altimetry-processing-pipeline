@@ -8,8 +8,10 @@ For each invocation, the Lambda:
 
 1. **Validates the source** against `config/sources.yaml` and determines the date range — either from explicit `start`/`end` event parameters, or defaults to the source's `start_date` through the most recent processable date (based on a Monday cadence with a 10-day window buffer). Caps the end date at the source's `end_date` if configured.
 2. **Queries existing daily files** in S3 by listing objects under the source's configured `s3_prefix` and extracting file dates via the `filename_pattern` regex. Records the `LastModified` timestamp for each date.
-3. **Queries NASA CMR** for granule modification times using the source's configured `concept_id`(s). For sources with multiple collections (e.g., S6), resolves per-cycle/pass priority so the highest-priority collection wins.
-4. **Compares timestamps** — a date needs processing if: no daily file exists, no CMR granule exists but no daily file either, or the CMR granule was modified after the daily file was last generated. With `force_update`, all dates are included unconditionally.
+3. **Queries source modification times** depending on the source's `discovery_type`:
+   - **CMR** (`cmr`): Queries NASA CMR for granule modification times using the source's configured `concept_id`(s). For sources with multiple collections (e.g., S6), resolves per-cycle/pass priority so the highest-priority collection wins.
+   - **S3 bucket** (`s3_bucket`): Lists the source bucket and extracts modification times from S3 object metadata. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and uses the `LastModified` of covering cycle files as the source modification time for each date.
+4. **Compares timestamps** — a date needs processing if: no daily file exists, no source granule exists but no daily file either, or the source granule was modified after the daily file was last generated. With `force_update`, all dates are included unconditionally.
 5. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing.
 6. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
 
@@ -91,6 +93,10 @@ Each source has settings at two levels:
 | `s3_prefix`        | S3 prefix for existing daily files (e.g., `daily_files/p3/S6`)     |
 | `filename_pattern` | Filename pattern with `{date8}` placeholder (e.g., `S6_alt_ref_at_v1_{date8}.nc`) |
 | `collections`      | List of CMR collection concept IDs with priority (lower = preferred) |
+| `source_bucket`    | *(S3 bucket sources only)* S3 bucket containing source files |
+| `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |
+| `source_filename_pattern` | *(S3 bucket sources only)* Filename pattern with `{source}`, `{date8}` placeholders |
+| `cycle_index_key`  | *(S3 bucket sources only, optional)* S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, cycle file `LastModified` is used as the source mod time for dates within the cycle's coverage. |
 
 Current sources:
 

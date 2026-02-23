@@ -38,6 +38,7 @@ class SourceConfig:
     source_bucket: str | None = None
     source_prefix_pattern: str | None = None
     source_filename_pattern: str | None = None
+    cycle_index_key: str | None = None
     source_label: str = ""
     source_url: str = ""
     reference: str = ""
@@ -69,6 +70,7 @@ def _load_sources() -> dict[str, SourceConfig]:
             source_bucket=cfg.get("source_bucket"),
             source_prefix_pattern=cfg.get("source_prefix_pattern"),
             source_filename_pattern=cfg.get("source_filename_pattern"),
+            cycle_index_key=cfg.get("cycle_index_key"),
             source_label=cfg.get("source_label", ""),
             source_url=cfg.get("source_url", ""),
             reference=cfg.get("reference", ""),

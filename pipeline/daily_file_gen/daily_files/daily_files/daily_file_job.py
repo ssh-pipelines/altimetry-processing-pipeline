@@ -166,7 +166,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
         if any(x in var for x in ["basin_flag", "pass", "cycle"]):
             encoding[var]["dtype"] = "int32"
             encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-        if any(x in var for x in ["ssha", "dac"]):
+        if any(x in var for x in ["ssha", "dac", "inv_bar_cor"]):
             encoding[var]["dtype"] = "float64"
             encoding[var]["_FillValue"] = np.finfo(np.float64).max
 

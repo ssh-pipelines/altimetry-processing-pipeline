@@ -270,8 +270,6 @@ def handler(event, context):
     if bucket is None:
         raise ValueError("bucket job parameter missing.")
 
-    source_bucket = event.get("source_bucket")
-
     source = event.get("source")
     if source is None:
         raise ValueError("source job parameter missing.")

@@ -103,7 +103,7 @@ class DailyFileJob:
     def acquire(self, bucket: str) -> AcquiredData | None:
         """Phase 1: Enumerate granules, download files, and ingest into normalized form."""
         logging.info("Enumerating granules...")
-        enumerator = self.enumerator_cls(self.date, self.source_config)
+        enumerator = self.enumerator_cls(self.date, self.source_config, bucket)
         file_refs = enumerator.enumerate()
 
         if not file_refs:

@@ -110,6 +110,14 @@ REQUIRED_VARIABLES: dict[str, list[str]] = {
         "valid_min",
         "valid_max",
     ],
+    "inv_bar_cor": [
+        "long_name",
+        "units",
+        "coverage_content_type",
+        "comment",
+        "valid_min",
+        "valid_max",
+    ],
     "nasa_flag": [
         "long_name",
         "standard_name",

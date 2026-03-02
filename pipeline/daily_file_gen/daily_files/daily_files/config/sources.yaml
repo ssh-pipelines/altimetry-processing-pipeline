@@ -61,6 +61,23 @@ sources:
         source_label: "Sentinel-6B/Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G"
         reference: "https://doi.org/10.5067/S6BP4-2LRST"
+  GSFC_6.1:
+    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
+    s3_prefix: "daily_files/p1"
+    source_mss: DTU15
+    target_mss: DTU21
+    mss_diff_file: DTU15_minus_DTU21.nc
+    empty_template: gsfc_empty_template.nc
+    smoothing:
+      speed: 5.745
+      sigma: 15
+    source_prefix_pattern: "source_data/GSFC_6.1/GSFC_6.1_REFERENCE/"
+    source_filename_pattern: "{source}_{date8}.nc"
+    cycle_index_key: "source_data/GSFC_6.1/cycle_index.json"
+    source_label: "Example S3-hosted dataset"
+    source_url: "https://example.com/dataset"
+    reference: "https://doi.org/10.0000/example"
+  
   EXAMPLE_S3:
     filename_template: "{source}_alt_ref_at_v1_{date}.nc"
     s3_prefix: "daily_files/p1"

@@ -11,8 +11,11 @@ from daily_files.fetching.enumerator import Enumerator, FileRef
 class S3BucketEnumerator(Enumerator):
     """Enumerates source files from an internal S3 bucket instead of CMR."""
 
-    def __init__(self, date, source_config):
-        super().__init__(date, source_config)
+    def __init__(self, date, source_config, bucket: str | None = None):
+        super().__init__(date, source_config, bucket)
+        self.bucket = source_config.source_bucket or bucket
+        if not self.bucket:
+            raise ValueError(f"No source bucket configured for {source_config.source} and none provided at runtime")
         self.s3 = boto3.client("s3")
 
     def _build_prefix(self) -> str:
@@ -33,7 +36,7 @@ class S3BucketEnumerator(Enumerator):
 
     def _enumerate_with_cycle_index(self) -> list[FileRef]:
         """Enumerate files using a cycle index JSON that maps filenames to date ranges."""
-        bucket = self.source_config.source_bucket
+        bucket = self.bucket
         cycle_index_key = self.source_config.cycle_index_key
 
         logging.info(f"Loading cycle index from s3://{bucket}/{cycle_index_key}")
@@ -95,7 +98,7 @@ class S3BucketEnumerator(Enumerator):
         if self.source_config.cycle_index_key:
             return self._enumerate_with_cycle_index()
 
-        bucket = self.source_config.source_bucket
+        bucket = self.bucket
         prefix = self._build_prefix()
         if not prefix.endswith("/"):
             prefix += "/"

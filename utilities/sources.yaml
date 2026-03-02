@@ -20,6 +20,11 @@ sources:
     discovery_type: cmr
     unify: false
     start_date: "1992-10-25"
+  GSFC_6.1:
+    product_type: reference
+    discovery_type: s3_bucket
+    unify: false
+    start_date: "1992-10-25"
   EXAMPLE_S3:
     product_type: reference
     discovery_type: s3_bucket

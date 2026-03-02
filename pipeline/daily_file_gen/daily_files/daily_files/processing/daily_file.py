@@ -96,6 +96,7 @@ class DailyFile(ABC):
         self.data = {
             "ssha": xr.DataArray(ingested_data.ssha, dims=["time"]),
             "dac": xr.DataArray(ingested_data.dac, dims=["time"]),
+            "inv_bar_cor": xr.DataArray(ingested_data.inv_bar_cor, dims=["time"]),
             "latitude": xr.DataArray(ingested_data.lat, dims=["time"]),
             "longitude": xr.DataArray(ingested_data.lon, dims=["time"]),
             "cycle": xr.DataArray(ingested_data.cycles, dims=["time"]),
@@ -357,6 +358,15 @@ class DailyFile(ABC):
             "dac": {
                 "long_name": "dynamic atmospheric correction",
                 "comment": "Additive correction applied to ssha to remove atmospheric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
+                "units": "m",
+                "coordinates": "latitude longitude",
+                "coverage_content_type": "auxiliaryInformation",
+                "valid_min": -1e100,
+                "valid_max": 1e100,
+            },
+            "inv_bar_cor": {
+                "long_name": "inverse barometric correction",
+                "comment": "Additive correction applied to ssha to remove inverse barometric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
                 "units": "m",
                 "coordinates": "latitude longitude",
                 "coverage_content_type": "auxiliaryInformation",

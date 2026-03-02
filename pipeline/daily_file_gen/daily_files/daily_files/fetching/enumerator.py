@@ -17,7 +17,7 @@ class FileRef:
 
 
 class Enumerator(ABC):
-    def __init__(self, date: datetime, source_config: SourceConfig):
+    def __init__(self, date: datetime, source_config: SourceConfig, bucket: str | None = None):
         self.date = date
         self.source_config = source_config
 

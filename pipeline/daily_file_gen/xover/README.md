@@ -85,7 +85,6 @@ Orbital parameters live in `crossover/config/sources.yaml`:
 
 | Parameter        | Description                                            |
 |------------------|--------------------------------------------------------|
-| `satellite`      | Satellite name label                                   |
 | `crossover_type` | Processing mode (currently always `self`)              |
 | `cycle_length`   | Orbital repeat period in days (used as max time diff)  |
 | `window_size`    | Days of data to load after the processing day          |

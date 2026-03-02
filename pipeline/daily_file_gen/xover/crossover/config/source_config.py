@@ -7,7 +7,6 @@ import yaml
 @dataclass
 class SourceConfig:
     source: str
-    satellite: str
     crossover_type: str
     cycle_length: float
     window_size: int
@@ -24,7 +23,6 @@ def _load_sources() -> dict[str, SourceConfig]:
     for source_key, cfg in raw["sources"].items():
         configs[source_key] = SourceConfig(
             source=source_key,
-            satellite=cfg["satellite"],
             crossover_type=cfg["crossover_type"],
             cycle_length=cfg["cycle_length"],
             window_size=cfg["window_size"],

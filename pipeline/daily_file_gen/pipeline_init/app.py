@@ -77,14 +77,14 @@ def query_source_bucket(
     start_date: datetime,
     end_date: datetime,
     config: PipelineInitSourceConfig,
-    source_bucket: str,
+    bucket: str,
 ) -> dict[datetime, datetime]:
     """
     Query an S3 bucket for source files and their modification times.
     Used for sources with discovery_type='s3_bucket'.
     """
     if config.cycle_index_key:
-        return _query_source_bucket_cycle_index(start_date, end_date, config, source_bucket)
+        return _query_source_bucket_cycle_index(start_date, end_date, config, bucket)
 
     dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
     yearly_dates = chunk_dates_by_year(dates)
@@ -103,8 +103,8 @@ def query_source_bucket(
         if not prefix.endswith("/"):
             prefix += "/"
 
-        print(f"Querying source bucket s3://{source_bucket}/{prefix} for {config.source} in {year}")
-        pages = paginator.paginate(Bucket=source_bucket, Prefix=prefix)
+        print(f"Querying source bucket s3://{bucket}/{prefix} for {config.source} in {year}")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
         year_start = year_dates[0].date()
         year_end = year_dates[-1].date()
@@ -125,7 +125,7 @@ def _query_source_bucket_cycle_index(
     start_date: datetime,
     end_date: datetime,
     config: PipelineInitSourceConfig,
-    source_bucket: str,
+    bucket: str,
 ) -> dict[datetime, datetime]:
     """
     Query source bucket using a cycle index for sources where files span
@@ -133,7 +133,7 @@ def _query_source_bucket_cycle_index(
     """
     from datetime import date
 
-    cycle_index = _load_cycle_index(source_bucket, config.cycle_index_key)
+    cycle_index = _load_cycle_index(bucket, config.cycle_index_key)
 
     # Parse cycle date ranges
     cycles = []
@@ -157,8 +157,8 @@ def _query_source_bucket_cycle_index(
         if not prefix.endswith("/"):
             prefix += "/"
 
-        print(f"Querying source bucket s3://{source_bucket}/{prefix} for cycle files in {year}")
-        pages = paginator.paginate(Bucket=source_bucket, Prefix=prefix)
+        print(f"Querying source bucket s3://{bucket}/{prefix} for cycle files in {year}")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
         for page in pages:
             for obj in page.get("Contents", []):
@@ -318,9 +318,9 @@ def handler(event, context):
 
         # Query source modification times (CMR or S3 bucket)
         if config.discovery_type == "s3_bucket":
-            if source_bucket is None:
-                raise ValueError("source_bucket event parameter required for s3_bucket discovery type.")
-            granule_mod_times.update(query_source_bucket(lookback_dates[0], lookback_dates[-1], config, source_bucket))
+            if bucket is None:
+                raise ValueError("bucket event parameter required for s3_bucket discovery type.")
+            granule_mod_times.update(query_source_bucket(lookback_dates[0], lookback_dates[-1], config, bucket))
         else:
             for year, dates in yearly_dates.items():
                 year_start, year_end = dates[0], dates[-1]

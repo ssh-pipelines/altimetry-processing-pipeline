@@ -41,7 +41,7 @@ class TestQuerySourceBucket(unittest.TestCase):
 
         start = datetime(2023, 7, 15)
         end = datetime(2023, 7, 16)
-        result = query_source_bucket(start, end, config)
+        result = query_source_bucket(start, end, config, "example-source-bucket")
 
         self.assertIn(start.date(), result)
         self.assertIn(end.date(), result)
@@ -54,7 +54,7 @@ class TestQuerySourceBucket(unittest.TestCase):
 
         start = datetime(2023, 7, 15)
         end = datetime(2023, 7, 15)
-        result = query_source_bucket(start, end, config)
+        result = query_source_bucket(start, end, config, "example-source-bucket")
 
         self.assertEqual(result, {})
 
@@ -84,7 +84,7 @@ class TestQuerySourceBucket(unittest.TestCase):
 
         start = datetime(2023, 7, 14)
         end = datetime(2023, 7, 16)
-        result = query_source_bucket(start, end, config)
+        result = query_source_bucket(start, end, config, "example-source-bucket")
 
         self.assertIn(datetime(2023, 7, 15).date(), result)
         self.assertNotIn(datetime(2023, 7, 10).date(), result)
@@ -128,7 +128,7 @@ class TestQuerySourceBucketCycleIndex(unittest.TestCase):
 
         start = datetime(2023, 7, 5)
         end = datetime(2023, 7, 15)
-        result = query_source_bucket(start, end, config)
+        result = query_source_bucket(start, end, config, "example-source-bucket")
 
         # July 5 is in cycle_001
         self.assertIn(datetime(2023, 7, 5).date(), result)
@@ -159,7 +159,7 @@ class TestQuerySourceBucketCycleIndex(unittest.TestCase):
         # Query dates entirely outside cycle coverage
         start = datetime(2023, 7, 15)
         end = datetime(2023, 7, 20)
-        result = query_source_bucket(start, end, config)
+        result = query_source_bucket(start, end, config, "example-source-bucket")
 
         self.assertEqual(result, {})
 
@@ -178,6 +178,7 @@ class TestHandlerDispatch(unittest.TestCase):
         event = {
             "bucket": "test-bucket",
             "source": "EXAMPLE_S3",
+            "source_bucket": "example-source-bucket",
             "start": "2023-07-15",
             "end": "2023-07-15",
         }

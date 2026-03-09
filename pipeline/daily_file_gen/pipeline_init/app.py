@@ -36,7 +36,10 @@ def chunk_dates_by_year(dates: list[datetime]) -> dict[int, list[datetime]]:
 
 
 def query_daily_files_for_year(
-    year: int, start_date: datetime, end_date: datetime, bucket: str,
+    year: int,
+    start_date: datetime,
+    end_date: datetime,
+    bucket: str,
     config: PipelineInitSourceConfig,
 ) -> dict[datetime, datetime]:
     """
@@ -64,8 +67,126 @@ def query_daily_files_for_year(
     return timestamps
 
 
+def _load_cycle_index(bucket: str, key: str) -> dict:
+    """Load and parse a cycle index JSON from S3."""
+    resp = s3.get_object(Bucket=bucket, Key=key)
+    return json.loads(resp["Body"].read())
+
+
+def query_source_bucket(
+    start_date: datetime,
+    end_date: datetime,
+    config: PipelineInitSourceConfig,
+    bucket: str,
+) -> dict[datetime, datetime]:
+    """
+    Query an S3 bucket for source files and their modification times.
+    Used for sources with discovery_type='s3_bucket'.
+    """
+    if config.cycle_index_key:
+        return _query_source_bucket_cycle_index(start_date, end_date, config, bucket)
+
+    dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+    yearly_dates = chunk_dates_by_year(dates)
+
+    # Build regex from the source_filename_pattern
+    # e.g. "{source}_{date8}.nc" -> "EXAMPLE_S3_(\d{8})\.nc"
+    fname_pattern = config.source_filename_pattern.replace("{source}", config.source)
+    fname_pattern = fname_pattern.replace("{date8}", r"(\d{8})")
+    fname_pattern = fname_pattern.replace(".", r"\.")
+
+    timestamps = {}
+    paginator = s3.get_paginator("list_objects_v2")
+
+    for year, year_dates in yearly_dates.items():
+        prefix = config.source_prefix_pattern.format(source=config.source, year=year)
+        if not prefix.endswith("/"):
+            prefix += "/"
+
+        print(f"Querying source bucket s3://{bucket}/{prefix} for {config.source} in {year}")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+
+        year_start = year_dates[0].date()
+        year_end = year_dates[-1].date()
+
+        for page in pages:
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                match = re.search(fname_pattern, key)
+                if match:
+                    file_date = datetime.strptime(match.group(1), "%Y%m%d").date()
+                    if year_start <= file_date <= year_end:
+                        timestamps[file_date] = obj["LastModified"]
+
+    return timestamps
+
+
+def _query_source_bucket_cycle_index(
+    start_date: datetime,
+    end_date: datetime,
+    config: PipelineInitSourceConfig,
+    bucket: str,
+) -> dict[datetime, datetime]:
+    """
+    Query source bucket using a cycle index for sources where files span
+    multiple days (e.g. one file per ~10-day cycle).
+    """
+    from datetime import date
+
+    cycle_index = _load_cycle_index(bucket, config.cycle_index_key)
+
+    # Parse cycle date ranges
+    cycles = []
+    for filename, span in cycle_index.items():
+        cycles.append({
+            "filename": filename,
+            "start": date.fromisoformat(span["start"]),
+            "end": date.fromisoformat(span["end"]),
+        })
+
+    # List the prefix to get LastModified for cycle files
+    # We need to scan all years in the date range
+    dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+    yearly_dates = chunk_dates_by_year(dates)
+
+    file_mod_times = {}
+    paginator = s3.get_paginator("list_objects_v2")
+
+    for year in yearly_dates:
+        prefix = config.source_prefix_pattern.format(source=config.source, year=year)
+        if not prefix.endswith("/"):
+            prefix += "/"
+
+        print(f"Querying source bucket s3://{bucket}/{prefix} for cycle files in {year}")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+
+        for page in pages:
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                filename = key.rsplit("/", 1)[-1]
+                file_mod_times[filename] = obj["LastModified"]
+
+    # For each date in the range, find which cycle(s) cover it and use the
+    # latest LastModified among covering cycle files
+    timestamps = {}
+    for d in dates:
+        d_date = d.date()
+        latest_mod = None
+        for cycle in cycles:
+            if cycle["start"] <= d_date <= cycle["end"]:
+                mod_time = file_mod_times.get(cycle["filename"])
+                if mod_time and (latest_mod is None or mod_time > latest_mod):
+                    latest_mod = mod_time
+        if latest_mod is not None:
+            timestamps[d_date] = latest_mod
+
+    return timestamps
+
+
 def query_cmr(
-    start_date: datetime, end_date: datetime, config: PipelineInitSourceConfig,
+    start_date: datetime,
+    end_date: datetime,
+    config: PipelineInitSourceConfig,
 ) -> dict[datetime, datetime]:
     """
     Unified CMR query function. Uses single-collection logic (max mod time)
@@ -193,14 +314,17 @@ def handler(event, context):
         yearly_dates = chunk_dates_by_year(lookback_dates)
         for year, dates in yearly_dates.items():
             year_start, year_end = dates[0], dates[-1]
-            df_mod_times.update(
-                query_daily_files_for_year(year, year_start, year_end, bucket, config)
-            )
+            df_mod_times.update(query_daily_files_for_year(year, year_start, year_end, bucket, config))
 
-        # Query granules by year chunks
-        for year, dates in yearly_dates.items():
-            year_start, year_end = dates[0], dates[-1]
-            granule_mod_times.update(query_cmr(year_start, year_end, config))
+        # Query source modification times (CMR or S3 bucket)
+        if config.discovery_type == "s3_bucket":
+            if bucket is None:
+                raise ValueError("bucket event parameter required for s3_bucket discovery type.")
+            granule_mod_times.update(query_source_bucket(lookback_dates[0], lookback_dates[-1], config, bucket))
+        else:
+            for year, dates in yearly_dates.items():
+                year_start, year_end = dates[0], dates[-1]
+                granule_mod_times.update(query_cmr(year_start, year_end, config))
 
     # Build jobs list
     jobs = []
@@ -215,11 +339,13 @@ def handler(event, context):
         )
 
         if needs_processing:
-            jobs.append({
-                "date": date.date().isoformat(),
-                "source": source,
-                "bucket": bucket,
-            })
+            jobs.append(
+                {
+                    "date": date.date().isoformat(),
+                    "source": source,
+                    "bucket": bucket,
+                }
+            )
 
     logging.info(f"Generated {len(jobs)} jobs for processing")
 

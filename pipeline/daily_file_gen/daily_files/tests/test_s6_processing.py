@@ -55,6 +55,8 @@ def _make_s6_ingested_data(n=500, date=datetime(2023, 12, 17)):
     mean_sea_surface_sol1 = rng.normal(30, 5, n)
     mean_sea_surface_sol2 = mean_sea_surface_sol1 + rng.normal(0, 0.01, n)
 
+    inv_bar_cor = rng.normal(0, 0.01, n)
+
     return IngestedData(
         ssha=ssha,
         lat=lats,
@@ -63,6 +65,7 @@ def _make_s6_ingested_data(n=500, date=datetime(2023, 12, 17)):
         cycles=cycles,
         passes=passes,
         dac=dac,
+        inv_bar_cor=inv_bar_cor,
         source_specific={
             "original_ds": original_ds,
             "mean_sea_surface_sol1": mean_sea_surface_sol1,
@@ -102,6 +105,7 @@ class TestS6Processing(unittest.TestCase):
             "source_flag",
             "median_filter_flag",
             "dac",
+            "inv_bar_cor",
             "basin_flag",
             "basin_names_table",
             "latitude",

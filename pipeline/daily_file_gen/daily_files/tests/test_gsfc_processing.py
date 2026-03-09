@@ -57,6 +57,8 @@ def _make_gsfc_ingested_data(n=500, date=datetime(1995, 6, 7)):
         }
     )
 
+    inv_bar_cor = rng.normal(0, 0.01, n)
+
     return IngestedData(
         ssha=ssha,
         lat=lats,
@@ -65,6 +67,7 @@ def _make_gsfc_ingested_data(n=500, date=datetime(1995, 6, 7)):
         cycles=cycles,
         passes=passes,
         dac=dac,
+        inv_bar_cor=inv_bar_cor,
         source_specific={"og_ds": og_ds},
     )
 
@@ -100,6 +103,7 @@ class TestGSFCProcessing(unittest.TestCase):
             "source_flag",
             "median_filter_flag",
             "dac",
+            "inv_bar_cor",
             "basin_flag",
             "basin_names_table",
             "latitude",

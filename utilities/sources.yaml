@@ -1,18 +1,33 @@
 sources:
   GSFC:
     product_type: reference
+    discovery_type: cmr
     unify: true
     start_date: "1992-10-25"
     end_date: "2024-01-20"
+  GSFC_6.1:
+    product_type: reference
+    discovery_type: s3_bucket
+    unify: false
+    start_date: "1992-10-25"
+    end_date: "2025-12-31"
   S6:
     product_type: reference
+    discovery_type: cmr
     unify: true
-    start_date: "2024-01-21"
+    start_date: "2026-01-01"
   S6B:
     product_type: reference
+    discovery_type: cmr
     unify: false
     start_date: "2025-11-26"
   NASA-SSH:
     product_type: reference
+    discovery_type: cmr
     unify: false
     start_date: "1992-10-25"
+  EXAMPLE_S3:
+    product_type: reference
+    discovery_type: s3_bucket
+    unify: false
+    start_date: "2020-01-01"

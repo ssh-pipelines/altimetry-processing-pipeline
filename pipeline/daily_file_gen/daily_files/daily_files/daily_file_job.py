@@ -13,6 +13,7 @@ from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
 from daily_files.fetching.enumerator import Enumerator
 from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
+from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
 from daily_files.fetching.downloader import (
     Downloader,
     S3Downloader,
@@ -59,6 +60,20 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         ingestor=S6Ingestor,
         processor=S6DailyFile,
     ),
+    "GSFC_6.1": SourcePipeline(
+        enumerator=S3BucketEnumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": None},
+        ingestor=GSFCIngestor,
+        processor=GSFCDailyFile,
+    ),
+    "EXAMPLE_S3": SourcePipeline(
+        enumerator=S3BucketEnumerator,
+        downloader=S3Downloader,
+        downloader_kwargs={"credentials_fn": None},
+        ingestor=GSFCIngestor,
+        processor=GSFCDailyFile,
+    ),
 }
 
 
@@ -95,7 +110,7 @@ class DailyFileJob:
     def acquire(self, bucket: str) -> AcquiredData | None:
         """Phase 1: Enumerate granules, download files, and ingest into normalized form."""
         logging.info("Enumerating granules...")
-        enumerator = self.enumerator_cls(self.date, self.source_config)
+        enumerator = self.enumerator_cls(self.date, self.source_config, bucket)
         file_refs = enumerator.enumerate()
 
         if not file_refs:
@@ -151,7 +166,7 @@ def save_ds(ds: xr.Dataset, output_path: str):
         if any(x in var for x in ["basin_flag", "pass", "cycle"]):
             encoding[var]["dtype"] = "int32"
             encoding[var]["_FillValue"] = np.iinfo(np.int32).max
-        if any(x in var for x in ["ssha", "dac"]):
+        if any(x in var for x in ["ssha", "dac", "inv_bar_cor"]):
             encoding[var]["dtype"] = "float64"
             encoding[var]["_FillValue"] = np.finfo(np.float64).max
 

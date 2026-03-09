@@ -16,9 +16,8 @@ class IngestedData:
     cycles: np.ndarray
     passes: np.ndarray
     dac: np.ndarray
-    source_specific: (
-        dict  # Additional source-specific arrays/objects needed for processing
-    )
+    inv_bar_cor: np.ndarray
+    source_specific: dict  # Additional source-specific arrays/objects needed for processing
 
 
 class Ingestor(ABC):

@@ -16,13 +16,16 @@ class CollectionConfig:
 @dataclass
 class PipelineInitSourceConfig:
     source: str
-    satellite: str
     start_date: date
     s3_prefix: str
     filename_pattern: str
     unify: bool = False
     end_date: date | None = None
     collections: list[CollectionConfig] = field(default_factory=list)
+    discovery_type: str = "cmr"
+    source_prefix_pattern: str | None = None
+    source_filename_pattern: str | None = None
+    cycle_index_key: str | None = None
 
 
 def _load_sources() -> dict[str, PipelineInitSourceConfig]:
@@ -37,13 +40,16 @@ def _load_sources() -> dict[str, PipelineInitSourceConfig]:
 
         configs[source_key] = PipelineInitSourceConfig(
             source=source_key,
-            satellite=cfg["satellite"],
             start_date=registry.start_date,
             s3_prefix=cfg["s3_prefix"],
             filename_pattern=cfg["filename_pattern"],
             unify=registry.unify,
             end_date=registry.end_date,
             collections=collections,
+            discovery_type=registry.discovery_type,
+            source_prefix_pattern=cfg.get("source_prefix_pattern"),
+            source_filename_pattern=cfg.get("source_filename_pattern"),
+            cycle_index_key=cfg.get("cycle_index_key"),
         )
     return configs
 
@@ -56,10 +62,7 @@ def get_source_config(source: str) -> PipelineInitSourceConfig:
     if not _SOURCE_CONFIGS:
         _SOURCE_CONFIGS = _load_sources()
     if source not in _SOURCE_CONFIGS:
-        raise ValueError(
-            f"Source '{source}' is not configured. "
-            f"Available sources: {list(_SOURCE_CONFIGS.keys())}"
-        )
+        raise ValueError(f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}")
     return _SOURCE_CONFIGS[source]
 
 

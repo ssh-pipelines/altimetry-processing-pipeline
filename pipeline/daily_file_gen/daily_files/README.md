@@ -9,8 +9,10 @@ Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON
 For each processing date, the Lambda:
 
 1. **Validates the source** against `daily_files/config/sources.yaml`.
-2. **Enumerates granules** by querying CMR for the source's configured collection(s). For multi-collection sources (S6), selects the highest-priority granule per cycle/pass combination.
-3. **Downloads** granule files from PODAAC's S3 bucket using temporary credentials.
+2. **Enumerates granules** depending on the source's `discovery_type`:
+   - **CMR** (`cmr`): Queries NASA CMR for the source's configured collection(s). For multi-collection sources (S6), selects the highest-priority granule per cycle/pass combination.
+   - **S3 bucket** (`s3_bucket`): Lists an internal S3 bucket and matches filenames by date. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and returns files whose range overlaps the target date.
+3. **Downloads** granule files from PODAAC's S3 bucket (CMR sources) or the source S3 bucket directly (S3 bucket sources).
 4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields).
 5. **Processes** the ingested data into a daily file dataset:
    - Maps observations to geographic basins using basin shapefiles
@@ -40,6 +42,7 @@ daily_files/
 │   ├── fetching/
 │   │   ├── enumerator.py                   # Abstract Enumerator + FileRef dataclass
 │   │   ├── cmr_enumerator.py               # GSFCEnumerator, S6Enumerator (CMR queries)
+│   │   ├── s3_bucket_enumerator.py         # S3BucketEnumerator (S3 listing + cycle index)
 │   │   └── downloader.py                   # S3Downloader (PODAAC credentials)
 │   ├── ingestion/
 │   │   ├── ingest.py                       # Abstract Ingestor + IngestedData dataclass
@@ -56,7 +59,8 @@ daily_files/
 │       ├── basin/                          # Basin/lake polygon shapefiles
 │       └── complete_gsfc_pass_lut.csv      # GSFC orbit/index to pass number lookup
 ├── tests/
-│   ├── test_source_config.py               # YAML loading, config fields, available sources
+│   ├── test_source_config.py               # YAML loading, config fields, cycle_index_key
+│   ├── test_s3_bucket_enumerator.py        # S3 bucket enumeration + cycle index tests
 │   ├── test_daily_file_job.py              # Source registry, job init, acquire phase
 │   ├── test_cmr.py                         # S6 priority selection across collections
 │   ├── test_gsfc_processing.py             # End-to-end GSFC processing with synthetic data
@@ -73,12 +77,12 @@ daily_files/
 
 The code uses a plugin-style registry pattern. Each source is defined as a `SourcePipeline` — a bundle of four interchangeable components:
 
-| Component     | Base class   | GSFC implementation | S6/S6B implementation |
-|---------------|-------------|---------------------|-----------------------|
-| **Enumerator** | `Enumerator` | `GSFCEnumerator` (single collection) | `S6Enumerator` (multi-collection priority selection) |
-| **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        |
-| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF) |
-| **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) |
+| Component     | Base class   | GSFC implementation | S6/S6B implementation | S3 bucket sources |
+|---------------|-------------|---------------------|-----------------------|-------------------|
+| **Enumerator** | `Enumerator` | `GSFCEnumerator` (single collection) | `S6Enumerator` (multi-collection priority selection) | `S3BucketEnumerator` (filename regex or cycle index) |
+| **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | IAM-based S3 access |
+| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF) | Source-specific |
+| **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) | Source-specific |
 
 The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the four components and add a registry entry.
 
@@ -138,6 +142,10 @@ Each source has settings at two levels:
 | `empty_template`    | Empty NetCDF template filename                           |
 | `smoothing`         | Filter parameters: `speed` (km/s) and `sigma` (km)      |
 | `collections`       | CMR collection(s): `shortname`, `concept_id`, `priority`, `source_label`, `source_url`, `reference` |
+| `source_bucket`     | *(S3 bucket sources only)* S3 bucket containing source files |
+| `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |
+| `source_filename_pattern` | *(S3 bucket sources only)* Filename pattern with `{source}`, `{date8}` placeholders |
+| `cycle_index_key`   | *(S3 bucket sources only, optional)* S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date. |
 
 Current sources:
 

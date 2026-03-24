@@ -15,14 +15,10 @@ class GSFCIngestor(Ingestor):
     def ingest(self, file_objs: Iterable[TextIO], **kwargs) -> IngestedData:
         bucket = kwargs.get("bucket")
 
-        with [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs] as opened_files:
-            og_ds = xr.concat(opened_files, dim="N_Records")
-            cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
-              
-        # opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
-        # cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
-        # og_ds = xr.concat(opened_files, dim="N_Records")
-        # opened_files = []
+        opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
+        cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
+        og_ds = xr.concat(opened_files, dim="N_Records")
+        opened_files = []
 
         ssha = og_ds["ssha"].values / 1000  # Convert from mm
         lats = og_ds["lat"].values

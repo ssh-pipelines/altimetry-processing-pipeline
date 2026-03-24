@@ -50,8 +50,8 @@ daily_files/
 │   │   └── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction)
 │   ├── processing/
 │   │   ├── daily_file.py                   # Abstract DailyFile base class
-│   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers)
-│   │   ├── s6_daily_file.py                # S6DailyFile (S6 flag logic, MSS sol1/sol2 correction)
+│   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers, bad_points)
+│   │   ├── s6_daily_file.py                # S6DailyFile (S6 flag logic, MSS sol1/sol2 correction, bad_points)
 │   │   └── smoothing.py                    # 19-point Gaussian-like SSHA smoothing filter
 │   └── ref_files/
 │       ├── empty_templates/                # Empty NetCDF templates per source
@@ -146,6 +146,7 @@ Each source has settings at two levels:
 | `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |
 | `source_filename_pattern` | *(S3 bucket sources only)* Filename pattern with `{source}`, `{date8}` placeholders |
 | `cycle_index_key`   | *(S3 bucket sources only, optional)* S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date. |
+| `bad_points`        | *(optional)* Map of ISO date strings to lists of `{time: <ISO datetime>}` entries. Any observation whose timestamp matches a listed time (at second precision) will have `nasa_flag` forced to 1, regardless of other quality criteria. Supported for GSFC and S6/S6B sources. |
 
 Current sources:
 

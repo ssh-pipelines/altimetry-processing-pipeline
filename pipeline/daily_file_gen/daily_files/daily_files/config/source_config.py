@@ -42,6 +42,7 @@ class SourceConfig:
     source_label: str = ""
     source_url: str = ""
     reference: str = ""
+    bad_points: dict | None = None
 
 
 def _load_sources() -> dict[str, SourceConfig]:
@@ -74,6 +75,7 @@ def _load_sources() -> dict[str, SourceConfig]:
             source_label=cfg.get("source_label", ""),
             source_url=cfg.get("source_url", ""),
             reference=cfg.get("reference", ""),
+            bad_points=cfg.get("bad_points"),
         )
     return configs
 

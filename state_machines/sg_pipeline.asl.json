@@ -12,6 +12,20 @@
       "Output": "{% $states.result.Payload %}",
       "Next": "Simple Grids Execution",
       "Comment": "Reads manifest from S3, filters dates, writes filtered manifest",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 5,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -80,8 +94,8 @@
             "Lambda.SdkClientException",
             "Lambda.TooManyRequestsException"
           ],
-          "IntervalSeconds": 1,
-          "MaxAttempts": 3,
+          "IntervalSeconds": 10,
+          "MaxAttempts": 5,
           "BackoffRate": 2,
           "JitterStrategy": "FULL"
         }

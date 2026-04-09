@@ -268,7 +268,7 @@ class Gridder:
         # Set global attributes
         ds.attrs["Conventions"] = "CF-1.7"
         ds.attrs["title"] = (
-            "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1"
+            "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
         )
         ds.attrs["summary"] = (
             "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in mean_sea_surface. Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in studies and applications requiring climate-quality observations without additional adjustments or filtering."
@@ -281,7 +281,7 @@ class Gridder:
         ds.attrs["geospatial_lon_min"] = 0.0
         ds.attrs["date_created"] = creation_time
         ds.attrs["history"] = f"Created on {creation_time}"
-        ds.attrs["id"] = "10.5067/NSREF-SG0V1"
+        ds.attrs["id"] = "10.5067/NSREF-SG0V11"
         ds.attrs["institution"] = "NASA/Jet Propulsion Laboratory"
         ds.attrs["instrument"] = "Altimeter"
         ds.attrs["keywords"] = "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level"
@@ -289,8 +289,8 @@ class Gridder:
         ds.attrs["naming_authority"] = "gov.nasa.jpl.podaac"
         ds.attrs["platform"] = "Satellite"
         ds.attrs["processing_level"] = "Level 3"
-        ds.attrs["product_short_name"] = "NASA_SSH_REF_SIMPLE_GRID_V1"
-        ds.attrs["product_version"] = "V1"
+        ds.attrs["product_short_name"] = "NASA_SSH_REF_SIMPLE_GRID_V11"
+        ds.attrs["product_version"] = "V1.1"
         ds.attrs["project"] = "NASA-SSH"
         ds.attrs["publisher_name"] = "PO.DAAC"
         ds.attrs["publisher_url"] = "https://podaac.jpl.nasa.gov/"
@@ -298,8 +298,8 @@ class Gridder:
         ds.attrs["creator_name"] = "Josh Willis"
         ds.attrs["creator_url"] = "https://podaac.jpl.nasa.gov/NASA-SSH/"
         ds.attrs["creator_email"] = "podaac@podaac.jpl.nasa.gov"
-        ds.attrs["references"] = "https://doi.org/10.5067/S6AP4-2LRST"
-        ds.attrs["source_url"] = "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v1"
+        ds.attrs["references"] = "https://doi.org/10.5067/NSREF-AT0V1"
+        ds.attrs["source_url"] = "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v11"
         ds.attrs["standard_name_vocabulary"] = "CF Standard Name Table v86"
         ds.attrs["mean_sea_surface"] = "DTU21"
         ds.attrs["gridding_method"] = (

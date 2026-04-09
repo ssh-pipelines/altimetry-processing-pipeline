@@ -91,7 +91,7 @@ Each source has settings at two levels:
 |--------------------|--------------------------------------------------------------------|
 | `satellite`        | Satellite identifier                                               |
 | `s3_prefix`        | S3 prefix for existing daily files (e.g., `daily_files/p3/S6`)     |
-| `filename_pattern` | Filename pattern with `{date8}` placeholder (e.g., `S6_alt_ref_at_v1_{date8}.nc`) |
+| `filename_pattern` | Filename pattern with `{date8}` placeholder (e.g., `S6_alt_ref_at_v11_{date8}.nc`) |
 | `collections`      | List of CMR collection concept IDs with priority (lower = preferred) |
 | `source_bucket`    | *(S3 bucket sources only)* S3 bucket containing source files |
 | `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |

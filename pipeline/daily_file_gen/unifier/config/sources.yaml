@@ -1,15 +1,11 @@
 sources:
   GSFC:
-    src_filename_template: "{source}_alt_ref_at_v1_{date8}.nc"
-    dst_filename_template: "NASA-SSH_alt_ref_at_v1_{date8}.nc"
+    src_filename_template: "{source}_alt_ref_at_v11_{date8}.nc"
+    dst_filename_template: "NASA-SSH_alt_ref_at_v11_{date8}.nc"
     dst_prefix: "daily_files/p3/NASA-SSH"
   S6:
-    src_filename_template: "{source}_alt_ref_at_v1_{date8}.nc"
-    dst_filename_template: "NASA-SSH_alt_ref_at_v1_{date8}.nc"
-    dst_prefix: "daily_files/p3/NASA-SSH"
-  GSFC_6.1:
-    src_filename_template: "{source}_alt_ref_at_v1_{date8}.nc"
-    dst_filename_template: "NASA-SSH_alt_ref_at_v1_{date8}.nc"
+    src_filename_template: "{source}_alt_ref_at_v11_{date8}.nc"
+    dst_filename_template: "NASA-SSH_alt_ref_at_v11_{date8}.nc"
     dst_prefix: "daily_files/p3/NASA-SSH"
   # S6B intentionally omitted — not unified into NASA product yet
   # When ready, add S6B here with the same fields

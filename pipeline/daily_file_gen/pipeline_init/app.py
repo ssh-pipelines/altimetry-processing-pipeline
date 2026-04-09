@@ -51,7 +51,7 @@ def query_daily_files_for_year(
     pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
     # Build regex from the config filename pattern
-    # e.g. "NASA-SSH_alt_ref_at_v1_{date8}.nc" -> "NASA-SSH_alt_ref_at_v1_(\d{8})\.nc"
+    # e.g. "NASA-SSH_alt_ref_at_v11_{date8}.nc" -> "NASA-SSH_alt_ref_at_v11_(\d{8})\.nc"
     pattern = config.filename_pattern.replace("{date8}", r"(\d{8})")
     pattern = pattern.replace(".", r"\.")
 

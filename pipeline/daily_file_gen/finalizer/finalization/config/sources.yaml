@@ -6,13 +6,6 @@ sources:
       rms_num: 25.0
       mean_threshold: 0.1
       rms_threshold: 0.27
-  GSFC_6.1:
-    offset: 0.0
-    pass_flag:
-      mean_num: 15.0
-      rms_num: 25.0
-      mean_threshold: 0.1
-      rms_threshold: 0.27
   S6:
     offset: 0.0291
     pass_flag:

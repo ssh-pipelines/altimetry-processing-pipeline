@@ -21,7 +21,7 @@ class TestBuildSgKey(unittest.TestCase):
         self.assertEqual(
             key,
             "s3://my-bucket/simple_grids/NASA-SSH/2024/"
-            "NASA-SSH_alt_ref_simple_grid_v1_20240315.nc",
+            "NASA-SSH_alt_ref_simple_grid_v11_20240315.nc",
         )
 
     def test_different_source(self):
@@ -29,7 +29,7 @@ class TestBuildSgKey(unittest.TestCase):
         self.assertEqual(
             key,
             "s3://prod-bucket/simple_grids/S6/2025/"
-            "S6_alt_ref_simple_grid_v1_20250106.nc",
+            "S6_alt_ref_simple_grid_v11_20250106.nc",
         )
 
     def test_year_boundary(self):

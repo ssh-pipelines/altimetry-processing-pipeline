@@ -121,7 +121,7 @@ All three fields are required. Available sources are defined in `daily_files/con
 
 | Path | Description |
 |------|-------------|
-| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_{YYYYMMDD}.nc` | Output P1 daily file (write) |
+| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v11_{YYYYMMDD}.nc` | Output P1 daily file (write) |
 | `aux_files/GSFC_NOIB/Merged_..._Cycle_{NNNN}.V5_2.nc` | GSFC NOIB cycle files for DAC computation (read, GSFC only) |
 
 ## Source configuration
@@ -134,7 +134,7 @@ Each source has settings at two levels:
 
 | Field               | Description                                              |
 |---------------------|----------------------------------------------------------|
-| `filename_template` | Output filename pattern (e.g. `{source}_alt_ref_at_v1_{date}.nc`) |
+| `filename_template` | Output filename pattern (e.g. `{source}_alt_ref_at_v11_{date}.nc`) |
 | `s3_prefix`         | S3 key prefix for output files                           |
 | `source_mss`        | Source mean sea surface (e.g. DTU15, DTU18)              |
 | `target_mss`        | Target mean sea surface (DTU21)                          |

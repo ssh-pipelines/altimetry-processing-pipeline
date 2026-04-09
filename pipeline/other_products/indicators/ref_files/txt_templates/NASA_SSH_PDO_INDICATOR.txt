@@ -5,7 +5,7 @@ HDR based on satellite observations of sea surface height anomaly, measured by
 HDR radar altimeter missions such as TOPEX/Poseidon, the Jason series, and 
 HDR Sentinel-6. The indicator values were calculated using NASA-SSH Simple  
 HDR Gridded Sea Surface Height from Standardized Reference Missions Only 
-HDR Version 1 https://podaac.jpl.nasa.gov/dataset/NASA_SSH_REF_SIMPLE_GRID_V1 . 
+HDR Version 1.1 https://podaac.jpl.nasa.gov/dataset/NASA_SSH_REF_SIMPLE_GRID_V11 . 
 HDR 
 HDR Indicator values were calculated using cyclostationary empirical orthogonal 
 HDR functions (CSEOFs; Kim et al., 2015) computed by decomposing the gridded 

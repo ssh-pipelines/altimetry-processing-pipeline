@@ -88,7 +88,7 @@ On error, raises an exception with a JSON body containing `status`, `errorType`,
 | Path | Description |
 |------|-------------|
 | `{jobs_key}` | Jobs manifest (read) |
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_{YYYYMMDD}.nc` | Input simple grids (read) |
+| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v11_{YYYYMMDD}.nc` | Input simple grids (read) |
 | `indicators/{source}/indicators.nc` | Cached/output indicator NetCDF (read + write) |
 | `indicators/{source}/NASA_SSH_{INDICATOR}_INDICATOR.txt` | Latest indicator text file (write) |
 | `indicators/{source}/NASA_SSH_{INDICATOR}_INDICATOR.mp` | Latest metadata file (write) |

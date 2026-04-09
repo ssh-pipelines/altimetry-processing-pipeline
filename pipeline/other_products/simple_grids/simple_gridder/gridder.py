@@ -25,11 +25,11 @@ class SimpleGridderJob:
         else:
             self.source: str = source
 
-        self.filename = f'{self.source}_alt_ref_simple_grid_v1_{self.center_date.strftime("%Y%m%d")}.nc'        
+        self.filename = f'{self.source}_alt_ref_simple_grid_v11_{self.center_date.strftime("%Y%m%d")}.nc'        
         self.dst = f"s3://{self.bucket}/simple_grids/{self.source}/{str(self.center_date.year)}/{self.filename}"
         
         if resolution == "quart":
-            self.filename = self.filename.replace("simple_grid_v1", "simple_grid_quart_v1")
+            self.filename = self.filename.replace("simple_grid_v11", "simple_grid_quart_v11")
             self.dst = self.dst.replace("simple_grids/", "simple_grids/quart_deg/")
 
     def fetch_daily_files(self) -> Tuple[list[TextIOWrapper], list[str]]:

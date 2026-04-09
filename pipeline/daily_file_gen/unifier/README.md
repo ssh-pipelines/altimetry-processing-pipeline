@@ -62,8 +62,8 @@ Note that `source` is replaced with `"NASA-SSH"` in the output.
 
 | Path | Description |
 |------|-------------|
-| `daily_files/p3/{source}/{year}/{source}_alt_ref_at_v1_{YYYYMMDD}.nc` | Source P3 daily file (read) |
-| `daily_files/p3/NASA-SSH/{year}/NASA-SSH_alt_ref_at_v1_{YYYYMMDD}.nc` | Unified NASA-SSH daily file (write) |
+| `daily_files/p3/{source}/{year}/{source}_alt_ref_at_v11_{YYYYMMDD}.nc` | Source P3 daily file (read) |
+| `daily_files/p3/NASA-SSH/{year}/NASA-SSH_alt_ref_at_v11_{YYYYMMDD}.nc` | Unified NASA-SSH daily file (write) |
 
 ## Source configuration
 

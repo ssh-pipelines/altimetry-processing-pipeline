@@ -59,13 +59,13 @@ def get_source_entry(source: str) -> SourceRegistryEntry:
 def daily_filename_prefix(source: str) -> str:
     """Return the filename prefix segment for a source's daily files.
 
-    reference  → '{source}_alt_ref_at_v1'
-    otherwise  → '{source}_alt_hilat_at_v1'
+    reference  → '{source}_alt_ref_at_v11'
+    otherwise  → '{source}_alt_hilat_at_v11'
     """
     entry = get_source_entry(source)
     if entry.product_type == "reference":
-        return f"{source}_alt_ref_at_v1"
-    return f"{source}_alt_hilat_at_v1"
+        return f"{source}_alt_ref_at_v11"
+    return f"{source}_alt_hilat_at_v11"
 
 
 def get_registered_sources() -> list[str]:

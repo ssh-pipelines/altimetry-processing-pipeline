@@ -19,7 +19,7 @@ def get_base_global_attrs(source_files: str = "") -> dict:
     creation_time = datetime.now().isoformat(timespec="seconds")
     return {
         "Conventions": "CF-1.7",
-        "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1",
+        "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1.1",
         "summary": (
             "This data set contains satellite based measurements of sea surface height, "
             "computed relative to the mean sea surface specified in mean_sea_surface. "
@@ -36,15 +36,15 @@ def get_base_global_attrs(source_files: str = "") -> dict:
         "history": f"Created on {creation_time}",
         "references": "",
         "standard_name_vocabulary": "CF Standard Name Table v86",
-        "id": "10.5067/NSREF-AT0V1",
+        "id": "10.5067/NSREF-AT0V11",
         "naming_authority": "gov.nasa.jpl.podaac",
         "project": "NASA-SSH",
         "processing_level": "Level 2",
         "product_generation_step": "1",
-        "product_short_name": "NASA_SSH_REF_ALONGTRACK_V1",
+        "product_short_name": "NASA_SSH_REF_ALONGTRACK_V11",
         "acknowledgement": "This data is provided by NASAs PO.DAAC.",
         "license": "https://creativecommons.org/licenses/by/4.0/",
-        "product_version": "V1",
+        "product_version": "V1.1",
         "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
         "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
         "cdm_data_type": "Point",

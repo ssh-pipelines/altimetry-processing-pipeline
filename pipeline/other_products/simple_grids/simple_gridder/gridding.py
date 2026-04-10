@@ -266,7 +266,7 @@ class Gridder:
         creation_time = datetime.now().isoformat(timespec="seconds")
 
         # Set global attributes
-        ds.attrs["Conventions"] = "CF-1.7"
+        ds.attrs["Conventions"] = "CF-1.9"
         ds.attrs["title"] = (
             "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
         )

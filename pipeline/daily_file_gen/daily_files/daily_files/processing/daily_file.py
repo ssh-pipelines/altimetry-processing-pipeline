@@ -18,7 +18,7 @@ def get_base_global_attrs(source_files: str = "") -> dict:
     """Return the global attrs shared between DailyFile.set_global_attrs() and make_empty()."""
     creation_time = datetime.now().isoformat(timespec="seconds")
     return {
-        "Conventions": "CF-1.7",
+        "Conventions": "CF-1.9",
         "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1.1",
         "summary": (
             "This data set contains satellite based measurements of sea surface height, "

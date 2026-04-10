@@ -11,7 +11,7 @@ def _make_source_config(**overrides):
     defaults = dict(
         source="EXAMPLE_S3",
         product_type="reference",
-        filename_template="{source}_alt_ref_at_v11_{date}.nc",
+        filename_template="{source}_alt_ref_at_v1_1_{date}.nc",
         s3_prefix="daily_files/p1",
         source_mss="DTU15",
         target_mss="DTU21",

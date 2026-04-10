@@ -66,7 +66,7 @@ No explicit return payload on success. On error, raises an exception with a JSON
 
 | Path | Description |
 |------|-------------|
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v11_{YYYYMMDD}.nc` | Input simple grid (read) |
+| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Input simple grid (read) |
 | `enso_grids/{source}/ENSO_{YYYYMMDD}.nc` | Output ENSO grid (write) |
 | `maps/enso_maps/{source}/ortho/ENSO_ortho_{YYYYMMDD}.png` | Output orthographic map (write) |
 | `maps/enso_maps/{source}/plate/ENSO_plate_{YYYYMMDD}.png` | Output plate-carree map (write) |

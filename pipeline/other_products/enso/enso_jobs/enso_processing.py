@@ -14,7 +14,7 @@ def start_job(date: datetime, bucket: str, source: str):
     logging.info(f"Processing {source} grid for {date.date()}")
 
     # Stream simple grid from bucket based on date and source
-    filename = f'{source}_alt_ref_simple_grid_v11_{date.strftime("%Y%m%d")}.nc'
+    filename = f'{source}_alt_ref_simple_grid_v1_1_{date.strftime("%Y%m%d")}.nc'
     key = os.path.join(f"s3://{bucket}/simple_grids/{source}", str(date.year), filename)
     try:
         streamed_data = aws_manager.stream_obj(key)

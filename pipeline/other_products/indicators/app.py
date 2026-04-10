@@ -16,7 +16,7 @@ def build_sg_key(date_str: str, bucket: str, source: str) -> str:
     """
     date = datetime.strptime(date_str, "%Y-%m-%d")
     year = str(date.year)
-    filename = f'{source}_alt_ref_simple_grid_v11_{date.strftime("%Y%m%d")}.nc'
+    filename = f'{source}_alt_ref_simple_grid_v1_1_{date.strftime("%Y%m%d")}.nc'
     return f"s3://{bucket}/simple_grids/{source}/{year}/{filename}"
 
 

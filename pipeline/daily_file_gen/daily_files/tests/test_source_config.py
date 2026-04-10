@@ -49,7 +49,6 @@ class TestSourceConfig(unittest.TestCase):
         self.assertIsInstance(cfg, SourceConfig)
         self.assertEqual(cfg.source, "S6B")
         self.assertEqual(cfg.source_mss, "DTU18")
-        self.assertEqual(cfg.empty_template, "s6b_empty_template.nc")
         self.assertIsInstance(cfg.smoothing, SmoothingConfig)
 
     def test_cmr_sources_default_discovery_type(self):

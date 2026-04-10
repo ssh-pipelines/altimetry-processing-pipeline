@@ -64,6 +64,110 @@ def get_base_global_attrs(source_files: str = "") -> dict:
     }
 
 
+def get_var_attrs(target_mss: str) -> dict:
+    """Return variable attribute definitions. Used by DailyFile.set_var_attrs() and empty template generation."""
+    return {
+        "latitude": {
+            "long_name": "latitude",
+            "standard_name": "latitude",
+            "units": "degrees_north",
+            "coverage_content_type": "coordinate",
+            "valid_min": -90.0,
+            "valid_max": 90.0,
+        },
+        "longitude": {
+            "long_name": "longitude",
+            "standard_name": "longitude",
+            "units": "degrees_east",
+            "coverage_content_type": "coordinate",
+            "valid_min": 0.0,
+            "valid_max": 360.0,
+        },
+        "time": {
+            "long_name": "time",
+            "standard_name": "time",
+            "REFTime": "1990-01-01 00:00:00",
+            "REFTime_comment": (
+                "This string contains a time in the format yyyy-mm-dd HH:MM:SS "
+                "to which all times in the time variable are referenced."
+            ),
+            "coverage_content_type": "coordinate",
+        },
+        "cycle": {
+            "long_name": "Satellite cycle number",
+            "coverage_content_type": "auxiliaryInformation",
+        },
+        "pass": {
+            "long_name": "Satellite pass number",
+            "coverage_content_type": "auxiliaryInformation",
+        },
+        "ssha": {
+            "long_name": "Sea surface height anomaly relative to mean_sea_surface",
+            "standard_name": "sea_surface_height_above_mean_sea_level",
+            "mean_sea_surface": target_mss,
+            "description": "Use nasa_flag = 0 to select valid data points from this variable",
+            "units": "m",
+            "coordinates": "latitude longitude",
+            "coverage_content_type": "physicalMeasurement",
+            "valid_min": -1e100,
+            "valid_max": 1e100,
+        },
+        "ssha_smoothed": {
+            "long_name": "Smoothed sea surface height anomaly relative to mean_sea_surface",
+            "standard_name": "sea_surface_height_above_mean_sea_level",
+            "mean_sea_surface": target_mss,
+            "description": (
+                "Smoothed sea surface height anomaly values computed using a 19 point filter. "
+                "nasa_flag is applied prior to filter and should not be used to remove points from this field."
+            ),
+            "units": "m",
+            "coordinates": "latitude longitude",
+            "coverage_content_type": "physicalMeasurement",
+            "valid_min": -1e100,
+            "valid_max": 1e100,
+        },
+        "dac": {
+            "long_name": "dynamic atmospheric correction",
+            "comment": "Additive correction applied to ssha to remove atmospheric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
+            "units": "m",
+            "coordinates": "latitude longitude",
+            "coverage_content_type": "auxiliaryInformation",
+            "valid_min": -1e100,
+            "valid_max": 1e100,
+        },
+        "inv_bar_cor": {
+            "long_name": "inverse barometric correction",
+            "comment": "Additive correction applied to ssha to remove inverse barometric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
+            "units": "m",
+            "coordinates": "latitude longitude",
+            "coverage_content_type": "auxiliaryInformation",
+            "valid_min": -1e100,
+            "valid_max": 1e100,
+        },
+        "basin_flag": {
+            "long_name": "Basin ID number mapping each observation to a geographic basin",
+            "comment": "Also see basin_names_table for basin ID to basin name mapping",
+            "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
+            "coverage_content_type": "auxiliaryInformation",
+        },
+        "basin_names_table": {
+            "long_name": "Table mapping basin ID numbers to basin names",
+            "description": "Values are comma separated string of the form feature id,feature name",
+            "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
+            "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
+            "coverage_content_type": "auxiliaryInformation",
+        },
+        "nasa_flag": {
+            "long_name": "NASA SSHA quality flag",
+            "standard_name": "quality_flag",
+            "flag_values": np.array([0, 1], dtype=np.int8),
+            "flag_meanings": "good bad",
+            "description": "Quality flag to be used for ssha, not for ssha_smoothed.",
+            "coverage_content_type": "auxiliaryInformation",
+        },
+    }
+
+
 class DailyFile(ABC):
     """
     Parent class for individual altimeter source data. Receives pre-extracted
@@ -295,108 +399,7 @@ class DailyFile(ABC):
         ] = 1
 
     def set_var_attrs(self):
-        attributes = {
-            "latitude": {
-                "long_name": "latitude",
-                "standard_name": "latitude",
-                "units": "degrees_north",
-                "coverage_content_type": "coordinate",
-                "valid_min": -90.0,
-                "valid_max": 90.0,
-            },
-            "longitude": {
-                "long_name": "longitude",
-                "standard_name": "longitude",
-                "units": "degrees_east",
-                "coverage_content_type": "coordinate",
-                "valid_min": 0.0,
-                "valid_max": 360.0,
-            },
-            "time": {
-                "long_name": "time",
-                "standard_name": "time",
-                "REFTime": "1990-01-01 00:00:00",
-                "REFTime_comment": (
-                    "This string contains a time in the format yyyy-mm-dd HH:MM:SS "
-                    "to which all times in the time variable are referenced."
-                ),
-                "coverage_content_type": "coordinate",
-            },
-            "cycle": {
-                "long_name": "Satellite cycle number",
-                "coverage_content_type": "auxiliaryInformation",
-            },
-            "pass": {
-                "long_name": "Satellite pass number",
-                "coverage_content_type": "auxiliaryInformation",
-            },
-            "ssha": {
-                "long_name": "Sea surface height anomaly relative to mean_sea_surface",
-                "standard_name": "sea_surface_height_above_mean_sea_level",
-                "mean_sea_surface": self.target_mss,
-                "description": "Use nasa_flag = 0 to select valid data points from this variable",
-                "units": "m",
-                "coordinates": "latitude longitude",
-                "coverage_content_type": "physicalMeasurement",
-                "valid_min": -1e100,
-                "valid_max": 1e100,
-            },
-            "ssha_smoothed": {
-                "long_name": "Smoothed sea surface height anomaly relative to mean_sea_surface",
-                "standard_name": "sea_surface_height_above_mean_sea_level",
-                "mean_sea_surface": self.target_mss,
-                "description": (
-                    "Smoothed sea surface height anomaly values computed using a 19 point filter. "
-                    "nasa_flag is applied prior to filter and should not be used to remove points from this field."
-                ),
-                "units": "m",
-                "coordinates": "latitude longitude",
-                "coverage_content_type": "physicalMeasurement",
-                "valid_min": -1e100,
-                "valid_max": 1e100,
-            },
-            "dac": {
-                "long_name": "dynamic atmospheric correction",
-                "comment": "Additive correction applied to ssha to remove atmospheric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
-                "units": "m",
-                "coordinates": "latitude longitude",
-                "coverage_content_type": "auxiliaryInformation",
-                "valid_min": -1e100,
-                "valid_max": 1e100,
-            },
-            "inv_bar_cor": {
-                "long_name": "inverse barometric correction",
-                "comment": "Additive correction applied to ssha to remove inverse barometric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
-                "units": "m",
-                "coordinates": "latitude longitude",
-                "coverage_content_type": "auxiliaryInformation",
-                "valid_min": -1e100,
-                "valid_max": 1e100,
-            },
-            "basin_flag": {
-                "long_name": "Basin ID number mapping each observation to a geographic basin",
-                "comment": "Also see basin_names_table for basin ID to basin name mapping",
-                "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
-                "coverage_content_type": "auxiliaryInformation",
-            },
-            "basin_names_table": {
-                "long_name": "Table mapping basin ID numbers to basin names",
-                "description": "Values are comma separated string of the form feature id,feature name",
-                "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
-                "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
-                "coverage_content_type": "auxiliaryInformation",
-            },
-            "nasa_flag": {
-                "long_name": "NASA SSHA quality flag",
-                "standard_name": "quality_flag",
-                "flag_values": np.array([0, 1], dtype=np.int8),
-                "flag_meanings": "good bad",
-                "description": "Quality flag to be used for ssha, not for ssha_smoothed.",
-                "coverage_content_type": "auxiliaryInformation",
-            },
-        }
-
-        for var, attrs in attributes.items():
+        for var, attrs in get_var_attrs(self.target_mss).items():
             for attr, value in attrs.items():
                 self.ds[var].attrs[attr] = value
 

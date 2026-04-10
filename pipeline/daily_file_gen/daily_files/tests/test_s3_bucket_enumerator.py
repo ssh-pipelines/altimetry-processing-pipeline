@@ -16,7 +16,6 @@ def _make_source_config(**overrides):
         source_mss="DTU15",
         target_mss="DTU21",
         mss_diff_file="DTU15_minus_DTU21.nc",
-        empty_template="gsfc_empty_template.nc",
         smoothing=SmoothingConfig(speed=5.745, sigma=15),
         discovery_type="s3_bucket",
         source_bucket="example-source-bucket",

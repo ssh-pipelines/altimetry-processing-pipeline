@@ -5,7 +5,6 @@ sources:
     source_mss: DTU15
     target_mss: DTU21
     mss_diff_file: DTU15_minus_DTU21.nc
-    empty_template: gsfc_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
@@ -29,7 +28,6 @@ sources:
     source_mss: DTU18
     target_mss: DTU21
     mss_diff_file: DTU18_minus_DTU21.nc
-    empty_template: s6_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
@@ -58,7 +56,6 @@ sources:
     source_mss: DTU18
     target_mss: DTU21
     mss_diff_file: DTU18_minus_DTU21.nc
-    empty_template: s6b_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
@@ -76,7 +73,6 @@ sources:
     source_mss: DTU15
     target_mss: DTU21
     mss_diff_file: DTU15_minus_DTU21.nc
-    empty_template: gsfc_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15

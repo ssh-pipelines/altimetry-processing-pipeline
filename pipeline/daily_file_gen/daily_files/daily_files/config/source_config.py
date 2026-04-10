@@ -31,7 +31,6 @@ class SourceConfig:
     source_mss: str
     target_mss: str
     mss_diff_file: str
-    empty_template: str
     smoothing: SmoothingConfig
     collections: list[CollectionConfig] = field(default_factory=list)
     discovery_type: str = "cmr"
@@ -64,7 +63,6 @@ def _load_sources() -> dict[str, SourceConfig]:
             source_mss=cfg["source_mss"],
             target_mss=cfg["target_mss"],
             mss_diff_file=cfg["mss_diff_file"],
-            empty_template=cfg["empty_template"],
             smoothing=smoothing,
             collections=collections,
             discovery_type=registry.discovery_type,

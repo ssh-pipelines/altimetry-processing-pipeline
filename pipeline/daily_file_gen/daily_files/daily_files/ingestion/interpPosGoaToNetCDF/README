@@ -1,0 +1,8 @@
+2026-03-27
+Contact: Shailen Desai
+
+To compile code:
+make
+
+To run example:
+interpPosGoaToNetCDFtimes.e -posgoa example/2026-03-25_s6an_jplmoe.pos -netcdf example/S6A_P4_2__LR_STD__ST_198_025_20260325T235012_20260326T004625_G01.nc

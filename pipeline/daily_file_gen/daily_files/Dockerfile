@@ -7,12 +7,16 @@ COPY pipeline/daily_file_gen/daily_files/daily_files/ref_files /tmp/ref_files
 # Compile the orbit-swap C executable against netCDF
 FROM public.ecr.aws/lambda/python:3.11 AS c_builder
 
-RUN yum install -y gcc netcdf-devel make
+RUN yum install -y gcc make amazon-linux-extras && \
+    PATH=/usr/bin:/usr/sbin:/bin:/sbin amazon-linux-extras install -y epel && \
+    yum install -y netcdf-devel
 
 COPY pipeline/daily_file_gen/daily_files/daily_files/ingestion/interpPosGoaToNetCDF/ \
     /tmp/interpPosGoaToNetCDF/
 
-RUN cd /tmp/interpPosGoaToNetCDF && make clean && make
+RUN cd /tmp/interpPosGoaToNetCDF && \
+    make clean && \
+    make CFLAGS="-O3 -c -I/usr/include/netcdf"
 
 # Collect shared libraries needed by the binary (netcdf, hdf5, etc.).
 # Excludes standard glibc libs that are always present in the runtime image.

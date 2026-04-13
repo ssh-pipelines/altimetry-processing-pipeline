@@ -12,7 +12,7 @@ RUN yum install -y gcc netcdf-devel make
 COPY pipeline/daily_file_gen/daily_files/daily_files/ingestion/interpPosGoaToNetCDF/ \
     /tmp/interpPosGoaToNetCDF/
 
-RUN cd /tmp/interpPosGoaToNetCDF && make
+RUN cd /tmp/interpPosGoaToNetCDF && make clean && make
 
 # Collect shared libraries needed by the binary (netcdf, hdf5, etc.).
 # Excludes standard glibc libs that are always present in the runtime image.

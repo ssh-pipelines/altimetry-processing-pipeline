@@ -13,7 +13,7 @@ For each processing date, the Lambda:
    - **CMR** (`cmr`): Queries NASA CMR for the source's configured collection(s). For multi-collection sources (S6), selects the highest-priority granule per cycle/pass combination.
    - **S3 bucket** (`s3_bucket`): Lists an internal S3 bucket and matches filenames by date. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and returns files whose range overlaps the target date.
 3. **Downloads** granule files from PODAAC's S3 bucket (CMR sources) or the source S3 bucket directly (S3 bucket sources).
-4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields).
+4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields). For S6/S6B sources, an **orbit swap** is applied per pass file: a precise orbit file (POE for NTC granules, MOE for STC granules) is downloaded from JPL and passed to a C executable (`interpPosGoaToNetCDFtimes.e`) that recomputes SSHA using the improved orbit. If the orbit file cannot be fetched or the swap fails (wrong output length, non-zero exit code, timeout), the ingester falls back to the original `ssha_nr` values and logs a warning. Orbit files are cached in `/tmp/` by date and type so multiple passes on the same day share a single download.
 5. **Processes** the ingested data into a daily file dataset:
    - Maps observations to geographic basins using basin shapefiles
    - Creates `nasa_flag` from source-specific quality flags and a rolling median filter
@@ -43,11 +43,13 @@ daily_files/
 │   │   ├── enumerator.py                   # Abstract Enumerator + FileRef dataclass
 │   │   ├── cmr_enumerator.py               # GSFCEnumerator, S6Enumerator (CMR queries)
 │   │   ├── s3_bucket_enumerator.py         # S3BucketEnumerator (S3 listing + cycle index)
-│   │   └── downloader.py                   # S3Downloader (PODAAC credentials)
+│   │   ├── downloader.py                   # S3Downloader (PODAAC credentials)
+│   │   └── orbit_fetcher.py                # OrbitFetcher (downloads POE/MOE orbit files from JPL)
 │   ├── ingestion/
 │   │   ├── ingest.py                       # Abstract Ingestor + IngestedData dataclass
 │   │   ├── gsfc_ingest.py                  # GSFCIngestor (pass LUT, DAC from NOIB cycles)
-│   │   └── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction)
+│   │   ├── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction + orbit swap)
+│   │   └── orbit_swap.py                   # run_orbit_swap(): shells out to C executable, returns swapped SSHA
 │   ├── processing/
 │   │   ├── daily_file.py                   # Abstract DailyFile base class
 │   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers, bad_points)
@@ -81,7 +83,7 @@ The code uses a plugin-style registry pattern. Each source is defined as a `Sour
 |---------------|-------------|---------------------|-----------------------|-------------------|
 | **Enumerator** | `Enumerator` | `GSFCEnumerator` (single collection) | `S6Enumerator` (multi-collection priority selection) | `S3BucketEnumerator` (filename regex or cycle index) |
 | **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | IAM-based S3 access |
-| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF) | Source-specific |
+| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF + orbit swap via C executable) | Source-specific |
 | **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) | Source-specific |
 
 The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the four components and add a registry entry.

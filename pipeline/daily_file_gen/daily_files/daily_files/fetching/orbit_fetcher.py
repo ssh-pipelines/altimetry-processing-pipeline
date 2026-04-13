@@ -1,3 +1,4 @@
+import gzip
 import logging
 import re
 
@@ -37,7 +38,7 @@ class OrbitFetcher:
             resp = requests.get(url, timeout=60)
             resp.raise_for_status()
             with open(local_path, "wb") as f:
-                f.write(resp.content)
+                f.write(gzip.decompress(resp.content))
             self._cache[cache_key] = local_path
             logging.info(f"Orbit file saved to {local_path}")
             return local_path
@@ -59,4 +60,4 @@ class OrbitFetcher:
         orbit_type = "jplpoe" if is_ntc else "jplmoe"
         base = self.POE_BASE_URL if is_ntc else self.MOE_BASE_URL
         filename = f"{date_str}_s6an_{orbit_type}.pos"
-        return f"{base}/{filename}", filename
+        return f"{base}/{filename}.gz", filename

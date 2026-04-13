@@ -69,8 +69,8 @@ No explicit return payload on success. On error, raises an exception with a JSON
 | Path | Description |
 |------|-------------|
 | `daily_files/p3/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Input P3 daily files (read, 10-day window) |
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_{YYYYMMDD}.nc` | Output half-degree grid (write) |
-| `simple_grids/quart_deg/{source}/{year}/{source}_alt_ref_simple_grid_v1_quart_{YYYYMMDD}.nc` | Output quarter-degree grid (write, when `resolution="quart"`) |
+| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Output half-degree grid (write) |
+| `simple_grids/quart_deg/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_quart_{YYYYMMDD}.nc` | Output quarter-degree grid (write, when `resolution="quart"`) |
 
 Filename prefix for daily files is determined by the global source registry (`utilities/source_registry.py`).
 

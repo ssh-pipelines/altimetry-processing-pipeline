@@ -13,7 +13,7 @@ For each processing date, the Lambda:
    - **CMR** (`cmr`): Queries NASA CMR for the source's configured collection(s). For multi-collection sources (S6), selects the highest-priority granule per cycle/pass combination.
    - **S3 bucket** (`s3_bucket`): Lists an internal S3 bucket and matches filenames by date. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and returns files whose range overlaps the target date.
 3. **Downloads** granule files from PODAAC's S3 bucket (CMR sources) or the source S3 bucket directly (S3 bucket sources).
-4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields).
+4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields). For S6/S6B sources, an **orbit swap** is applied per pass file: a precise orbit file (POE for NTC granules, MOE for STC granules) is downloaded from JPL and passed to a C executable (`interpPosGoaToNetCDFtimes.e`) that recomputes SSHA using the improved orbit. If the orbit file cannot be fetched or the swap fails (wrong output length, non-zero exit code, timeout), the ingester falls back to the original `ssha_nr` values and logs a warning. Orbit files are cached in `/tmp/` by date and type so multiple passes on the same day share a single download.
 5. **Processes** the ingested data into a daily file dataset:
    - Maps observations to geographic basins using basin shapefiles
    - Creates `nasa_flag` from source-specific quality flags and a rolling median filter
@@ -43,15 +43,17 @@ daily_files/
 │   │   ├── enumerator.py                   # Abstract Enumerator + FileRef dataclass
 │   │   ├── cmr_enumerator.py               # GSFCEnumerator, S6Enumerator (CMR queries)
 │   │   ├── s3_bucket_enumerator.py         # S3BucketEnumerator (S3 listing + cycle index)
-│   │   └── downloader.py                   # S3Downloader (PODAAC credentials)
+│   │   ├── downloader.py                   # S3Downloader (PODAAC credentials)
+│   │   └── orbit_fetcher.py                # OrbitFetcher (downloads POE/MOE orbit files from JPL)
 │   ├── ingestion/
 │   │   ├── ingest.py                       # Abstract Ingestor + IngestedData dataclass
 │   │   ├── gsfc_ingest.py                  # GSFCIngestor (pass LUT, DAC from NOIB cycles)
-│   │   └── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction)
+│   │   ├── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction + orbit swap)
+│   │   └── orbit_swap.py                   # run_orbit_swap(): shells out to C executable, returns swapped SSHA
 │   ├── processing/
 │   │   ├── daily_file.py                   # Abstract DailyFile base class
-│   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers)
-│   │   ├── s6_daily_file.py                # S6DailyFile (S6 flag logic, MSS sol1/sol2 correction)
+│   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers, bad_points)
+│   │   ├── s6_daily_file.py                # S6DailyFile (S6 flag logic, MSS sol1/sol2 correction, bad_points)
 │   │   └── smoothing.py                    # 19-point Gaussian-like SSHA smoothing filter
 │   └── ref_files/
 │       ├── empty_templates/                # Empty NetCDF templates per source
@@ -81,7 +83,7 @@ The code uses a plugin-style registry pattern. Each source is defined as a `Sour
 |---------------|-------------|---------------------|-----------------------|-------------------|
 | **Enumerator** | `Enumerator` | `GSFCEnumerator` (single collection) | `S6Enumerator` (multi-collection priority selection) | `S3BucketEnumerator` (filename regex or cycle index) |
 | **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | IAM-based S3 access |
-| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF) | Source-specific |
+| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF + orbit swap via C executable) | Source-specific |
 | **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) | Source-specific |
 
 The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the four components and add a registry entry.
@@ -121,7 +123,7 @@ All three fields are required. Available sources are defined in `daily_files/con
 
 | Path | Description |
 |------|-------------|
-| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_{YYYYMMDD}.nc` | Output P1 daily file (write) |
+| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file (write) |
 | `aux_files/GSFC_NOIB/Merged_..._Cycle_{NNNN}.V5_2.nc` | GSFC NOIB cycle files for DAC computation (read, GSFC only) |
 
 ## Source configuration
@@ -134,7 +136,7 @@ Each source has settings at two levels:
 
 | Field               | Description                                              |
 |---------------------|----------------------------------------------------------|
-| `filename_template` | Output filename pattern (e.g. `{source}_alt_ref_at_v1_{date}.nc`) |
+| `filename_template` | Output filename pattern (e.g. `{source}_alt_ref_at_v1_1_{date}.nc`) |
 | `s3_prefix`         | S3 key prefix for output files                           |
 | `source_mss`        | Source mean sea surface (e.g. DTU15, DTU18)              |
 | `target_mss`        | Target mean sea surface (DTU21)                          |
@@ -146,6 +148,7 @@ Each source has settings at two levels:
 | `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |
 | `source_filename_pattern` | *(S3 bucket sources only)* Filename pattern with `{source}`, `{date8}` placeholders |
 | `cycle_index_key`   | *(S3 bucket sources only, optional)* S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date. |
+| `bad_points`        | *(optional)* Map of ISO date strings to lists of `{time: <ISO datetime>}` entries. Any observation whose timestamp matches a listed time (at second precision) will have `nasa_flag` forced to 1, regardless of other quality criteria. Supported for GSFC and S6/S6B sources. |
 
 Current sources:
 

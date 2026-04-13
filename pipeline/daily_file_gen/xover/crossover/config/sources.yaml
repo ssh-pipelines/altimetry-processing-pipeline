@@ -17,9 +17,3 @@ sources:
     window_size: 10
     window_padding: 2
     max_pass_number: 9999
-  GSFC_6.1:
-    crossover_type: self
-    cycle_length: 9.9156
-    window_size: 10
-    window_padding: 2
-    max_pass_number: 9999

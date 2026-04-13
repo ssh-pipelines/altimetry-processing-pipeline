@@ -75,7 +75,7 @@ All three fields are required. Available sources are defined in `finalization/co
 | `bad_passes/{source}/{date}.json` | Bad-pass list from upstream stage (read, optional) |
 | `daily_files/p3/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Output P3 daily file (write) |
 
-Filename prefix is determined by the global source registry (`utilities/source_registry.py`): `{source}_alt_ref_at_v1` for reference products, `{source}_alt_hilat_at_v1` for high-latitude products.
+Filename prefix is determined by the global source registry (`utilities/source_registry.py`): `{source}_alt_ref_at_v1_1` for reference products, `{source}_alt_hilat_at_v1_1` for high-latitude products.
 
 ## Source configuration
 

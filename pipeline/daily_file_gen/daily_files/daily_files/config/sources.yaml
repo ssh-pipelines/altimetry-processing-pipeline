@@ -1,27 +1,33 @@
 sources:
   GSFC:
-    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU15
     target_mss: DTU21
     mss_diff_file: DTU15_minus_DTU21.nc
-    empty_template: gsfc_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
     collections:
-      - shortname: MERGED_TP_J1_OSTM_OST_CYCLES_V52
-        concept_id: C2901523432-POCLOUD
-        source_label: "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 5.2"
-        source_url: "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V52"
-        reference: "https://doi.org/10.5067/ALTUG-TJ152"
+      - shortname: MERGED_TP_J1_OSTM_OST_CYCLES_V61
+        concept_id: C2901523432-POCLOUD # TBD
+        source_label: "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 6.1"
+        source_url: "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V61"
+        reference: "https://doi.org/10.5067/ALTUG-TJ161"
+    bad_points:
+      2025-07-17: 
+        - time: 2025-07-17T05:50:14
+      2025-07-20:
+        - time: 2025-07-20T02:33:49
+        - time: 2025-07-20T02:33:50
+        - time: 2025-07-20T02:33:51
+        - time: 2025-07-20T02:33:52
   S6:
-    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21
     mss_diff_file: DTU18_minus_DTU21.nc
-    empty_template: s6_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
@@ -45,12 +51,11 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
         reference: "https://doi.org/10.5067/S6AP4-2LRST"
   S6B:
-    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21
     mss_diff_file: DTU18_minus_DTU21.nc
-    empty_template: s6b_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15
@@ -61,30 +66,13 @@ sources:
         source_label: "Sentinel-6B/Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G"
         reference: "https://doi.org/10.5067/S6BP4-2LRST"
-  GSFC_6.1:
-    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
-    s3_prefix: "daily_files/p1"
-    source_mss: DTU15
-    target_mss: DTU21
-    mss_diff_file: DTU15_minus_DTU21.nc
-    empty_template: gsfc_empty_template.nc
-    smoothing:
-      speed: 5.745
-      sigma: 15
-    source_prefix_pattern: "source_data/GSFC_6.1/GSFC_6.1_REFERENCE/"
-    source_filename_pattern: "{source}_{date8}.nc"
-    cycle_index_key: "source_data/GSFC_6.1/cycle_index.json"
-    source_label: "Example S3-hosted dataset"
-    source_url: "https://example.com/dataset"
-    reference: "https://doi.org/10.0000/example"
-  
+    
   EXAMPLE_S3:
-    filename_template: "{source}_alt_ref_at_v1_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU15
     target_mss: DTU21
     mss_diff_file: DTU15_minus_DTU21.nc
-    empty_template: gsfc_empty_template.nc
     smoothing:
       speed: 5.745
       sigma: 15

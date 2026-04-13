@@ -8,7 +8,6 @@ import xarray as xr
 
 from utilities.aws_utils import aws_manager
 
-from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
 from daily_files.fetching.enumerator import Enumerator
@@ -24,7 +23,8 @@ from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
 from daily_files.ingestion.s6_ingest import S6Ingestor
 
-from daily_files.processing.daily_file import DailyFile, get_base_global_attrs
+from daily_files.processing.daily_file import DailyFile
+from daily_files.processing.empty_template import build_empty_dataset
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
 from daily_files.processing.s6_daily_file import S6DailyFile
 
@@ -120,7 +120,7 @@ class DailyFileJob:
         file_objs = downloader.download_all(file_refs)
 
         ingestor = self.ingestor_cls()
-        ingested_data = ingestor.ingest(file_objs, bucket=bucket)
+        ingested_data = ingestor.ingest(file_objs, file_refs=file_refs, bucket=bucket)
 
         return AcquiredData(
             ingested_data=ingested_data,
@@ -178,10 +178,9 @@ def make_empty(job: DailyFileJob) -> xr.Dataset:
     """
     In the event no data is found we still want an empty daily file with the expected metadata.
     """
-    logging.info(f"No {job.source} data found for {job.date}. Using template file.")
-    daily_ds = xr.open_dataset(os.path.join(REF_FILES_DIR, "empty_templates", job.source_config.empty_template))
-    base_attrs = get_base_global_attrs()
-    daily_ds.attrs.update(base_attrs)
+    logging.info(f"No {job.source} data found for {job.date}. Building empty dataset.")
+    processor_cls = SOURCE_REGISTRY[job.source].processor
+    daily_ds = build_empty_dataset(job.source_config, processor_cls)
     daily_ds.attrs["time_coverage_start"] = job.date.strftime("%Y-%m-%dT00:00:00Z")
     daily_ds.attrs["time_coverage_end"] = job.date.strftime("%Y-%m-%dT23:59:59Z")
     daily_ds.attrs["comment"] = "No data available from source"

@@ -11,12 +11,11 @@ def _make_source_config(**overrides):
     defaults = dict(
         source="EXAMPLE_S3",
         product_type="reference",
-        filename_template="{source}_alt_ref_at_v1_{date}.nc",
+        filename_template="{source}_alt_ref_at_v1_1_{date}.nc",
         s3_prefix="daily_files/p1",
         source_mss="DTU15",
         target_mss="DTU21",
         mss_diff_file="DTU15_minus_DTU21.nc",
-        empty_template="gsfc_empty_template.nc",
         smoothing=SmoothingConfig(speed=5.745, sigma=15),
         discovery_type="s3_bucket",
         source_bucket="example-source-bucket",

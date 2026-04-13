@@ -243,7 +243,7 @@ def save_difference_map(
             "time_coverage_start": str(start),
             "time_coverage_end": str(end),
             "n_dates": len(dates_used),
-            "conventions": "CF-1.7",
+            "conventions": "CF-1.9",
         },
     )
 

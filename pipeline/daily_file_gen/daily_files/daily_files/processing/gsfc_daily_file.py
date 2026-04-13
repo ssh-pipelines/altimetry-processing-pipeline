@@ -18,9 +18,7 @@ class GSFCDailyFile(DailyFile):
         source_files: str = "",
     ):
         self.og_ds = ingested_data.source_specific["og_ds"]
-        super().__init__(
-            ingested_data, date, source_config, collection_ids, source_files
-        )
+        super().__init__(ingested_data, date, source_config, collection_ids, source_files)
 
     def gsfc_flag_splitting(self) -> np.ndarray:
         """
@@ -28,14 +26,10 @@ class GSFCDailyFile(DailyFile):
         """
         flag = self.og_ds["flag"].values
         max_bits = int(np.ceil(np.log2(flag.max())))
-        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(
-            bool
-        )
+        binary_representation = (flag[:, None] & (1 << np.arange(max_bits))).astype(bool)
         return binary_representation
 
-    def manual_outliers(
-        self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray
-    ) -> np.ndarray:
+    def manual_outliers(self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
         """
         Manual method for catching known bad values
         """
@@ -49,6 +43,17 @@ class GSFCDailyFile(DailyFile):
 
         else:
             outliers = np.full_like(ssha, False, dtype=bool)
+
+        # Apply config-driven bad points (matched by time)
+        bad_points = self.source_config.bad_points
+        if bad_points:
+            date_key = self.date.date()
+            if date_key in bad_points:
+                times = self.ds["time"].values.astype("datetime64[s]")
+                for entry in bad_points[date_key]:
+                    bad_time = np.datetime64(entry["time"], "s")
+                    outliers |= times == bad_time
+
         return outliers
 
     def make_nasa_flag(self):
@@ -83,37 +88,18 @@ class GSFCDailyFile(DailyFile):
             ((surf_type == 0) | (surf_type == 2))
             & (~flag_array[:, src_flag_indices].any(axis=1))
             & (~np.isnan(ssha))
-            & (
-                ~(
-                    (basin_flag > 0)
-                    & (basin_flag < 1000)
-                    & (abs(lats) > 60)
-                    & (abs(ssha) > 1.2)
-                )
-            )
+            & (~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2)))
         )
-
-        outliers = self.manual_outliers(ssha, prelim_flag, lats)
 
         # Calculate rolling median and standard deviation
         n_median = 15
         n_std = 95
         timestamps = np.arange(1, len(ssha) + 1)
 
-        rolling_median = (
-            pd.Series(ssha[prelim_flag])
-            .rolling(n_median, center=True, min_periods=1)
-            .median()
-            .values
-        )
+        rolling_median = pd.Series(ssha[prelim_flag]).rolling(n_median, center=True, min_periods=1).median().values
         dx = ssha[prelim_flag] - rolling_median
 
-        dx_median = (
-            pd.Series(np.square(dx))
-            .rolling(n_std, center=True, min_periods=1)
-            .median()
-            .values
-        )
+        dx_median = pd.Series(np.square(dx)).rolling(n_std, center=True, min_periods=1).median().values
         rolling_std = np.clip(np.sqrt(dx_median), 0.05, None)
 
         median_interp = np.interp(timestamps, timestamps[prelim_flag], rolling_median)
@@ -126,21 +112,15 @@ class GSFCDailyFile(DailyFile):
             & (~flag_array[:, [1, 2, 3, 5]].any(axis=1))
             & (~np.isnan(ssha))
             & median_flag
-            & ~(
-                (basin_flag > 0)
-                & (basin_flag < 1000)
-                & (abs(lats) > 60)
-                & (abs(ssha) > 1.2)
-            )
+            & ~((basin_flag > 0) & (basin_flag < 1000) & (abs(lats) > 60) & (abs(ssha) > 1.2))
         )
 
+        outliers = self.manual_outliers(ssha, prelim_flag, lats)
         nasa_flag[outliers] = 1
 
         source_flag = np.array(flag_array).astype("bool")
 
-        all_flag_meanings = re.split(
-            r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"]
-        )
+        all_flag_meanings = re.split(r" (?=[A-Za-z_])", self.og_ds["flag"].attrs["flag_meanings"])
 
         # Assign nasa_flag to dataset
         self.ds["nasa_flag"] = (

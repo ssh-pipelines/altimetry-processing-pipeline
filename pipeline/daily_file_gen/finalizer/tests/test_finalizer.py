@@ -47,7 +47,7 @@ def _create_test_nc(path, n=10, source="GSFC", add_offset_attr=False,
     ssha_smoothed[:] = np.random.default_rng(43).random(n)
     nasa_flag[:] = np.zeros(n, dtype=int)
 
-    ds.granule_id = f"{source}_alt_ref_at_v1_20200101.nc"
+    ds.granule_id = f"{source}_alt_ref_at_v1_1_20200101.nc"
     ds.product_generation_step = "2"
 
     if add_offset_attr:

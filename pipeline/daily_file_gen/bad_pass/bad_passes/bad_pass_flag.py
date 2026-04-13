@@ -32,7 +32,7 @@ class XoverProcessor:
         window_range = []
         cur_date = self.window_start
         while cur_date <= self.window_end:
-            xover_filename = f'xovers_{self.source}-{cur_date.strftime("%Y-%m-%d")}.nc'
+            xover_filename = f"xovers_{self.source}-{cur_date.strftime('%Y-%m-%d')}.nc"
             xover_path = f"s3://{bucket}/crossovers/p2/{self.source}/{cur_date.year}/{xover_filename}"
             if aws_manager.key_exists(xover_path):
                 window_range.append(xover_path)
@@ -95,8 +95,7 @@ class XoverProcessor:
         self.dssh = np.concatenate((dssh0, -dssh0))
         self.psec = np.concatenate((psec1, psec2))
         self.trackid = np.concatenate(
-            (cycle1 * self.TRACKID_CYCLE_FACTOR + pass1,
-             cycle2 * self.TRACKID_CYCLE_FACTOR + pass2)
+            (cycle1 * self.TRACKID_CYCLE_FACTOR + pass1, cycle2 * self.TRACKID_CYCLE_FACTOR + pass2)
         )
         logging.info("Loading data complete")
 
@@ -141,9 +140,7 @@ class XoverProcessor:
         currentdate = datetime.timestamp(self.date)
         # Get list of (cycle, pass_num)
         bad_passes = self.identify_bad_passes(currentdate)
-        logging.info(
-            f"Found {len(bad_passes)} {self.source} bad passes for {self.date}"
-        )
+        logging.info(f"Found {len(bad_passes)} {self.source} bad passes for {self.date}")
         formatted_results = {
             "date": self.date.date().isoformat(),
             "source": self.source,

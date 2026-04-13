@@ -57,18 +57,35 @@ deploy_file() {
     local filename
     filename="$(basename "$filepath")"
     local base="${filename%.asl.json}"
-    local sm_name="nasa-ssh-pipeline-${STAGE}-${base}-sm"
+    local sm_name
+    if [[ "$base" == "pipeline" ]]; then
+        sm_name="nasa-ssh-pipeline-${STAGE}-sm"
+    else
+        sm_name="nasa-ssh-pipeline-${STAGE}-${base}-sm"
+    fi
     local arn="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:${sm_name}"
 
     if [[ "$DRY_RUN" == true ]]; then
-        echo "  [dry-run] aws stepfunctions update-state-machine \\"
-        echo "    --state-machine-arn $arn \\"
-        echo "    --definition file://$filepath"
-    else
-        echo "  deploying $filename → $sm_name"
+        echo "  [dry-run] would create or update: $sm_name"
+        echo "    aws stepfunctions update-state-machine \\"
+        echo "      --state-machine-arn $arn \\"
+        echo "      --definition file://$filepath"
+        return
+    fi
+
+    # Check if the state machine exists
+    if aws stepfunctions describe-state-machine --state-machine-arn "$arn" &>/dev/null; then
+        echo "  updating $filename → $sm_name"
         aws stepfunctions update-state-machine \
             --state-machine-arn "$arn" \
             --definition "file://$filepath"
+    else
+        echo "  creating $filename → $sm_name"
+        aws stepfunctions create-state-machine \
+            --name "$sm_name" \
+            --definition "file://$filepath" \
+            --role-arn "${STATE_MACHINE_ROLE_ARN}" \
+            --type STANDARD
     fi
 }
 

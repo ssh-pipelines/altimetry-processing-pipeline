@@ -36,6 +36,24 @@ class S6DailyFile(DailyFile):
             self._ingested_source_specific["mean_sea_surface_sol2"],
         )
 
+    def manual_outliers(self, ssha: np.ndarray, prelim_flag: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        """
+        Manual method for catching known bad values
+        """
+        outliers = np.full_like(ssha, False, dtype=bool)
+
+        # Apply config-driven bad points (matched by time)
+        bad_points = self.source_config.bad_points
+        if bad_points:
+            date_key = self.date.date()
+            if date_key in bad_points:
+                times = self.ds["time"].values.astype("datetime64[s]")
+                for entry in bad_points[date_key]:
+                    bad_time = np.datetime64(entry["time"], "s")
+                    outliers |= times == bad_time
+
+        return outliers
+
     def make_nasa_flag(self):
         """ """
         logging.info("Making nasa_flag...")
@@ -121,6 +139,9 @@ class S6DailyFile(DailyFile):
                 & (abs(ssha) > 1.2)
             )
         )
+
+        outliers = self.manual_outliers(ssha, prelim_flag, lats)
+        nasa_flag[outliers] = True
 
         source_flag = np.array([kqual, surfc, rqual, rain], dtype=np.int8).T
 

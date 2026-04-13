@@ -9,3 +9,5 @@ build
 .env
 .venv
 state_machines/rendered/
+*.o
+*.e

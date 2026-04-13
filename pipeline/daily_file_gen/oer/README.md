@@ -72,7 +72,7 @@ All three fields are required.
 | `oer/{source}/{year}/oer_correction_{source}_{date}.nc` | Output correction NetCDF (write) |
 | `daily_files/p2/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Output P2 daily file (write) |
 
-Filename prefix is determined by the global source registry (`utilities/source_registry.py`): `{source}_alt_ref_at_v1` for reference products, `{source}_alt_hilat_at_v1` for high-latitude products.
+Filename prefix is determined by the global source registry (`utilities/source_registry.py`): `{source}_alt_ref_at_v1_1` for reference products, `{source}_alt_hilat_at_v1_1` for high-latitude products.
 
 ## Step Function
 

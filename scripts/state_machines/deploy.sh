@@ -57,7 +57,12 @@ deploy_file() {
     local filename
     filename="$(basename "$filepath")"
     local base="${filename%.asl.json}"
-    local sm_name="nasa-ssh-pipeline-${STAGE}-${base}-sm"
+    local sm_name
+    if [[ "$base" == "pipeline" ]]; then
+        sm_name="nasa-ssh-pipeline-${STAGE}-sm"
+    else
+        sm_name="nasa-ssh-pipeline-${STAGE}-${base}-sm"
+    fi
     local arn="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:${sm_name}"
 
     if [[ "$DRY_RUN" == true ]]; then

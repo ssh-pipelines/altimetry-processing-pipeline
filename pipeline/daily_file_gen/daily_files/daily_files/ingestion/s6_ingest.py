@@ -1,21 +1,33 @@
 import logging
+import os
 from typing import Iterable, TextIO
 
 import netCDF4 as nc
 import numpy as np
 import xarray as xr
 
+from daily_files.fetching.enumerator import FileRef
+from daily_files.fetching.orbit_fetcher import OrbitFetcher
 from daily_files.ingestion.ingest import IngestedData, Ingestor
+from daily_files.ingestion.orbit_swap import run_orbit_swap
 
 
 class S6Ingestor(Ingestor):
-    def ingest(self, file_objs: Iterable[TextIO], **kwargs) -> IngestedData:
+    def ingest(
+        self,
+        file_objs: Iterable[TextIO],
+        file_refs: list[FileRef] | None = None,
+        **kwargs,
+    ) -> IngestedData:
         logging.info(f"Opening {len(file_objs)} files")
 
+        orbit_fetcher = OrbitFetcher() if file_refs else None
+        pairs = zip(file_objs, file_refs) if file_refs else ((f, None) for f in file_objs)
+
         opened_files = []
-        for i, file_obj in enumerate(file_objs):
+        for i, (file_obj, file_ref) in enumerate(pairs):
             try:
-                ds = self._extract_grouped_data(file_obj)
+                ds = self._open_with_orbit_swap(file_obj, file_ref, orbit_fetcher)
                 opened_files.append(ds)
             except Exception as e:
                 logging.warning(f"Unable to open file object {i}: {e}")
@@ -38,11 +50,69 @@ class S6Ingestor(Ingestor):
             },
         )
 
-    def _extract_grouped_data(self, file_obj: TextIO) -> xr.Dataset:
+    def _open_with_orbit_swap(
+        self,
+        file_obj: TextIO,
+        file_ref: FileRef | None,
+        orbit_fetcher: OrbitFetcher | None,
+    ) -> xr.Dataset:
+        """Read a pass file and apply orbit swap if a FileRef and fetcher are provided.
+
+        The raw bytes are read once and used both for the netCDF4 in-memory parse
+        and (if orbit swap is requested) written to /tmp/ for the C executable.
+        Falls back to the original ssha_nr if any step of the orbit swap fails.
+        """
+        data = file_obj.read()
+        ds = self._extract_grouped_data(data)
+
+        if file_ref is None or orbit_fetcher is None:
+            return ds
+
+        tmp_nc = f"/tmp/{file_ref.title}"
+        try:
+            with open(tmp_nc, "wb") as f:
+                f.write(data)
+
+            orbit_path = orbit_fetcher.fetch(file_ref)
+            if orbit_path is None:
+                logging.warning(
+                    f"No orbit file for {file_ref.title}, using original ssha_nr"
+                )
+                return ds
+
+            swapped = run_orbit_swap(tmp_nc, orbit_path)
+            if swapped is None:
+                logging.warning(
+                    f"Orbit swap returned no data for {file_ref.title}, using original ssha_nr"
+                )
+                return ds
+
+            if len(swapped) != len(ds["ssha_nr"]):
+                logging.warning(
+                    f"Orbit swap length mismatch for {file_ref.title} "
+                    f"(expected {len(ds['ssha_nr'])}, got {len(swapped)}), "
+                    "using original ssha_nr"
+                )
+                return ds
+
+            ds["ssha_nr"] = xr.DataArray(swapped, dims="time", attrs=ds["ssha_nr"].attrs)
+            logging.info(f"Orbit swap applied for {file_ref.title}")
+        except Exception as e:
+            logging.warning(
+                f"Orbit swap error for {file_ref.title}: {e}. Using original ssha_nr."
+            )
+        finally:
+            if os.path.exists(tmp_nc):
+                os.remove(tmp_nc)
+
+        return ds
+
+    def _extract_grouped_data(self, data: bytes) -> xr.Dataset:
         """
         Use the netCDF4 library to efficiently open and extract grouped variables
+        from in-memory bytes.
         """
-        ds = nc.Dataset("file_like", "r", memory=file_obj.read())
+        ds = nc.Dataset("file_like", "r", memory=data)
 
         das = []
 

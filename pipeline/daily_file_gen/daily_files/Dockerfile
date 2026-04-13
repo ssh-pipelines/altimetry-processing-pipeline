@@ -4,7 +4,19 @@ FROM alpine AS intermediate
 
 COPY pipeline/daily_file_gen/daily_files/daily_files/ref_files /tmp/ref_files
 
+# Compile the orbit-swap C executable against netCDF
+FROM public.ecr.aws/lambda/python:3.11 AS c_builder
+
+RUN yum install -y gcc netcdf-devel make
+
+COPY interpPosGoaToNetCDF/ /tmp/interpPosGoaToNetCDF/
+
+RUN cd /tmp/interpPosGoaToNetCDF && make
+
 FROM public.ecr.aws/lambda/python:3.11
+
+# Install netCDF runtime library required by the orbit-swap binary
+RUN yum install -y netcdf
 
 COPY pipeline/daily_file_gen/daily_files/requirements.txt .
 
@@ -13,6 +25,10 @@ RUN pip install --upgrade pip \
 
 # Copy large files from the intermediate stage
 COPY --from=intermediate /tmp/ref_files ${LAMBDA_TASK_ROOT}/daily_files/ref_files
+
+# Copy the compiled orbit-swap binary
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/bin
+COPY --from=c_builder /tmp/interpPosGoaToNetCDF/interpPosGoaToNetCDFtimes.e ${LAMBDA_TASK_ROOT}/bin/
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 

@@ -120,7 +120,7 @@ class DailyFileJob:
         file_objs = downloader.download_all(file_refs)
 
         ingestor = self.ingestor_cls()
-        ingested_data = ingestor.ingest(file_objs, bucket=bucket)
+        ingested_data = ingestor.ingest(file_objs, file_refs=file_refs, bucket=bucket)
 
         return AcquiredData(
             ingested_data=ingested_data,

@@ -1,6 +1,6 @@
 sources:
   GSFC:
-    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU15
     target_mss: DTU21
@@ -23,7 +23,7 @@ sources:
         - time: 2025-07-20T02:33:51
         - time: 2025-07-20T02:33:52
   S6:
-    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21
@@ -51,7 +51,7 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
         reference: "https://doi.org/10.5067/S6AP4-2LRST"
   S6B:
-    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU18
     target_mss: DTU21
@@ -68,7 +68,7 @@ sources:
         reference: "https://doi.org/10.5067/S6BP4-2LRST"
     
   EXAMPLE_S3:
-    filename_template: "{source}_alt_ref_at_v11_{date}.nc"
+    filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
     s3_prefix: "daily_files/p1"
     source_mss: DTU15
     target_mss: DTU21

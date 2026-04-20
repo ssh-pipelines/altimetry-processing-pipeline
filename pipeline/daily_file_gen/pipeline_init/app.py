@@ -4,6 +4,8 @@ import json
 import logging
 import re
 
+import os
+
 import boto3
 from cmr import GranuleQuery
 
@@ -266,9 +268,9 @@ def handler(event, context):
         handlers=[logging.StreamHandler()],
     )
 
-    bucket = event.get("bucket")
+    bucket = event.get("bucket") or os.environ.get("BUCKET_NAME")
     if bucket is None:
-        raise ValueError("bucket job parameter missing.")
+        raise ValueError("bucket not provided in event or BUCKET_NAME env var.")
 
     source = event.get("source")
     if source is None:

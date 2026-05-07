@@ -10,15 +10,19 @@ from utilities.aws_utils import aws_manager
 
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
+from daily_files.fetching.aviso_auth import build_aviso_session
+from daily_files.fetching.aviso_thredds_enumerator import ThreddsEnumerator
 from daily_files.fetching.enumerator import Enumerator
 from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
 from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
 from daily_files.fetching.downloader import (
     Downloader,
+    HttpDownloader,
     S3Downloader,
     get_podaac_s3_credentials,
 )
 
+from daily_files.ingestion.aviso_l2p_ingest import AvisoL2PIngestor
 from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
 from daily_files.ingestion.s6_ingest import S6Ingestor
@@ -73,6 +77,13 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         downloader_kwargs={"credentials_fn": None},
         ingestor=GSFCIngestor,
         processor=GSFCDailyFile,
+    ),
+    "S3B": SourcePipeline(
+        enumerator=ThreddsEnumerator,
+        downloader=HttpDownloader,
+        downloader_kwargs={"session_fn": build_aviso_session},
+        ingestor=AvisoL2PIngestor,
+        processor=DailyFile,  # processing not yet implemented for high_latitude sources
     ),
 }
 

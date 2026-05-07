@@ -67,6 +67,24 @@ sources:
         source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G"
         reference: "https://doi.org/10.5067/S6BP4-2LRST"
     
+  S3B:
+    filename_template: "{source}_alt_hilat_at_v1_1_{date}.nc"
+    s3_prefix: "daily_files/p1"
+    source_mss: DTU18
+    target_mss: DTU21
+    mss_diff_file: DTU18_minus_DTU21.nc
+    smoothing:
+      speed: 5.745
+      sigma: 15
+    collections:
+      - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b
+        thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-s3b
+        thredds_version: version_04_00
+        priority: 1
+        source_label: "NTC Sentinel-3B Global Ocean Along track Sea Level Anomalies L2P products"
+        source_url: "https://tds-odatis.aviso.altimetry.fr/thredds/catalog/dataset-l2p-uncross-calibrated-ntc-sla-s3b/version_04_00/catalog.html"
+        reference: "https://www.aviso.altimetry.fr/"
+
   EXAMPLE_S3:
     filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
     s3_prefix: "daily_files/p1"

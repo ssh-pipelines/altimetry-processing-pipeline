@@ -15,11 +15,13 @@ class SmoothingConfig:
 @dataclass
 class CollectionConfig:
     shortname: str
-    concept_id: str
+    concept_id: str = ""
     priority: int = 1
     source_label: str = ""
     source_url: str = ""
     reference: str = ""
+    thredds_collection: str | None = None
+    thredds_version: str | None = None
 
 
 @dataclass

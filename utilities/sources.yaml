@@ -25,3 +25,8 @@ sources:
     discovery_type: s3_bucket
     unify: false
     start_date: "2020-01-01"
+  S3B:
+    product_type: high_latitude
+    discovery_type: thredds
+    unify: false
+    start_date: "2018-04-25"

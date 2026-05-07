@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from io import TextIOWrapper
+import gzip
+from io import BytesIO, TextIOWrapper
 import logging
 from typing import Callable
 
+import requests
 import s3fs
 
 from daily_files.fetching.enumerator import FileRef
@@ -56,8 +58,25 @@ class S3Downloader(Downloader):
 
 
 class HttpDownloader(Downloader):
-    def __init__(self, auth: dict | None = None):
-        self.auth = auth
+    """Downloads granules over HTTP, transparently decompressing .nc.gz to .nc.
 
-    def download(self, access_url: str) -> TextIOWrapper:
-        raise NotImplementedError("HttpDownloader is a placeholder for future use.")
+    Returns a BytesIO containing raw NetCDF bytes that downstream ingestors can
+    pass directly to xr.open_dataset / netCDF4.Dataset(memory=...).
+    """
+
+    def __init__(self, session_fn: Callable[[], requests.Session]):
+        self.session = session_fn()
+
+    def download(self, access_url: str) -> BytesIO:
+        try:
+            logging.debug(f"Downloading {access_url}")
+            with self.session.get(access_url, stream=True, timeout=120) as resp:
+                resp.raise_for_status()
+                raw = resp.raw
+                raw.decode_content = True  # let requests handle Content-Encoding
+                if access_url.endswith(".gz"):
+                    return BytesIO(gzip.decompress(raw.read()))
+                return BytesIO(raw.read())
+        except Exception as e:
+            logging.exception(f"Error downloading {access_url}")
+            raise e

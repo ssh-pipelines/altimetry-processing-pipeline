@@ -40,10 +40,8 @@ daily_files/
 │   │   ├── dataset_schema.py               # Output schema definition + validation
 │   │   └── paths.py                        # Reference file directory paths
 │   ├── fetching/
-│   │   ├── enumerator.py                   # Abstract Enumerator + FileRef dataclass
-│   │   ├── cmr_enumerator.py               # GSFCEnumerator, S6Enumerator (CMR queries)
-│   │   ├── s3_bucket_enumerator.py         # S3BucketEnumerator (S3 listing + cycle index)
-│   │   ├── downloader.py                   # S3Downloader (PODAAC credentials)
+│   │   ├── downloader.py                   # S3Downloader / HttpDownloader (consume URI strings)
+│   │   ├── aviso_auth.py                   # AVISO HTTP session builder
 │   │   └── orbit_fetcher.py                # OrbitFetcher (downloads POE/MOE orbit files from JPL)
 │   ├── ingestion/
 │   │   ├── ingest.py                       # Abstract Ingestor + IngestedData dataclass
@@ -62,11 +60,10 @@ daily_files/
 │       └── complete_gsfc_pass_lut.csv      # GSFC orbit/index to pass number lookup
 ├── tests/
 │   ├── test_source_config.py               # YAML loading, config fields, cycle_index_key
-│   ├── test_s3_bucket_enumerator.py        # S3 bucket enumeration + cycle index tests
 │   ├── test_daily_file_job.py              # Source registry, job init, acquire phase
-│   ├── test_cmr.py                         # S6 priority selection across collections
 │   ├── test_gsfc_processing.py             # End-to-end GSFC processing with synthetic data
 │   ├── test_s6_processing.py               # End-to-end S6 processing with synthetic data
+│   ├── test_bad_points.py                  # bad_points config flagging
 │   ├── test_empty_templates.py             # Empty template schema validation
 │   ├── test_smoothing.py                   # Smoothing filter edge cases
 │   └── testing_granules/                   # Sample granules (not tracked in repo)
@@ -77,19 +74,18 @@ daily_files/
 
 ## Architecture
 
-The code uses a plugin-style registry pattern. Each source is defined as a `SourcePipeline` — a bundle of four interchangeable components:
+The code uses a plugin-style registry pattern. Each source is defined as a `SourcePipeline` — a bundle of three interchangeable components:
 
-| Component     | Base class   | GSFC implementation | S6/S6B implementation | S3 bucket sources |
+| Component     | Base class   | GSFC implementation | S6/S6B implementation | S3 bucket / S3B   |
 |---------------|-------------|---------------------|-----------------------|-------------------|
-| **Enumerator** | `Enumerator` | `GSFCEnumerator` (single collection) | `S6Enumerator` (multi-collection priority selection) | `S3BucketEnumerator` (filename regex or cycle index) |
-| **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | IAM-based S3 access |
+| **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | `S3Downloader` (IAM) / `HttpDownloader` (AVISO) |
 | **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF + orbit swap via C executable) | Source-specific |
 | **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) | Source-specific |
 
-The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the four components and add a registry entry.
+Granule discovery happens upstream in `pipeline_init`, which writes a manifest of granule URIs per date. The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the three components and add a registry entry.
 
 Processing runs in two phases:
-1. **Acquire** — enumerate granules, download files, ingest into normalized `IngestedData`
+1. **Acquire** — download URIs from the manifest, ingest into normalized `IngestedData`
 2. **Process** — run the source-specific `DailyFile` subclass to produce the output dataset
 
 ## Lambda input
@@ -100,11 +96,14 @@ The Lambda receives one item from the jobs manifest per invocation:
 {
   "bucket": "my-bucket",
   "date": "2025-01-15",
-  "source": "S6"
+  "source": "S6",
+  "granules": [
+    "s3://podaac-ops-cumulus-protected/.../S6A_..._F09.nc"
+  ]
 }
 ```
 
-All three fields are required. Available sources are defined in `daily_files/config/sources.yaml`.
+All four fields are required. Available sources are defined in `daily_files/config/sources.yaml`. The `granules` list is produced by `pipeline_init` and consumed verbatim — no upstream discovery happens here.
 
 ## Lambda output
 

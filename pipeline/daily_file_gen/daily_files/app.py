@@ -15,16 +15,19 @@ def handler(event, context):
     bucket = event.get("bucket")
     date = event.get("date")
     source: str = event.get("source")
+    granules = event.get("granules")
 
     if None in [date, source, bucket]:
         raise RuntimeError("One of date, source, or bucket job parameters missing. Job failure.")
+    if granules is None:
+        raise RuntimeError("granules job parameter missing. Job failure.")
 
     available = get_available_sources()
     if source not in available:
         raise RuntimeError(f"Source '{source}' is not configured. Available sources: {available}")
 
     try:
-        daily_file_job.start_job(date, source, bucket)
+        daily_file_job.start_job(date, source, bucket, granules)
         result = {"status": "success", "data": event}
         return result
     except Exception as e:

@@ -14,11 +14,10 @@ class GSFCDailyFile(DailyFile):
         ingested_data: IngestedData,
         date: datetime,
         source_config: SourceConfig,
-        collection_ids: list[str],
         source_files: str = "",
     ):
         self.og_ds = ingested_data.source_specific["og_ds"]
-        super().__init__(ingested_data, date, source_config, collection_ids, source_files)
+        super().__init__(ingested_data, date, source_config, source_files)
 
     def gsfc_flag_splitting(self) -> np.ndarray:
         """

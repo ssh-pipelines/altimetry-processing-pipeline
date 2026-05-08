@@ -185,12 +185,10 @@ class DailyFile(ABC):
         ingested_data: IngestedData,
         date: datetime,
         source_config: SourceConfig,
-        collection_ids: list[str],
         source_files: str = "",
     ):
         self.date = date
         self.source_config = source_config
-        self.collection_ids = collection_ids
         self.source_files = source_files
         self.source_mss = source_config.source_mss
         self.target_mss = source_config.target_mss
@@ -433,20 +431,13 @@ class DailyFile(ABC):
         """Sets source-specific global attributes from collection metadata.
         Subclasses can override to add extra attributes (call super first)."""
         if self.source_config.collections:
-            sources = set()
-            source_urls = set()
-            references = set()
+            sources = sorted({c.source_label for c in self.source_config.collections if c.source_label})
+            source_urls = sorted({c.source_url for c in self.source_config.collections if c.source_url})
+            references = sorted({c.reference for c in self.source_config.collections if c.reference})
 
-            collections_by_id = {c.concept_id: c for c in self.source_config.collections}
-            for collection_id in self.collection_ids:
-                col = collections_by_id[collection_id]
-                sources.add(col.source_label)
-                source_urls.add(col.source_url)
-                references.add(col.reference)
-
-            self.ds.attrs["source"] = ", and ".join(sorted(sources))
-            self.ds.attrs["source_url"] = ", and ".join(sorted(source_urls))
-            self.ds.attrs["references"] = ", and ".join(sorted(references))
+            self.ds.attrs["source"] = ", and ".join(sources)
+            self.ds.attrs["source_url"] = ", and ".join(source_urls)
+            self.ds.attrs["references"] = ", and ".join(references)
         else:
             self.ds.attrs["source"] = self.source_config.source_label
             self.ds.attrs["source_url"] = self.source_config.source_url

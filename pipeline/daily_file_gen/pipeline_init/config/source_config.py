@@ -9,8 +9,10 @@ from utilities.source_registry import get_source_entry
 
 @dataclass
 class CollectionConfig:
-    concept_id: str
+    concept_id: str = ""
     priority: int = 1
+    thredds_collection: str | None = None
+    thredds_version: str | None = None
 
 
 @dataclass
@@ -23,6 +25,7 @@ class PipelineInitSourceConfig:
     end_date: date | None = None
     collections: list[CollectionConfig] = field(default_factory=list)
     discovery_type: str = "cmr"
+    source_bucket: str | None = None
     source_prefix_pattern: str | None = None
     source_filename_pattern: str | None = None
     cycle_index_key: str | None = None
@@ -47,6 +50,7 @@ def _load_sources() -> dict[str, PipelineInitSourceConfig]:
             end_date=registry.end_date,
             collections=collections,
             discovery_type=registry.discovery_type,
+            source_bucket=cfg.get("source_bucket"),
             source_prefix_pattern=cfg.get("source_prefix_pattern"),
             source_filename_pattern=cfg.get("source_filename_pattern"),
             cycle_index_key=cfg.get("cycle_index_key"),

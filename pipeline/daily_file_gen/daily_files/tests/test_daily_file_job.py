@@ -11,8 +11,7 @@ from daily_files.daily_file_job import (
     AcquiredData,
     _get_output_filename,
 )
-from daily_files.fetching.enumerator import FileRef
-from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
+from daily_files.fetching.downloader import S3Downloader
 from daily_files.ingestion.ingest import IngestedData
 
 
@@ -27,12 +26,13 @@ class TestSourceRegistry(unittest.TestCase):
         self.assertIn("S6B", SOURCE_REGISTRY)
         self.assertIn("EXAMPLE_S3", SOURCE_REGISTRY)
 
-    def test_example_s3_uses_s3_bucket_enumerator(self):
-        pipeline = SOURCE_REGISTRY["EXAMPLE_S3"]
-        self.assertIs(pipeline.enumerator, S3BucketEnumerator)
+    def test_pipeline_has_no_enumerator_attribute(self):
+        pipeline = SOURCE_REGISTRY["S6"]
+        self.assertFalse(hasattr(pipeline, "enumerator"))
 
     def test_example_s3_uses_iam_credentials(self):
         pipeline = SOURCE_REGISTRY["EXAMPLE_S3"]
+        self.assertIs(pipeline.downloader, S3Downloader)
         self.assertIsNone(pipeline.downloader_kwargs["credentials_fn"])
 
 
@@ -68,30 +68,18 @@ class TestAcquirePhase(unittest.TestCase):
 
     def test_acquire_returns_none_when_no_granules(self):
         job = self._make_job()
-        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=[])))
         job.downloader_cls = MagicMock()
         job.downloader_kwargs = {}
         job.ingestor_cls = MagicMock()
 
-        result = job.acquire("test-bucket")
+        result = job.acquire([], "test-bucket")
         self.assertIsNone(result)
         job.downloader_cls.assert_not_called()
 
     def test_acquire_returns_acquired_data(self):
         job = self._make_job()
 
-        file_refs = [
-            FileRef(
-                id="1",
-                title="f1.nc",
-                access_url="s3://b/f1.nc",
-                time_start="",
-                time_end="",
-                modified_time="",
-                collection_id="C123",
-            ),
-        ]
-        job.enumerator_cls = MagicMock(return_value=MagicMock(enumerate=MagicMock(return_value=file_refs)))
+        granules = ["s3://bucket/path/to/f1.nc"]
 
         mock_downloader = MagicMock()
         mock_downloader.download_all.return_value = [MagicMock()]
@@ -102,7 +90,11 @@ class TestAcquirePhase(unittest.TestCase):
         mock_ingestor.ingest.return_value = MagicMock(spec=IngestedData)
         job.ingestor_cls = MagicMock(return_value=mock_ingestor)
 
-        result = job.acquire("test-bucket")
+        result = job.acquire(granules, "test-bucket")
         self.assertIsInstance(result, AcquiredData)
-        self.assertEqual(result.granule_titles, ["f1.nc"])
-        self.assertEqual(result.collection_ids, ["C123"])
+        self.assertEqual(result.granule_filenames, ["f1.nc"])
+        mock_downloader.download_all.assert_called_once_with(granules)
+        # Ingestor receives filename list and bucket as kwargs
+        _, kwargs = mock_ingestor.ingest.call_args
+        self.assertEqual(kwargs["filenames"], ["f1.nc"])
+        self.assertEqual(kwargs["bucket"], "test-bucket")

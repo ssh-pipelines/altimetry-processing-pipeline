@@ -93,7 +93,6 @@ class TestS6Processing(unittest.TestCase):
             ingested,
             cls.date,
             source_config,
-            ["C3332203845-POCLOUD"],
             source_files="test_granule.nc",
         ).ds
 

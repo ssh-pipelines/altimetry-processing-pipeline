@@ -4,7 +4,6 @@ from typing import Iterable, TextIO
 import numpy as np
 import xarray as xr
 
-from daily_files.fetching.enumerator import FileRef
 from daily_files.ingestion.ingest import IngestedData, Ingestor
 
 
@@ -16,7 +15,6 @@ class AvisoL2PIngestor(Ingestor):
     def ingest(
         self,
         file_objs: Iterable[TextIO],
-        file_refs: list[FileRef] | None = None,
         **kwargs,
     ) -> IngestedData:
         opened: list[xr.Dataset] = []

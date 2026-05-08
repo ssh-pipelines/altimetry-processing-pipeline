@@ -82,19 +82,7 @@ class TestSourceConfig(unittest.TestCase):
         sources = get_available_sources()
         self.assertIn("EXAMPLE_S3", sources)
 
-    def test_gsfc_61_bad_points_loaded(self):
-        """GSFC_6.1 bad_points should be parsed from YAML as a date-keyed dict."""
-        from datetime import date, datetime
-        cfg = get_source_config("GSFC_6.1")
-        self.assertIsNotNone(cfg.bad_points)
-        self.assertIn(date(2025, 7, 17), cfg.bad_points)
-        self.assertIn(date(2025, 7, 20), cfg.bad_points)
-        entries = cfg.bad_points[date(2025, 7, 17)]
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["time"], datetime(2025, 7, 17, 5, 50, 14))
-        self.assertEqual(len(cfg.bad_points[date(2025, 7, 20)]), 4)
-
     def test_sources_without_bad_points_are_none(self):
-        for source in ["GSFC", "S6", "S6B"]:
+        for source in ["S6", "S6B"]:
             cfg = get_source_config(source)
             self.assertIsNone(cfg.bad_points, f"{source} should have bad_points=None")

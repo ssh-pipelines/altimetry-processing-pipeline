@@ -17,11 +17,16 @@ class IngestedData:
     passes: np.ndarray
     dac: np.ndarray
     inv_bar_cor: np.ndarray
-    source_specific: dict  # Additional source-specific arrays/objects needed for processing
+    source_specific: dict
 
 
 class Ingestor(ABC):
     @abstractmethod
     def ingest(self, file_objs: Iterable[TextIO], **kwargs) -> IngestedData:
-        """Open raw files and extract/normalize arrays into IngestedData."""
+        """Open raw files and extract/normalize arrays into IngestedData.
+
+        Implementations may consume optional keyword args:
+            filenames: list[str] — filename per file_obj (parsed from URI)
+            bucket: str — runtime bucket for any source-data lookups
+        """
         raise NotImplementedError

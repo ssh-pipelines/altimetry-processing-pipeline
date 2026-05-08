@@ -91,7 +91,6 @@ class TestGSFCProcessing(unittest.TestCase):
             ingested,
             cls.date,
             source_config,
-            ["C2901523432-POCLOUD"],
             source_files="test_granule.nc",
         ).ds
 

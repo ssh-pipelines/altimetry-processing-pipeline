@@ -1,5 +1,4 @@
-"""
-AVISO ODATIS THREDDS catalog crawler used as a daily-files Enumerator.
+"""AVISO ODATIS THREDDS catalog crawler used as a pipeline_init Enumerator.
 
 Layout of the AVISO catalog:
     <base>/<collection>/<version>/<cycle_NNNN>/catalog.xml
@@ -18,13 +17,13 @@ import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 
-from daily_files.config.source_config import CollectionConfig
-from daily_files.fetching.aviso_auth import build_aviso_session
-from daily_files.fetching.enumerator import Enumerator, FileRef
+from config.source_config import CollectionConfig, PipelineInitSourceConfig
+from enumeration.aviso_auth import build_aviso_session
+from enumeration.base import GranuleRef
 
 
 TDS_BASE = "https://tds-odatis.aviso.altimetry.fr/thredds/"
@@ -45,11 +44,18 @@ class _Granule:
     granule_id: str
     cycle: int
     pass_number: int
-    data_start: str  # ISO-8601
-    data_end: str  # ISO-8601
-    processed_at: str  # ISO-8601
+    data_start: datetime
+    data_end: datetime
+    processed_at: datetime
     download_url: str
-    size_bytes: int | None
+
+
+def _to_utc(s: str) -> datetime | None:
+    try:
+        dt = datetime.strptime(s, "%Y%m%dT%H%M%S")
+        return dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _parse_filename(name: str) -> dict | None:
@@ -63,19 +69,18 @@ def _parse_filename(name: str) -> dict | None:
     if len(parts) < 3:
         return None
 
-    def _to_iso(s: str) -> str:
-        try:
-            dt = datetime.strptime(s, "%Y%m%dT%H%M%S")
-            return dt.replace(tzinfo=timezone.utc).isoformat()
-        except ValueError:
-            return s
+    data_start = _to_utc(parts[0])
+    data_end = _to_utc(parts[1])
+    processed_at = _to_utc(pr.group(1))
+    if data_start is None or data_end is None or processed_at is None:
+        return None
 
     return {
         "cycle": int(cp.group(1)),
         "pass_number": int(cp.group(2)),
-        "data_start": _to_iso(parts[0]),
-        "data_end": _to_iso(parts[1]),
-        "processed_at": _to_iso(pr.group(1)),
+        "data_start": data_start,
+        "data_end": data_end,
+        "processed_at": processed_at,
     }
 
 
@@ -155,17 +160,6 @@ def _parse_cycle_catalog(
         if parsed is None:
             continue
 
-        size: int | None = None
-        size_el = ds.find("cat:dataSize", NS)
-        if size_el is not None and size_el.text:
-            try:
-                val = float(size_el.text)
-                units = (size_el.get("units") or "bytes").strip().lower()
-                mult = {"bytes": 1, "kbytes": 1024, "mbytes": 1024 ** 2, "gbytes": 1024 ** 3}
-                size = int(val * mult.get(units, 1))
-            except ValueError:
-                pass
-
         granules.append(
             _Granule(
                 granule_id=name,
@@ -175,7 +169,6 @@ def _parse_cycle_catalog(
                 data_end=parsed["data_end"],
                 processed_at=parsed["processed_at"],
                 download_url=_fileserver_url(url_path),
-                size_bytes=size,
             )
         )
 
@@ -207,61 +200,66 @@ def _crawl_collection(
     return all_granules
 
 
-def _overlaps_day(granule: _Granule, day_start: datetime, day_end: datetime) -> bool:
-    """A granule overlaps the target day if its data window intersects [day_start, day_end)."""
-    g_start = datetime.fromisoformat(granule.data_start)
-    g_end = datetime.fromisoformat(granule.data_end)
-    return g_start < day_end and g_end >= day_start
+def _granule_dates(g: _Granule, range_start: date, range_end: date) -> list[date]:
+    """Return the list of dates in [range_start, range_end] that this granule contributes to."""
+    dates: list[date] = []
+    g_start_day = g.data_start.date()
+    g_end_day = g.data_end.date()
+    cur = max(g_start_day, range_start)
+    end = min(g_end_day, range_end)
+    while cur <= end:
+        dates.append(cur)
+        cur = cur + timedelta(days=1)
+    return dates
 
 
-class ThreddsEnumerator(Enumerator):
-    """Enumerates AVISO L2P granules for a single date across one or more
-    AVISO collections. When multiple collections produce overlapping (cycle,
-    pass) entries, the lower-numbered priority wins (mirrors S6Enumerator).
-    """
+class ThreddsEnumerator:
+    """Enumerates AVISO L2P granules across a date range. When multiple
+    collections produce overlapping (cycle, pass) entries, the lower-numbered
+    priority wins."""
 
-    def enumerate(self) -> list[FileRef]:
+    def __init__(self, source_config: PipelineInitSourceConfig):
+        self.source_config = source_config
+
+    def enumerate(self, start: date, end: date) -> list[GranuleRef]:
         session = build_aviso_session()
 
-        day_start = self.date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
-        day_end = day_start + timedelta(days=1)
-
-        priority_granules: dict[tuple[int, int], tuple[int, _Granule, CollectionConfig]] = {}
+        # Per-collection priority resolution per (cycle, pass)
+        winners: dict[tuple[int, int], tuple[int, _Granule, CollectionConfig]] = {}
 
         for coll in sorted(self.source_config.collections, key=lambda c: c.priority):
             if not coll.thredds_collection or not coll.thredds_version:
                 logging.warning(
-                    f"Skipping collection '{coll.shortname}' — missing thredds_collection/thredds_version"
+                    f"Skipping collection — missing thredds_collection/thredds_version"
                 )
                 continue
 
             logging.info(
-                f"Crawling AVISO {coll.thredds_collection}/{coll.thredds_version} for {self.date.date()}"
+                f"Crawling AVISO {coll.thredds_collection}/{coll.thredds_version} "
+                f"for {start} to {end}"
             )
             granules = _crawl_collection(coll.thredds_collection, coll.thredds_version, session)
+            in_range = [g for g in granules if g.data_end.date() >= start and g.data_start.date() <= end]
+            logging.info(f"  {len(in_range)} granule(s) overlap [{start}, {end}]")
 
-            day_granules = [g for g in granules if _overlaps_day(g, day_start, day_end)]
-            logging.info(f"  {len(day_granules)} granule(s) overlap {self.date.date()}")
-
-            for g in day_granules:
+            for g in in_range:
                 key = (g.cycle, g.pass_number)
-                existing = priority_granules.get(key)
+                existing = winners.get(key)
                 if existing is None or existing[0] > coll.priority:
-                    priority_granules[key] = (coll.priority, g, coll)
+                    winners[key] = (coll.priority, g, coll)
 
-        file_refs: list[FileRef] = []
-        for _, (_, g, coll) in sorted(priority_granules.items()):
-            file_refs.append(
-                FileRef(
-                    id=g.granule_id,
-                    title=g.granule_id,
-                    access_url=g.download_url,
-                    time_start=g.data_start,
-                    time_end=g.data_end,
-                    modified_time=g.processed_at,
-                    collection_id=coll.thredds_collection or "",
+        refs: list[GranuleRef] = []
+        for (cycle, pass_no), (_, g, _coll) in winners.items():
+            for d in _granule_dates(g, start, end):
+                refs.append(
+                    GranuleRef(
+                        date=d,
+                        uri=g.download_url,
+                        mod_time=g.processed_at,
+                        sort_key=(cycle, pass_no),
+                    )
                 )
-            )
 
-        logging.info(f"Total AVISO granules selected for {self.date.date()}: {len(file_refs)}")
-        return file_refs
+        refs.sort(key=lambda r: (r.date, r.sort_key, r.uri))
+        logging.info(f"Total AVISO granule refs in [{start}, {end}]: {len(refs)}")
+        return refs

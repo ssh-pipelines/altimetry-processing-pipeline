@@ -8,7 +8,12 @@ import pandas as pd
 import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
-from utilities.source_profile import daily_filename_prefix
+from utilities.pipeline_layout import (
+    bad_pass_key,
+    daily_file_filename,
+    daily_file_key,
+    s3_uri,
+)
 from config.source_config import get_source_config
 
 
@@ -33,7 +38,7 @@ class Finalizer:
             )
 
     def _load_bad_passes(self, bucket: str) -> pd.DataFrame:
-        s3_key = f"s3://{bucket}/bad_passes/{self.source}/{self.processing_date.isoformat()}.json"
+        s3_key = s3_uri(bucket, bad_pass_key(self.source, self.processing_date))
         if not aws_manager.fs.exists(s3_key):
             return pd.DataFrame(columns=["cycle", "pass"])
         
@@ -60,28 +65,18 @@ class Finalizer:
         aws_manager.fs.upload(local_path, dst_path)
 
     def _build_filename(self) -> str:
-        date_str = self.processing_date.strftime("%Y%m%d")
-        return f'{daily_filename_prefix(self.source)}_{date_str}.nc'
+        return daily_file_filename(self.config, self.processing_date)
 
-    def _build_src_path(self, bucket: str, filename: str) -> str:
-        year = str(self.processing_date.year)
-        return os.path.join(
-            f"s3://{bucket}/daily_files/p2", self.source, year, filename
-        )
+    def _build_src_path(self, bucket: str) -> str:
+        return s3_uri(bucket, daily_file_key(self.config, self.processing_date, "p2"))
 
-    def _build_dst_path(self, bucket: str, filename: str) -> str:
-        year = str(self.processing_date.year)
-        return os.path.join(
-            f"s3://{bucket}/daily_files/p3", self.source, year, filename
-        )
-
-    def _build_dst_filename(self, filename: str) -> str:
-        return filename
+    def _build_dst_path(self, bucket: str) -> str:
+        return s3_uri(bucket, daily_file_key(self.config, self.processing_date, "p3"))
 
     def process(self, bucket):
         filename = self._build_filename()
         logging.info(f"Processing {filename}")
-        src_s3_path = self._build_src_path(bucket, filename)
+        src_s3_path = self._build_src_path(bucket)
 
         try:
             local_filepath = self.get_daily_file(src_s3_path)
@@ -130,10 +125,9 @@ class Finalizer:
 
         ds.absolute_offset_applied = self.config.offset
 
-        dst_filename = self._build_dst_filename(filename)
-        dst_s3_path = self._build_dst_path(bucket, filename)
+        dst_s3_path = self._build_dst_path(bucket)
 
-        ds.granule_id = dst_filename
+        ds.granule_id = filename
 
         # Sort the global attributes by deleting / replacing
         sorted_attributes = sorted(ds.ncattrs(), key=lambda x: x.lower())

@@ -10,7 +10,11 @@ from datetime import datetime, UTC
 from crossover.xover_ssh import xover_ssh
 from crossover.config.source_config import get_source_config
 from utilities.aws_utils import aws_manager
-from utilities.source_profile import daily_filename_prefix
+from utilities.pipeline_layout import (
+    crossover_key,
+    daily_file_key,
+    s3_uri,
+)
 
 
 EPOCH: np.datetime64 = np.datetime64("1990-01-01T00:00:00.000000")
@@ -97,17 +101,14 @@ class Crossover:
     def stream_files(self, bucket: str) -> Iterable[TextIOWrapper]:
         streams = []
         date = self.window_start
-        prefix = daily_filename_prefix(self.source)
         while date <= self.window_end:
-            date_str = np.datetime_as_string(date, unit="D").replace("-", "")
-            year = np.datetime_as_string(date, unit="Y")
-            filename = f"{prefix}_{date_str}.nc"
-            key = f"s3://{bucket}/daily_files/{self.df_version}/{self.source}/{year}/{filename}"
+            date_dt = date.astype("datetime64[D]").astype(object)
+            key = s3_uri(bucket, daily_file_key(self.config, date_dt, self.df_version))
 
             if aws_manager.key_exists(key):
                 streams.append(aws_manager.stream_obj(key))
             else:
-                logging.info(f"No daily file for {date_str}, skipping")
+                logging.info(f"No daily file for {date_dt}, skipping")
 
             date += np.timedelta64(1, "D")
 
@@ -270,7 +271,9 @@ class Crossover:
         """
         Saves xarray Dataset object as local netcdf and returns local path
         """
-        filename = f"xovers_{self.source}-{np.datetime_as_string(self.day)}.nc"
+        day_dt = self.day.astype("datetime64[D]").astype(object)
+        key = crossover_key(self.source, day_dt, self.df_version)
+        filename = key.rsplit("/", 1)[-1]
         local_output_path = os.path.join(out_dir, filename)
         logging.info(f"Saving netcdf to {local_output_path}")
         ds.to_netcdf(local_output_path, engine="h5netcdf")
@@ -280,14 +283,8 @@ class Crossover:
         """
         Uploads crossover netCDF to bucket
         """
-        filename = os.path.basename(local_path)
-        s3_output_path = os.path.join(
-            f"s3://{bucket}/crossovers",
-            self.df_version,
-            self.source,
-            np.datetime_as_string(self.day, unit="Y"),
-            filename,
-        )
+        day_dt = self.day.astype("datetime64[D]").astype(object)
+        s3_output_path = s3_uri(bucket, crossover_key(self.source, day_dt, self.df_version))
         aws_manager.upload_obj(local_path, s3_output_path)
 
     def run(self, bucket):

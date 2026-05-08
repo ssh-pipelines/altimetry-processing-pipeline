@@ -11,7 +11,15 @@ from oer.compute_polygon_correction import (
     apply_correction,
 )
 from utilities.aws_utils import aws_manager
-from utilities.source_profile import daily_filename_prefix
+from utilities.pipeline_layout import (
+    crossover_key,
+    daily_file_filename,
+    daily_file_key,
+    oer_correction_key,
+    oer_polygon_key,
+    s3_uri,
+)
+from utilities.source_profile import get_source_profile
 
 _DTYPE_OVERRIDES = {
     "source_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
@@ -38,7 +46,8 @@ class OerCorrection:
         self.source: str = source
         self.date: datetime = date
         self.bucket: str = bucket
-        self.daily_file_filename = f"{daily_filename_prefix(source)}_{date.strftime('%Y%m%d')}.nc"
+        self.profile = get_source_profile(source)
+        self.daily_file_filename = daily_file_filename(self.profile, date)
         self.window_len: int = 10  # set window, since xover files "look forward" in time
         self.window_pad: int = 1  # padding to avoid edge effects at window end
         logging.info(f"Starting job for {self.source} {self.date}")
@@ -54,8 +63,7 @@ class OerCorrection:
         date_range = list(rrule(DAILY, dtstart=window_start, until=window_end))
         streams = []
         for d in date_range:
-            filename = f"xovers_{self.source}-{d.strftime('%Y-%m-%d')}.nc"
-            key = f"s3://{self.bucket}/crossovers/p1/{self.source}/{d.year}/{filename}"
+            key = s3_uri(self.bucket, crossover_key(self.source, d, "p1"))
             if aws_manager.key_exists(key):
                 stream = aws_manager.stream_obj(key)
                 streams.append(stream)
@@ -77,17 +85,19 @@ class OerCorrection:
 
     def fetch_daily_file(self) -> xr.Dataset:
         """Stream the processing-level-1 daily file from S3."""
-        key = f"s3://{self.bucket}/daily_files/p1/{self.source}/{self.date.year}/{self.daily_file_filename}"
+        key = s3_uri(self.bucket, daily_file_key(self.profile, self.date, "p1"))
         if aws_manager.key_exists(key):
             stream = aws_manager.stream_obj(key)
         else:
             raise ValueError(f"Key {key} does not exist!")
         return xr.open_dataset(stream)
 
-    def _save_and_upload(self, ds: xr.Dataset, filename: str, s3_prefix: str, encoding: dict | None = None) -> None:
+    def _save_and_upload(self, ds: xr.Dataset, key: str, encoding: dict | None = None) -> None:
+        """Save *ds* locally and upload to s3://<bucket>/<key>. The local
+        filename is taken from the basename of *key*."""
+        filename = key.rsplit("/", 1)[-1]
         out_path = self.save_ds(ds, filename, encoding)
-        target = f"s3://{self.bucket}/{s3_prefix}/{self.source}/{self.date.year}/{filename}"
-        aws_manager.upload_obj(out_path, target)
+        aws_manager.upload_obj(out_path, s3_uri(self.bucket, key))
 
     def make_polygon(self) -> xr.Dataset:
         """Fetch crossovers, fit the spline polygon, and upload to S3."""
@@ -102,16 +112,14 @@ class OerCorrection:
         polygon_ds = create_polygon(xover_ds, self.date, self.source)
         xover_ds.close()
 
-        polygon_filename = f"oerpoly_{self.source}_{self.date.strftime('%Y-%m-%d')}.nc"
-        self._save_and_upload(polygon_ds, polygon_filename, "oer")
+        self._save_and_upload(polygon_ds, oer_polygon_key(self.source, self.date))
         return polygon_ds
 
     def make_correction(self, polygon_ds: xr.Dataset, daily_file_ds: xr.Dataset) -> xr.Dataset:
         """Evaluate the polygon correction at daily-file times and upload to S3."""
         correction_ds = evaluate_correction(polygon_ds, daily_file_ds, self.date, self.source)
 
-        correction_filename = f"oer_correction_{self.source}_{self.date.strftime('%Y-%m-%d')}.nc"
-        self._save_and_upload(correction_ds, correction_filename, "oer")
+        self._save_and_upload(correction_ds, oer_correction_key(self.source, self.date))
         return correction_ds
 
     def apply_oer(self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset) -> xr.Dataset:
@@ -143,7 +151,7 @@ class OerCorrection:
             if var in _DTYPE_OVERRIDES:
                 encoding.setdefault(var, {}).update(_DTYPE_OVERRIDES[var])
 
-        self._save_and_upload(ds, self.daily_file_filename, "daily_files/p2", encoding)
+        self._save_and_upload(ds, daily_file_key(self.profile, self.date, "p2"), encoding)
         return ds
 
     def run(self) -> None:

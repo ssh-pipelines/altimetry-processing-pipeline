@@ -23,13 +23,9 @@ common:
       source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
       reference: "https://doi.org/10.5067/S6AP4-2LRST"
 
-pipeline_init:
-  s3_prefix: "daily_files/p3/S6"
-  filename_template: "S6_alt_ref_at_v1_1_{date}.nc"
+pipeline_init: {}
 
 daily_files:
-  filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
-  s3_prefix: "daily_files/p1"
   source_mss: DTU18
   target_mss: DTU21
   mss_diff_file: DTU18_minus_DTU21.nc
@@ -45,10 +41,7 @@ finalizer:
     mean_threshold: 0.1
     rms_threshold: 0.27
 
-unifier:
-  src_filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
-  dst_filename_template: "NASA-SSH_alt_ref_at_v1_1_{date}.nc"
-  dst_prefix: "daily_files/p3/NASA-SSH"
+unifier: {}
 
 xover:
   crossover_type: self

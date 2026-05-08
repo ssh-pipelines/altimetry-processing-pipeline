@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
 import logging
-import os
 from typing import Type
 import numpy as np
 import xarray as xr
 
 from utilities.aws_utils import aws_manager
+from utilities.pipeline_layout import daily_file_key, daily_file_filename, s3_uri
 
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
@@ -184,24 +184,12 @@ def make_empty(job: DailyFileJob) -> xr.Dataset:
     return daily_ds
 
 
-def _get_output_filename(job: DailyFileJob) -> str:
-    return job.source_config.filename_template.format(
-        source=job.source,
-        date=job.date.strftime("%Y%m%d"),
-    )
-
-
 def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
-    filename = _get_output_filename(job)
+    filename = daily_file_filename(job.source_config, job.date)
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
-    s3_output_path = os.path.join(
-        f"s3://{bucket}/{job.source_config.s3_prefix}",
-        job.source,
-        str(job.date.year),
-        filename,
-    )
+    s3_output_path = s3_uri(bucket, daily_file_key(job.source_config, job.date, "p1"))
     aws_manager.upload_obj(out_path, s3_output_path)
     logging.info("Job complete.")
     daily_ds.close()

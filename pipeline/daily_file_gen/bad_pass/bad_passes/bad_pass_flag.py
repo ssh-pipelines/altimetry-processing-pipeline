@@ -8,6 +8,7 @@ import netCDF4 as nc
 import numpy as np
 
 from utilities.aws_utils import aws_manager
+from utilities.pipeline_layout import bad_pass_key, crossover_key, s3_uri
 
 
 class XoverProcessor:
@@ -32,8 +33,7 @@ class XoverProcessor:
         window_range = []
         cur_date = self.window_start
         while cur_date <= self.window_end:
-            xover_filename = f"xovers_{self.source}-{cur_date.strftime('%Y-%m-%d')}.nc"
-            xover_path = f"s3://{bucket}/crossovers/p2/{self.source}/{cur_date.year}/{xover_filename}"
+            xover_path = s3_uri(bucket, crossover_key(self.source, cur_date, "p2"))
             if aws_manager.key_exists(xover_path):
                 window_range.append(xover_path)
             else:
@@ -125,7 +125,7 @@ class XoverProcessor:
         """Write bad pass results JSON to s3://{bucket}/bad_passes/{source}/{date}.json"""
         source = results["source"]
         date = results["date"]
-        s3_key = f"s3://{bucket}/bad_passes/{source}/{date}.json"
+        s3_key = s3_uri(bucket, bad_pass_key(source, datetime.fromisoformat(date)))
         local_path = f"/tmp/{source}_{date}_bad_passes.json"
         with open(local_path, "w") as f:
             json.dump(results, f)

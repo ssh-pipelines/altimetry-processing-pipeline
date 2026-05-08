@@ -117,6 +117,15 @@ Init pipeline (this Lambda)
   → Daily File → Xover (p1) → OER → Xover (p2) → Bad Pass → Finalizer
 ```
 
+## Running tests
+
+From the `pipeline_init/` directory:
+
+```bash
+source .venv/bin/activate  # or use the devcontainer
+python -m unittest discover
+```
+
 ## Dependencies
 
 Key libraries (see `requirements.txt`):

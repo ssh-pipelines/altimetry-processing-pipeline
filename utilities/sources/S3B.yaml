@@ -12,13 +12,9 @@ common:
       source_url: "https://tds-odatis.aviso.altimetry.fr/thredds/catalog/dataset-l2p-uncross-calibrated-ntc-sla-s3b/version_04_00/catalog.html"
       reference: "https://www.aviso.altimetry.fr/"
 
-pipeline_init:
-  s3_prefix: "daily_files/p3/S3B"
-  filename_template: "S3B_alt_hilat_at_v1_1_{date}.nc"
+pipeline_init: {}
 
 daily_files:
-  filename_template: "{source}_alt_hilat_at_v1_1_{date}.nc"
-  s3_prefix: "daily_files/p1"
   source_mss: DTU18
   target_mss: DTU21
   mss_diff_file: DTU18_minus_DTU21.nc

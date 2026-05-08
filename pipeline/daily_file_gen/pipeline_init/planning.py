@@ -9,6 +9,11 @@ import boto3
 from config.source_config import PipelineInitSourceConfig
 from enumeration import build_enumerator
 from enumeration.base import GranuleRef
+from utilities.pipeline_layout import (
+    daily_file_filename,
+    daily_file_prefix,
+    jobs_manifest_key,
+)
 
 
 _s3 = boto3.client("s3")
@@ -63,6 +68,10 @@ def _is_newer(upstream: datetime, existing: datetime) -> bool:
     return upstream > existing
 
 
+_SENTINEL_DATE = date(1900, 1, 1)
+_SENTINEL_YYYYMMDD = "19000101"
+
+
 def scan_existing_p3_mod_times(
     bucket: str,
     source_config: PipelineInitSourceConfig,
@@ -70,15 +79,15 @@ def scan_existing_p3_mod_times(
     end: date,
 ) -> dict[date, datetime]:
     """Return mod-times of existing P3 daily files in [start, end]."""
-    pattern = source_config.filename_template.replace("{date}", r"(\d{8})")
-    pattern = pattern.replace(".", r"\.")
+    sample_filename = daily_file_filename(source_config, _SENTINEL_DATE)
+    pattern = re.escape(sample_filename).replace(_SENTINEL_YYYYMMDD, r"(\d{8})")
     regex = re.compile(pattern)
 
     paginator = _s3.get_paginator("list_objects_v2")
 
     results: dict[date, datetime] = {}
     for year in range(start.year, end.year + 1):
-        prefix = f"{source_config.s3_prefix}/{year}/"
+        prefix = daily_file_prefix(source_config.source, year, "p3")
         logging.info(f"Querying S3 for {source_config.source} daily files in {year}")
         pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
         for page in pages:
@@ -94,7 +103,7 @@ def scan_existing_p3_mod_times(
 
 def write_manifest(bucket: str, source: str, jobs: list[dict]) -> str:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    key = f"pipeline_runs/{source}/{run_id}/jobs.json"
+    key = jobs_manifest_key(source, run_id)
     _s3.put_object(
         Bucket=bucket,
         Key=key,

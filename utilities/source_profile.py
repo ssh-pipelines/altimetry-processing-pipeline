@@ -58,20 +58,6 @@ class SourceCommon:
     source_filename_pattern: str | None = None
     cycle_index_key: str | None = None
 
-    def daily_filename(self, d: date_type | datetime) -> str:
-        """Bridge helper (will be replaced by pipeline_layout in deepening #1).
-
-        Returns the full P3 daily filename for this source on the given date.
-        """
-        if isinstance(d, datetime):
-            d = d.date()
-        product = get_product(_product_name_for_along_track(self.product_type))
-        return product.filename_template.format(
-            source=self.source,
-            version=product.version,
-            YYYYMMDD=d.strftime("%Y%m%d"),
-        )
-
 
 T = TypeVar("T", bound=SourceCommon)
 
@@ -91,16 +77,6 @@ def get_product(name: str) -> Product:
             f"Product '{name}' not configured. Available: {sorted(products)}"
         )
     return Product(name=name, **products[name])
-
-
-def _product_name_for_along_track(product_type: str) -> str:
-    if product_type == "reference":
-        return "along_track_reference"
-    if product_type == "high_latitude":
-        return "along_track_high_latitude"
-    raise ValueError(
-        f"Unknown product_type '{product_type}' (expected 'reference' or 'high_latitude')"
-    )
 
 
 @lru_cache(maxsize=None)
@@ -169,26 +145,6 @@ def list_sources_for_stage(stage: str | None) -> list[str]:
 def get_registered_sources() -> list[str]:
     """All sources known to the registry."""
     return list_sources_for_stage(None)
-
-
-def daily_filename_prefix(source: str) -> str:
-    """Return the filename prefix segment for a source's daily files.
-
-    Bridge: replaced by pipeline_layout in deepening #1. Today's callers want
-    just the prefix (everything before `_{YYYYMMDD}.nc`) for use in pattern
-    construction.
-    """
-    profile = get_source_profile(source)
-    product = get_product(_product_name_for_along_track(profile.product_type))
-    suffix = "_{YYYYMMDD}.nc"
-    template = product.filename_template
-    if not template.endswith(suffix):
-        raise ValueError(
-            f"Product '{product.name}' template {template!r} does not end with "
-            f"'{suffix}'; daily_filename_prefix can't derive a prefix."
-        )
-    head = template[: -len(suffix)]
-    return head.format(source=source, version=product.version)
 
 
 def clear_caches() -> None:

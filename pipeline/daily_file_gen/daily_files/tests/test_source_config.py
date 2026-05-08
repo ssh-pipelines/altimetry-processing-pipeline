@@ -26,8 +26,7 @@ class TestSourceConfig(unittest.TestCase):
         self.assertIsInstance(cfg.smoothing, SmoothingConfig)
         self.assertGreater(len(cfg.collections), 0)
         self.assertIsInstance(cfg.collections[0], CollectionConfig)
-        self.assertTrue(cfg.filename_template)
-        self.assertTrue(cfg.s3_prefix)
+        self.assertEqual(cfg.source_mss, "DTU15")
 
     def test_s6_config_has_multiple_collections(self):
         cfg = get_source_config("S6")

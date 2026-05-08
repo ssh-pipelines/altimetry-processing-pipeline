@@ -12,13 +12,9 @@ common:
       source_url: ""
       reference: ""
 
-pipeline_init:
-  s3_prefix: "daily_files/p3/GSFC_6.1"
-  filename_template: "GSFC_6.1_alt_ref_at_v1_1_{date}.nc"
+pipeline_init: {}
 
 daily_files:
-  filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
-  s3_prefix: "daily_files/p1"
   source_mss: DTU15
   target_mss: DTU21
   mss_diff_file: DTU15_minus_DTU21.nc

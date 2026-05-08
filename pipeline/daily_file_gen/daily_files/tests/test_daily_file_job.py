@@ -9,8 +9,8 @@ from daily_files.daily_file_job import (
     SourcePipeline,
     SOURCE_REGISTRY,
     AcquiredData,
-    _get_output_filename,
 )
+from utilities.pipeline_layout import daily_file_filename
 from daily_files.fetching.downloader import S3Downloader
 from daily_files.ingestion.ingest import IngestedData
 
@@ -52,7 +52,7 @@ class TestDailyFileJobInit(unittest.TestCase):
 class TestGetOutputFilename(unittest.TestCase):
     def test_filename_format(self):
         job = DailyFileJob("2023-12-17", "GSFC")
-        filename = _get_output_filename(job)
+        filename = daily_file_filename(job.source_config, job.date)
         self.assertIn("GSFC", filename)
         self.assertIn("20231217", filename)
         self.assertTrue(filename.endswith(".nc"))

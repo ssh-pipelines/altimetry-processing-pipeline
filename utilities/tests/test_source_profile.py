@@ -7,7 +7,6 @@ from utilities.source_profile import (
     Product,
     SourceCommon,
     clear_caches,
-    daily_filename_prefix,
     get_product,
     get_registered_sources,
     get_source_profile,
@@ -18,8 +17,8 @@ from utilities.source_profile import (
 
 @dataclass(kw_only=True, frozen=True)
 class _StageA(SourceCommon):
-    s3_prefix: str
-    filename_template: str
+    extra_field: str
+    nested_value: int
 
 
 class TestLoadSourceCommon(unittest.TestCase):
@@ -52,12 +51,12 @@ class TestLoadSourceCommon(unittest.TestCase):
 
 
 class TestLoadWithStage(unittest.TestCase):
-    def test_merges_common_and_stage_section(self):
-        cfg = load_source_config(_StageA, "pipeline_init", "GSFC")
-        self.assertEqual(cfg.source, "GSFC")
-        self.assertEqual(cfg.product_type, "reference")  # from common
-        self.assertEqual(cfg.s3_prefix, "daily_files/p3/GSFC")  # from stage
-        self.assertTrue(cfg.filename_template.startswith("GSFC_alt_ref_at_"))
+    def test_load_with_empty_stage_section(self):
+        # pipeline_init's section is `{}` for every source; loader should
+        # still merge common fields successfully.
+        profile = load_source_config(SourceCommon, "pipeline_init", "GSFC")
+        self.assertEqual(profile.source, "GSFC")
+        self.assertEqual(profile.product_type, "reference")
 
 
 class TestErrors(unittest.TestCase):
@@ -67,9 +66,9 @@ class TestErrors(unittest.TestCase):
         self.assertIn("not configured", str(ctx.exception))
 
     def test_missing_stage_required_field_raises_typeerror(self):
-        # NASA-SSH has no `pipeline_init:` section, so s3_prefix is missing
+        # `_StageA` requires `extra_field` + `nested_value`; no source provides them
         with self.assertRaises(TypeError):
-            load_source_config(_StageA, "pipeline_init", "NASA-SSH")
+            load_source_config(_StageA, "pipeline_init", "GSFC")
 
     def test_unknown_field_raises_typeerror(self):
         # Construct a dataclass that doesn't accept all common fields
@@ -92,22 +91,6 @@ class TestProducts(unittest.TestCase):
     def test_unknown_product_raises(self):
         with self.assertRaises(ValueError):
             get_product("does-not-exist")
-
-
-class TestDailyFilenamePrefix(unittest.TestCase):
-    def test_reference_sources(self):
-        self.assertEqual(daily_filename_prefix("GSFC"), "GSFC_alt_ref_at_v1_1")
-        self.assertEqual(daily_filename_prefix("S6"), "S6_alt_ref_at_v1_1")
-
-    def test_high_latitude_sources(self):
-        self.assertEqual(daily_filename_prefix("S3B"), "S3B_alt_hilat_at_v1_1")
-
-
-class TestSourceCommonHelpers(unittest.TestCase):
-    def test_daily_filename_method(self):
-        profile = get_source_profile("S6")
-        fname = profile.daily_filename(date(2025, 3, 15))
-        self.assertEqual(fname, "S6_alt_ref_at_v1_1_20250315.nc")
 
 
 class TestListSourcesForStage(unittest.TestCase):

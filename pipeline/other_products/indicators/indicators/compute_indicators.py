@@ -12,6 +12,7 @@ import xarray as xr
 import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
+from utilities.pipeline_layout import indicators_key, indicators_prefix, s3_uri
 from indicators.pattern_data import Pattern
 from indicators.utils import generate_txt, generate_mp, dt_to_dec, dec_to_dt
 
@@ -146,7 +147,7 @@ class IndicatorProcessor:
         Load previously computed indicator records from the cached NetCDF on S3.
         Returns a list of dicts with keys: time, raw_gmsl, enso, pdo, iod.
         """
-        cache_key = f"s3://{bucket}/indicators/{self.source}/indicators.nc"
+        cache_key = s3_uri(bucket, indicators_key(self.source))
         if not aws_manager.key_exists(cache_key):
             logging.info("No cached indicators found — starting fresh.")
             return []
@@ -232,12 +233,12 @@ class IndicatorProcessor:
         # Convert results to xarray Dataset
         indicators_ds = self.generate_ds(computed_indicators)
 
-        indicators_prefix = f"s3://{bucket}/indicators/{self.source}/"
+        prefix_uri = s3_uri(bucket, indicators_prefix(self.source))
 
         # Make and upload netcdf
         nc_path = "/tmp/indicators.nc"
         indicators_ds.to_netcdf(nc_path)
-        aws_manager.upload_obj(nc_path, join(indicators_prefix, "indicators.nc"))
+        aws_manager.upload_obj(nc_path, s3_uri(bucket, indicators_key(self.source)))
 
         first_time = int(dec_to_dt(indicators_ds["time"].values[0]).timestamp() * 1000)
         last_time = int(dec_to_dt(indicators_ds["time"].values[-1]).timestamp() * 1000)
@@ -250,11 +251,11 @@ class IndicatorProcessor:
             local_path = join("/tmp", filename)
 
             # Upload (and replace) latest version
-            aws_manager.upload_obj(local_path, join(indicators_prefix, filename))
+            aws_manager.upload_obj(local_path, join(prefix_uri,filename))
 
             # Generate and upload .mp file
             mp_path = generate_mp(first_time, last_time, local_path, shortname)
-            aws_manager.upload_obj(mp_path, join(indicators_prefix, basename(mp_path)))
+            aws_manager.upload_obj(mp_path, join(prefix_uri,basename(mp_path)))
 
             # Generate and upload archival version
             date_str = datetime.now().date().isoformat().replace("-", "")
@@ -264,14 +265,14 @@ class IndicatorProcessor:
             shutil.copyfile(local_path, archive_path)
 
             s3_archive_path = join(
-                indicators_prefix, "archive", indicator_name.upper(), date_filename
+                prefix_uri,"archive", indicator_name.upper(), date_filename
             )
             aws_manager.upload_obj(archive_path, s3_archive_path)
 
             # Generate and upload archival .mp file
             mp_path = generate_mp(first_time, last_time, archive_path, shortname)
             s3_mp_path = join(
-                indicators_prefix, "archive", indicator_name.upper(), basename(mp_path)
+                prefix_uri,"archive", indicator_name.upper(), basename(mp_path)
             )
             aws_manager.upload_obj(mp_path, s3_mp_path)
 

@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 from utilities.source_profile import (
     SourceCommon,
     list_sources_for_stage,
@@ -7,11 +5,9 @@ from utilities.source_profile import (
 )
 
 
-@dataclass(kw_only=True, frozen=True)
-class UnifierSourceConfig(SourceCommon):
-    src_filename_template: str
-    dst_filename_template: str
-    dst_prefix: str
+# Unifier has no stage-specific fields after the layout refactor —
+# src/dst keys are derived from `utilities.pipeline_layout`.
+UnifierSourceConfig = SourceCommon
 
 
 def get_source_config(source: str) -> UnifierSourceConfig:

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from utilities.source_profile import (
     CollectionConfig,
@@ -16,8 +16,6 @@ class SmoothingConfig:
 
 @dataclass(kw_only=True, frozen=True)
 class SourceConfig(SourceCommon):
-    filename_template: str
-    s3_prefix: str
     source_mss: str
     target_mss: str
     mss_diff_file: str

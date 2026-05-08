@@ -12,7 +12,9 @@ COPY setup.py .
 RUN pip install .
 
 COPY pipeline/daily_file_gen/pipeline_init/app.py .
+COPY pipeline/daily_file_gen/pipeline_init/planning.py .
 COPY pipeline/daily_file_gen/pipeline_init/config/ config/
+COPY pipeline/daily_file_gen/pipeline_init/enumeration/ enumeration/
 
 ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}"
 

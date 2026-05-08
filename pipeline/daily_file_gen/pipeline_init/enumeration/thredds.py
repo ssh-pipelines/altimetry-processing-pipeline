@@ -21,9 +21,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 
-from config.source_config import CollectionConfig, PipelineInitSourceConfig
+from config.source_config import PipelineInitSourceConfig
 from enumeration.aviso_auth import build_aviso_session
 from enumeration.base import GranuleRef
+from utilities.source_profile import CollectionConfig
 
 
 TDS_BASE = "https://tds-odatis.aviso.altimetry.fr/thredds/"

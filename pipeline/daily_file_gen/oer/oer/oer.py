@@ -11,7 +11,7 @@ from oer.compute_polygon_correction import (
     apply_correction,
 )
 from utilities.aws_utils import aws_manager
-from utilities.source_registry import daily_filename_prefix
+from utilities.source_profile import daily_filename_prefix
 
 _DTYPE_OVERRIDES = {
     "source_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},

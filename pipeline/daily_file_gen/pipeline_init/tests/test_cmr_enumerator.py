@@ -105,12 +105,12 @@ class TestCMREnumeratorSingleCollection(unittest.TestCase):
 
 class TestCMREnumeratorEmpty(unittest.TestCase):
     def test_empty_concept_ids_raises(self):
+        from dataclasses import replace
+        from utilities.source_profile import CollectionConfig
+
         cfg = get_source_config("GSFC")
-        # zero out concept_ids in a copy
-        cfg.collections[0].concept_id = ""
-        try:
-            with self.assertRaises(ValueError):
-                CMREnumerator(cfg).enumerate(date(2023, 1, 1), date(2023, 1, 1))
-        finally:
-            # restore
-            cfg.collections[0].concept_id = "C2901523432-POCLOUD"
+        # build a copy with empty concept_ids
+        empty_collections = [replace(c, concept_id="") for c in cfg.collections]
+        cfg = replace(cfg, collections=empty_collections)
+        with self.assertRaises(ValueError):
+            CMREnumerator(cfg).enumerate(date(2023, 1, 1), date(2023, 1, 1))

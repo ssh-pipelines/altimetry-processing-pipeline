@@ -5,7 +5,7 @@ import logging
 from scipy.interpolate import PPoly
 
 from oer.oerfit import oerfit
-from utilities.source_registry import daily_filename_prefix
+from utilities.source_profile import daily_filename_prefix
 
 
 def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:

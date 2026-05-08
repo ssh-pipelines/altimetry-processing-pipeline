@@ -70,7 +70,7 @@ def scan_existing_p3_mod_times(
     end: date,
 ) -> dict[date, datetime]:
     """Return mod-times of existing P3 daily files in [start, end]."""
-    pattern = source_config.filename_pattern.replace("{date8}", r"(\d{8})")
+    pattern = source_config.filename_template.replace("{date}", r"(\d{8})")
     pattern = pattern.replace(".", r"\.")
     regex = re.compile(pattern)
 

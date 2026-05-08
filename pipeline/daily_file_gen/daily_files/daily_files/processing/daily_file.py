@@ -430,18 +430,13 @@ class DailyFile(ABC):
     def set_source_attrs(self):
         """Sets source-specific global attributes from collection metadata.
         Subclasses can override to add extra attributes (call super first)."""
-        if self.source_config.collections:
-            sources = sorted({c.source_label for c in self.source_config.collections if c.source_label})
-            source_urls = sorted({c.source_url for c in self.source_config.collections if c.source_url})
-            references = sorted({c.reference for c in self.source_config.collections if c.reference})
+        sources = sorted({c.source_label for c in self.source_config.collections if c.source_label})
+        source_urls = sorted({c.source_url for c in self.source_config.collections if c.source_url})
+        references = sorted({c.reference for c in self.source_config.collections if c.reference})
 
-            self.ds.attrs["source"] = ", and ".join(sources)
-            self.ds.attrs["source_url"] = ", and ".join(source_urls)
-            self.ds.attrs["references"] = ", and ".join(references)
-        else:
-            self.ds.attrs["source"] = self.source_config.source_label
-            self.ds.attrs["source_url"] = self.source_config.source_url
-            self.ds.attrs["references"] = self.source_config.reference
+        self.ds.attrs["source"] = ", and ".join(sources)
+        self.ds.attrs["source_url"] = ", and ".join(source_urls)
+        self.ds.attrs["references"] = ", and ".join(references)
         self.ds.attrs["mean_sea_surface"] = self.target_mss
 
         if self.ds.attrs["time_coverage_start"] == "N/A":

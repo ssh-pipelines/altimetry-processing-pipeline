@@ -5,3 +5,11 @@ import os
 _unifier_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _unifier_dir not in sys.path:
     sys.path.insert(0, _unifier_dir)
+
+# Add the repo root so `from utilities.source_profile import ...` resolves
+# (utilities/ is installed via setup.py in the Docker image; not in the venv).
+_repo_root = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)

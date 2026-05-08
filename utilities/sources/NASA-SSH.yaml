@@ -1,0 +1,5 @@
+common:
+  product_type: reference
+  discovery_type: cmr
+  unify: false
+  start_date: "1992-10-25"

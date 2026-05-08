@@ -63,11 +63,12 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.discovery_type, "s3_bucket")
         self.assertEqual(cfg.source_bucket, "example-source-bucket")
         self.assertEqual(cfg.source_prefix_pattern, "data/{source}/{year}")
-        self.assertEqual(cfg.source_filename_pattern, "{source}_{date8}.nc")
-        self.assertEqual(cfg.source_label, "Example S3-hosted dataset")
-        self.assertEqual(cfg.source_url, "https://example.com/dataset")
-        self.assertEqual(cfg.reference, "https://doi.org/10.0000/example")
-        self.assertEqual(len(cfg.collections), 0)
+        self.assertEqual(cfg.source_filename_pattern, "{source}_{date}.nc")
+        # Source-level metadata now lives in collections[0]
+        self.assertEqual(len(cfg.collections), 1)
+        self.assertEqual(cfg.collections[0].source_label, "Example S3-hosted dataset")
+        self.assertEqual(cfg.collections[0].source_url, "https://example.com/dataset")
+        self.assertEqual(cfg.collections[0].reference, "https://doi.org/10.0000/example")
 
     def test_example_s3_cycle_index_key(self):
         cfg = get_source_config("EXAMPLE_S3")

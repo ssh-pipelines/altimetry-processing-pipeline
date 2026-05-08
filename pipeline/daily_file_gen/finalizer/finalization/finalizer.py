@@ -8,7 +8,7 @@ import pandas as pd
 import netCDF4 as nc
 
 from utilities.aws_utils import aws_manager
-from utilities.source_registry import daily_filename_prefix
+from utilities.source_profile import daily_filename_prefix
 from config.source_config import get_source_config
 
 

@@ -1,0 +1,28 @@
+common:
+  product_type: reference
+  discovery_type: s3_bucket
+  unify: false
+  start_date: "2020-01-01"
+  source_bucket: "example-source-bucket"
+  source_prefix_pattern: "data/{source}/{year}"
+  source_filename_pattern: "{source}_{date}.nc"
+  cycle_index_key: "data/EXAMPLE_S3/cycle_index.json"
+  collections:
+    - shortname: ""
+      source_label: "Example S3-hosted dataset"
+      source_url: "https://example.com/dataset"
+      reference: "https://doi.org/10.0000/example"
+
+pipeline_init:
+  s3_prefix: "daily_files/p3/EXAMPLE_S3"
+  filename_template: "EXAMPLE_S3_alt_ref_at_v1_1_{date}.nc"
+
+daily_files:
+  filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
+  s3_prefix: "daily_files/p1"
+  source_mss: DTU15
+  target_mss: DTU21
+  mss_diff_file: DTU15_minus_DTU21.nc
+  smoothing:
+    speed: 5.745
+    sigma: 15

@@ -10,7 +10,7 @@ from datetime import datetime, UTC
 from crossover.xover_ssh import xover_ssh
 from crossover.config.source_config import get_source_config
 from utilities.aws_utils import aws_manager
-from utilities.source_registry import daily_filename_prefix
+from utilities.source_profile import daily_filename_prefix
 
 
 EPOCH: np.datetime64 = np.datetime64("1990-01-01T00:00:00.000000")

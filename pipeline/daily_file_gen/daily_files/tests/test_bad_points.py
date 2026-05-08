@@ -125,7 +125,6 @@ class TestGSFCBadPoints(unittest.TestCase):
         bad_time = times[10].astype("datetime64[s]").item()
 
         source_config = _bad_points_config(get_source_config("GSFC"), bad_time)
-        print(source_config)
         ds = GSFCDailyFile(
             _make_gsfc_ingested(times),
             date,

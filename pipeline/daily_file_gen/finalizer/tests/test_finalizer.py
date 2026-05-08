@@ -18,7 +18,6 @@ from finalization.finalizer import (
 from config.source_config import (
     get_source_config,
     get_available_sources,
-    _load_sources,
 )
 
 # Test constant matching the S6 config value
@@ -63,16 +62,16 @@ def _create_test_nc(path, n=10, source="GSFC", add_offset_attr=False,
 class TestSourceConfig(unittest.TestCase):
 
     def test_load_sources_returns_gsfc_and_s6(self):
-        configs = _load_sources()
-        self.assertIn("GSFC", configs)
-        self.assertIn("S6", configs)
+        sources = get_available_sources()
+        self.assertIn("GSFC", sources)
+        self.assertIn("S6", sources)
 
     def test_gsfc_config_values(self):
         cfg = get_source_config("GSFC")
         self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.offset, 0.0)
         self.assertEqual(cfg.start_date, date(1992, 10, 25))
-        self.assertIsNone(cfg.end_date)
+        self.assertEqual(cfg.end_date, date(2025, 12, 31))
         self.assertEqual(cfg.pass_flag.mean_num, 15.0)
         self.assertEqual(cfg.pass_flag.rms_num, 25.0)
         self.assertEqual(cfg.pass_flag.mean_threshold, 0.1)
@@ -82,7 +81,7 @@ class TestSourceConfig(unittest.TestCase):
         cfg = get_source_config("S6")
         self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.offset, S6_OFFSET)
-        self.assertEqual(cfg.start_date, date(2024, 1, 21))
+        self.assertEqual(cfg.start_date, date(2026, 1, 1))
 
     def test_invalid_source_raises(self):
         with self.assertRaises(ValueError):
@@ -170,7 +169,7 @@ class TestLoadBadPasses(unittest.TestCase):
     def test_s3_key_uses_source_and_isoformat_date(self, mock_aws):
         mock_aws.fs.exists.return_value = False
         Finalizer(date(2020, 6, 15), "GSFC", "my-bucket")
-        expected = "s3://my-bucket/aux_files/bad_passes/GSFC/2020-06-15.json"
+        expected = "s3://my-bucket/bad_passes/GSFC/2020-06-15.json"
         mock_aws.fs.exists.assert_called_once_with(expected)
 
 
@@ -312,7 +311,7 @@ class TestProcessGSFC(unittest.TestCase, _ProcessTestMixin):
             f.process("bucket")
             dst = mock_aws.fs.upload.call_args[0][1]
             self.assertIn("p3/GSFC/", dst)
-            self.assertIn("GSFC-SSH", dst)
+            self.assertIn("GSFC", dst)
             self.assertNotIn("NASA", dst)
             self.assertIn("2020", dst)
         finally:

@@ -8,7 +8,7 @@ from typing import Tuple, Optional
 
 from simple_gridder.gridding import Gridder
 from utilities.aws_utils import aws_manager
-from utilities.source_registry import daily_filename_prefix
+from utilities.source_profile import daily_filename_prefix
 
 
 class SimpleGridderJob:

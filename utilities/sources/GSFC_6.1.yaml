@@ -1,0 +1,27 @@
+common:
+  product_type: reference
+  discovery_type: s3_bucket
+  unify: false
+  start_date: "1992-10-25"
+  source_bucket: ""
+  source_prefix_pattern: "source_data/GSFC_6.1/{source}"
+  source_filename_pattern: "{source}_{date}.nc"
+  collections:
+    - shortname: GSFC_6.1
+      source_label: "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 6.1"
+      source_url: ""
+      reference: ""
+
+pipeline_init:
+  s3_prefix: "daily_files/p3/GSFC_6.1"
+  filename_template: "GSFC_6.1_alt_ref_at_v1_1_{date}.nc"
+
+daily_files:
+  filename_template: "{source}_alt_ref_at_v1_1_{date}.nc"
+  s3_prefix: "daily_files/p1"
+  source_mss: DTU15
+  target_mss: DTU21
+  mss_diff_file: DTU15_minus_DTU21.nc
+  smoothing:
+    speed: 5.745
+    sigma: 15

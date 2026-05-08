@@ -46,7 +46,7 @@ class S3BucketEnumerator:
 
         fname_pattern = self.source_config.source_filename_pattern or ""
         fname_pattern = fname_pattern.replace("{source}", self.source_config.source)
-        fname_pattern = fname_pattern.replace("{date8}", r"(\d{8})")
+        fname_pattern = fname_pattern.replace("{date}", r"(\d{8})")
         fname_pattern = fname_pattern.replace(".", r"\.")
 
         refs: list[GranuleRef] = []

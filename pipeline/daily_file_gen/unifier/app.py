@@ -27,10 +27,10 @@ def handler(event, context):
     date8 = date_obj.strftime("%Y%m%d")
     year = str(date_obj.year)
 
-    src_filename = config.src_filename_template.format(source=source, date8=date8)
+    src_filename = config.src_filename_template.format(source=source, date=date8)
     src_key = f"daily_files/p3/{source}/{year}/{src_filename}"
 
-    dst_filename = config.dst_filename_template.format(source=source, date8=date8)
+    dst_filename = config.dst_filename_template.format(source=source, date=date8)
     dst_key = f"{config.dst_prefix}/{year}/{dst_filename}"
 
     logging.info(f"Copying s3://{bucket}/{src_key} -> s3://{bucket}/{dst_key}")

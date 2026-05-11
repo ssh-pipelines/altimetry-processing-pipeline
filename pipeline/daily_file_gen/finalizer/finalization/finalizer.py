@@ -14,7 +14,7 @@ from utilities.pipeline_layout import (
     daily_file_key,
     s3_uri,
 )
-from config.source_config import get_source_config
+from finalization.config.source_config import get_source_config
 
 
 class Finalizer:

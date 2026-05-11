@@ -1,5 +1,5 @@
 pyresample==1.20.0
-numpy>=2.2
+numpy==2.2.6
 netcdf4==1.6.5
 requests==2.25.1
 xarray==2025.4.0

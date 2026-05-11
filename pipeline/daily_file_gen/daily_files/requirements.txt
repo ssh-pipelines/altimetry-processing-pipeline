@@ -1,5 +1,5 @@
 xarray==2025.4.0
-numpy>=2.2
+numpy==2.2.6
 pyyaml
 boto3==1.28.84
 requests

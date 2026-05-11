@@ -1,7 +1,9 @@
-numpy==1.26.2
-xarray==2023.6.0
+numpy>=2.2
+xarray==2025.4.0
 netCDF4==1.7.2
 h5netcdf==1.6.1
 h5py==3.13.0
-boto3
+scipy==1.15.3
+boto3==1.28.84
 s3fs
+pyyaml

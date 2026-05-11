@@ -15,7 +15,7 @@ from finalization.finalizer import (
     Finalizer,
     apply_bad_pass,
 )
-from config.source_config import (
+from finalization.config.source_config import (
     get_source_config,
     get_available_sources,
 )

@@ -1,5 +1,5 @@
-numpy==1.26.2
-pandas==2.0.2
+numpy>=2.2
+pandas==3.0.2
 netCDF4==1.7.2
 h5netcdf==1.6.1
 h5py==3.13.0

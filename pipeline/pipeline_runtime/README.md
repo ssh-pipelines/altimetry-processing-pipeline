@@ -41,15 +41,21 @@ a gigabyte for no functional benefit.
 ## How stage Dockerfiles use it
 
 ```dockerfile
-ARG BASE_REGISTRY
-ARG BASE_TAG
-FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 ```
 
-`BASE_REGISTRY` and `BASE_TAG` are passed by `scripts/dev/build_and_push.sh`
-and `scripts/prod/build_and_push.sh`, which derive them from the current
-environment and version. All stages built in a single invocation share the
-same `BASE_TAG` — that's how version coupling is enforced.
+`BASE_IMAGE` is overridden at build time by `scripts/dev/build_and_push.sh`
+and `scripts/prod/build_and_push.sh`, which set it to the matching
+`pipeline_runtime` tag in the current environment. All stages built in a
+single invocation share the same tag — that's how version coupling is
+enforced.
+
+The default falls back to the plain Lambda Python image. That keeps the
+Dockerfile buildable on its own (without the wrapper scripts), but a stage
+built this way will fail to install its dependencies that expect the
+scientific stack — which is the desired failure mode: building without
+the wrapper should fail fast rather than silently produce a broken image.
 
 ## Bumping a version
 

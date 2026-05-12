@@ -1,6 +1,5 @@
-ARG BASE_REGISTRY
-ARG BASE_TAG
-FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 COPY pipeline/daily_file_gen/bad_pass/requirements.txt .
 
@@ -16,6 +15,6 @@ RUN python -m pip install .
 COPY pipeline/daily_file_gen/bad_pass/bad_passes bad_passes/
 COPY pipeline/daily_file_gen/bad_pass/app.py .
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/bad_passes"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/bad_passes"
 
 CMD [ "app.handler" ]

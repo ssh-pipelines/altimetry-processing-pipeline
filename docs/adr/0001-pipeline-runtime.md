@@ -96,16 +96,20 @@ diverge from the rest. The runtime image and stages live and die together.
 A prod release is `git tag -a v1.4.0` → `./scripts/prod/build_and_push.sh 1.4.0 ...`.
 Every prod artifact is reproducible from a git tag.
 
-**4. Stage Dockerfiles use build-arg parameterisation, not literal FROM.**
+**4. Stage Dockerfiles use a single `BASE_IMAGE` build-arg, with a sensible default.**
 
 ```dockerfile
-ARG BASE_REGISTRY
-ARG BASE_TAG
-FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 ```
 
-`BASE_REGISTRY` and `BASE_TAG` are set by the wrapper scripts. The same
-Dockerfile is used for dev and prod; only the build args differ.
+`BASE_IMAGE` is overridden by the wrapper scripts to point at the matching
+`pipeline_runtime` tag. The same Dockerfile is used for dev and prod; only
+the build arg differs. The default falls back to plain `lambda/python:3.11`
+so the Dockerfile parses cleanly under `buildx`'s lint
+(`InvalidDefaultArgInFrom` would otherwise warn); standalone builds that
+skip the wrapper will fail fast when stage extras try to install on a base
+without the scientific stack.
 
 **5. `pyproject.toml` migration is out of scope.**
 

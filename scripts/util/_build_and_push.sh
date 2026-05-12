@@ -91,8 +91,7 @@ for IMAGE in "${SORTED[@]}"; do
 
   if is_heavy_stage "$IMAGE"; then
     BUILD_ARGS+=(
-      --build-arg "BASE_REGISTRY=$REGISTRY/$ENV"
-      --build-arg "BASE_TAG=$RELEASE_VERSION"
+      --build-arg "BASE_IMAGE=$REGISTRY/$ENV/pipeline_runtime:$RELEASE_VERSION"
     )
   fi
 

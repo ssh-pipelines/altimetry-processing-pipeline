@@ -27,9 +27,8 @@ RUN mkdir /tmp/orbit_libs && \
     | awk '{print $3}' \
     | xargs -I{} cp {} /tmp/orbit_libs/
 
-ARG BASE_REGISTRY
-ARG BASE_TAG
-FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 COPY pipeline/daily_file_gen/daily_files/requirements.txt .
 
@@ -55,7 +54,7 @@ RUN python -m pip install .
 COPY pipeline/daily_file_gen/daily_files/daily_files daily_files/
 COPY pipeline/daily_file_gen/daily_files/app.py .
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/daily_files"
-ENV LD_LIBRARY_PATH="${LAMBDA_TASK_ROOT}/libs:${LD_LIBRARY_PATH}"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/daily_files"
+ENV LD_LIBRARY_PATH="${LAMBDA_TASK_ROOT}/libs"
 
 CMD [ "app.handler" ]

@@ -16,6 +16,6 @@ COPY pipeline/daily_file_gen/pipeline_init/planning.py .
 COPY pipeline/daily_file_gen/pipeline_init/config/ config/
 COPY pipeline/daily_file_gen/pipeline_init/enumeration/ enumeration/
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
 
 CMD [ "app.handler" ]

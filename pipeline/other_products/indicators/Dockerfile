@@ -1,6 +1,5 @@
-ARG BASE_REGISTRY
-ARG BASE_TAG
-FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 COPY pipeline/other_products/indicators/requirements.txt .
 
@@ -18,6 +17,6 @@ COPY pipeline/other_products/indicators/ref_files ref_files/
 COPY pipeline/other_products/indicators/indicators indicators/
 COPY pipeline/other_products/indicators/app.py .
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/indicators"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/indicators"
 
 CMD [ "app.handler" ]

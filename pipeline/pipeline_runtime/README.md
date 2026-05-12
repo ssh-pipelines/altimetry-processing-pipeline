@@ -69,6 +69,15 @@ The build script verifies (1) and (2) before letting (3) proceed: if any
 heavy stage is built without a matching `pipeline_runtime` tag in ECR, the
 build aborts.
 
+## Build-only — not a deployable Lambda
+
+`pipeline_runtime` has no `app.py`, no `CMD`, and no corresponding Lambda
+function. It exists only as a base image in ECR for stages to `FROM`. The
+deploy scripts (`scripts/{dev,prod}/deploy.sh`) recognise it as build-only
+and skip the `lambda update-function-code` call. If you add another
+build-only artifact in the future, add it to the `BUILD_ONLY_IMAGES` list in
+both deploy scripts.
+
 ## What's intentionally *not* in this image
 
 - **Per-stage extras** (pandas, dask, geopandas, shapely, pyresample,

@@ -26,9 +26,25 @@ if [ ${#IMAGES[@]} -eq 0 ]; then
     exit 1
 fi
 
+# Images that are build-only artifacts (base images, etc.) — pushed to ECR for
+# stage builds to consume, but with no corresponding Lambda function to update.
+BUILD_ONLY_IMAGES=(pipeline_runtime)
+
+is_build_only() {
+    for s in "${BUILD_ONLY_IMAGES[@]}"; do
+        [[ "$s" == "$1" ]] && return 0
+    done
+    return 1
+}
+
 TAG="dev-${GIT_SHA}"
 
 for IMAGE in "${IMAGES[@]}"; do
+    if is_build_only "$IMAGE"; then
+        echo "Skipping deploy for $IMAGE (base image; no Lambda function)"
+        continue
+    fi
+
     FULL="$REGISTRY/dev/$IMAGE:$TAG"
 
     if [ -z "$DRY_RUN" ]; then

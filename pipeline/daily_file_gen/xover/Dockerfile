@@ -1,4 +1,6 @@
-FROM public.ecr.aws/lambda/python:3.11
+ARG BASE_REGISTRY
+ARG BASE_TAG
+FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
 
 COPY pipeline/daily_file_gen/xover/requirements.txt .
 

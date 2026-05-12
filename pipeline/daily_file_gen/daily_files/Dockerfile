@@ -27,7 +27,9 @@ RUN mkdir /tmp/orbit_libs && \
     | awk '{print $3}' \
     | xargs -I{} cp {} /tmp/orbit_libs/
 
-FROM public.ecr.aws/lambda/python:3.11
+ARG BASE_REGISTRY
+ARG BASE_TAG
+FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
 
 COPY pipeline/daily_file_gen/daily_files/requirements.txt .
 

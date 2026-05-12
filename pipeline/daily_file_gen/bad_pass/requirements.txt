@@ -1,9 +1,2 @@
-numpy==2.2.6
-xarray==2025.4.0
-netCDF4==1.7.2
-h5netcdf==1.6.1
-h5py==3.13.0
-scipy==1.15.3
-boto3==1.28.84
-s3fs
-pyyaml
+# bad_pass has no stage-specific extras — the shared scientific stack from
+# pipeline_runtime covers everything this Lambda imports.

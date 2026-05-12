@@ -1,4 +1,6 @@
-FROM public.ecr.aws/lambda/python:3.11
+ARG BASE_REGISTRY
+ARG BASE_TAG
+FROM ${BASE_REGISTRY}/pipeline_runtime:${BASE_TAG}
 
 ARG ROOT_DIR=pipeline/other_products/enso
 ARG CARTOPY_DATA_DIR=/opt/cartopy_data

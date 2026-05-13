@@ -21,7 +21,7 @@ def _resolve_credentials() -> tuple[str | None, str | None]:
         if user and pwd:
             return user, pwd
     except Exception as e:
-        logging.debug(f"AVISO_auth secret unavailable: {e}")
+        logging.warning(f"AVISO_auth secret unavailable: {e}")
 
     user = os.environ.get("AVISO_USER")
     pwd = os.environ.get("AVISO_PASS")

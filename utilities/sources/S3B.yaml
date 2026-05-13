@@ -4,12 +4,12 @@ common:
   unify: false
   start_date: "2018-04-25"
   collections:
-    - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b
-      thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-s3b
+    - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz
+      thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz
       thredds_version: version_04_00
       priority: 1
       source_label: "NTC Sentinel-3B Global Ocean Along track Sea Level Anomalies L2P products"
-      source_url: "https://tds-odatis.aviso.altimetry.fr/thredds/catalog/dataset-l2p-uncross-calibrated-ntc-sla-s3b/version_04_00/catalog.html"
+      source_url: "https://tds-odatis.aviso.altimetry.fr/thredds/catalog/dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz/version_04_00/catalog.html"
       reference: "https://www.aviso.altimetry.fr/"
 
 pipeline_init: {}

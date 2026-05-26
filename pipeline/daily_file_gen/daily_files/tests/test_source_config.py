@@ -86,3 +86,47 @@ class TestSourceConfig(unittest.TestCase):
         for source in ["S6", "S6B"]:
             cfg = get_source_config(source)
             self.assertIsNone(cfg.bad_points, f"{source} should have bad_points=None")
+
+    def test_s3b_high_latitude_has_no_mss_fields(self):
+        """High-latitude sources interpolate DTU21 directly (see ADR 0002),
+        so the config must not carry source_mss / target_mss / mss_diff_file."""
+        cfg = get_source_config("S3B")
+        self.assertEqual(cfg.product_type, "high_latitude")
+        self.assertIsNone(cfg.source_mss)
+        self.assertIsNone(cfg.target_mss)
+        self.assertIsNone(cfg.mss_diff_file)
+
+    def test_high_latitude_with_mss_field_raises(self):
+        """Adding any MSS field to a high_latitude source should fail validation."""
+        for offending in ("source_mss", "target_mss", "mss_diff_file"):
+            with self.subTest(field=offending):
+                with self.assertRaises(ValueError) as ctx:
+                    SourceConfig(
+                        source="TEST",
+                        product_type="high_latitude",
+                        start_date=__import__("datetime").date(2020, 1, 1),
+                        smoothing=SmoothingConfig(speed=5.0, sigma=10.0),
+                        **{offending: "DTU21"},
+                    )
+                self.assertIn(offending, str(ctx.exception))
+
+    def test_reference_without_mss_field_raises(self):
+        """Reference sources require all three MSS fields."""
+        import datetime as _dt
+        for missing in ("source_mss", "target_mss", "mss_diff_file"):
+            with self.subTest(missing=missing):
+                kwargs = {
+                    "source_mss": "DTU18",
+                    "target_mss": "DTU21",
+                    "mss_diff_file": "DTU18_minus_DTU21.nc",
+                }
+                kwargs.pop(missing)
+                with self.assertRaises(ValueError) as ctx:
+                    SourceConfig(
+                        source="TEST",
+                        product_type="reference",
+                        start_date=_dt.date(2020, 1, 1),
+                        smoothing=SmoothingConfig(speed=5.0, sigma=10.0),
+                        **kwargs,
+                    )
+                self.assertIn(missing, str(ctx.exception))

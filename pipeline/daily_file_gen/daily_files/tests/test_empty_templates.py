@@ -22,6 +22,17 @@ class TestEmptyTemplates(unittest.TestCase):
         self.assertEqual(errors, [], f"S6 empty template schema errors: {errors}")
         ds.close()
 
+    def test_s3b_empty_template(self):
+        """High-latitude AVISO L2P source — single-column source_flag,
+        DTU21 as mean_sea_surface despite no target_mss in config."""
+        job = DailyFileJob("2023-01-01", "S3B")
+        ds = make_empty(job)
+        errors = validate_dataset(ds)
+        self.assertEqual(errors, [], f"S3B empty template schema errors: {errors}")
+        self.assertEqual(ds.attrs["mean_sea_surface"], "DTU21")
+        self.assertEqual(ds["source_flag"].sizes["src_flag_dim"], 1)
+        ds.close()
+
     def test_empty_has_required_global_attrs(self):
         """Empty templates should have time_coverage_start/end set to the job date."""
         job = DailyFileJob("2023-06-15", "GSFC")

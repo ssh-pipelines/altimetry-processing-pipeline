@@ -10,7 +10,7 @@ from utilities.pipeline_layout import daily_file_key, daily_file_filename, s3_ur
 
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
-from daily_files.fetching.aviso_auth import build_aviso_session
+from utilities.aviso_auth import build_aviso_session
 from daily_files.fetching.downloader import (
     Downloader,
     HttpDownloader,
@@ -23,6 +23,7 @@ from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
 from daily_files.ingestion.s6_ingest import S6Ingestor
 
+from daily_files.processing.aviso_l2p_daily_file import AvisoL2PDailyFile
 from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.empty_template import build_empty_dataset
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
@@ -72,7 +73,7 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         downloader=HttpDownloader,
         downloader_kwargs={"session_fn": build_aviso_session},
         ingestor=AvisoL2PIngestor,
-        processor=DailyFile,  # processing not yet implemented for high_latitude sources
+        processor=AvisoL2PDailyFile,
     ),
 }
 

@@ -237,8 +237,11 @@ class DailyFile(ABC):
         if len(self.ds["time"]) == 0:
             logging.debug("Empty data arrays, skipping mss swapping")
             return
-        mss_path = os.path.join(REF_FILES_DIR, "mss_diffs", self.mss_name)
-        mss_correction = self.get_mss_values(mss_path)
+        if self.mss_name is None:
+            mss_correction = 0.0
+        else:
+            mss_path = os.path.join(REF_FILES_DIR, "mss_diffs", self.mss_name)
+            mss_correction = self.get_mss_values(mss_path)
         self.ds["ssha"].values = self.ds["ssha"].values + self._source_mss_correction() + mss_correction
         self._post_mss_swap()
 

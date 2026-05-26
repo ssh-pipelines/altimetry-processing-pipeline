@@ -1,10 +1,12 @@
 import logging
 import unittest
+from unittest import mock
 import xarray as xr
 import numpy as np
 from datetime import datetime
 from daily_files.config.source_config import get_source_config
 from daily_files.ingestion.ingest import IngestedData
+from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
 from daily_files.daily_file_job import save_ds
 from daily_files.config.dataset_schema import validate_dataset
@@ -83,6 +85,10 @@ class TestGSFCProcessing(unittest.TestCase):
             format="[%(levelname)s] %(asctime)s - %(message)s",
             handlers=[logging.StreamHandler()],
         )
+
+        mss_patcher = mock.patch.object(DailyFile, "get_mss_values", return_value=0.0)
+        mss_patcher.start()
+        cls.addClassCleanup(mss_patcher.stop)
 
         cls.date = datetime(1995, 6, 7)
         source_config = get_source_config("GSFC")

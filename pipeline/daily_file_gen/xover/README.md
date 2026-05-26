@@ -47,7 +47,7 @@ All four fields are required. Available sources are defined in `crossover/config
 | `daily_files/{df_version}/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Input daily files (read) |
 | `crossovers/{df_version}/{source}/{year}/xovers_{source}-{YYYY-MM-DD}.nc` | Output crossover file (write) |
 
-Filename prefix is determined by the global source registry (`utilities/source_registry.py`).
+Filename prefix is determined by the global source registry (`utilities/source_profile.py`).
 
 ## Directory structure
 

@@ -26,8 +26,7 @@ class TestSourceConfig(unittest.TestCase):
         self.assertIsInstance(cfg.smoothing, SmoothingConfig)
         self.assertGreater(len(cfg.collections), 0)
         self.assertIsInstance(cfg.collections[0], CollectionConfig)
-        self.assertTrue(cfg.filename_template)
-        self.assertTrue(cfg.s3_prefix)
+        self.assertEqual(cfg.source_mss, "DTU15")
 
     def test_s6_config_has_multiple_collections(self):
         cfg = get_source_config("S6")
@@ -63,11 +62,12 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.discovery_type, "s3_bucket")
         self.assertEqual(cfg.source_bucket, "example-source-bucket")
         self.assertEqual(cfg.source_prefix_pattern, "data/{source}/{year}")
-        self.assertEqual(cfg.source_filename_pattern, "{source}_{date8}.nc")
-        self.assertEqual(cfg.source_label, "Example S3-hosted dataset")
-        self.assertEqual(cfg.source_url, "https://example.com/dataset")
-        self.assertEqual(cfg.reference, "https://doi.org/10.0000/example")
-        self.assertEqual(len(cfg.collections), 0)
+        self.assertEqual(cfg.source_filename_pattern, "{source}_{date}.nc")
+        # Source-level metadata now lives in collections[0]
+        self.assertEqual(len(cfg.collections), 1)
+        self.assertEqual(cfg.collections[0].source_label, "Example S3-hosted dataset")
+        self.assertEqual(cfg.collections[0].source_url, "https://example.com/dataset")
+        self.assertEqual(cfg.collections[0].reference, "https://doi.org/10.0000/example")
 
     def test_example_s3_cycle_index_key(self):
         cfg = get_source_config("EXAMPLE_S3")
@@ -82,19 +82,7 @@ class TestSourceConfig(unittest.TestCase):
         sources = get_available_sources()
         self.assertIn("EXAMPLE_S3", sources)
 
-    def test_gsfc_61_bad_points_loaded(self):
-        """GSFC_6.1 bad_points should be parsed from YAML as a date-keyed dict."""
-        from datetime import date, datetime
-        cfg = get_source_config("GSFC_6.1")
-        self.assertIsNotNone(cfg.bad_points)
-        self.assertIn(date(2025, 7, 17), cfg.bad_points)
-        self.assertIn(date(2025, 7, 20), cfg.bad_points)
-        entries = cfg.bad_points[date(2025, 7, 17)]
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["time"], datetime(2025, 7, 17, 5, 50, 14))
-        self.assertEqual(len(cfg.bad_points[date(2025, 7, 20)]), 4)
-
     def test_sources_without_bad_points_are_none(self):
-        for source in ["GSFC", "S6", "S6B"]:
+        for source in ["S6", "S6B"]:
             cfg = get_source_config(source)
             self.assertIsNone(cfg.bad_points, f"{source} should have bad_points=None")

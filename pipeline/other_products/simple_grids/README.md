@@ -9,7 +9,7 @@ Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON
 For each processing date, the Lambda:
 
 1. **Parses the event** — extracts `date` (center of the 10-day window), `source`, `bucket`, and optional `resolution`.
-2. **Generates S3 keys** for P3 daily files spanning a 10-day window (center date ±5 days) using the source-specific filename prefix from `utilities/source_registry.py`.
+2. **Generates S3 keys** for P3 daily files spanning a 10-day window (center date ±5 days) using the source-specific filename prefix from `utilities/source_profile.py`.
 3. **Streams daily files** from S3, merging them into a single dataset sorted by time. Renames legacy `ssh_smoothed`/`ssh` fields to `ssha_smoothed`/`ssha` if needed.
 4. **Validates data coverage** — requires at least 150,000 valid `ssha_smoothed` data points; produces an empty grid if below threshold.
 5. **Performs basin-aware Gaussian resampling** — iterates over basin regions using a connection table, resampling source observations onto the target grid with pyresample's `resample_gauss` (ROI = 600 km, sigma = 175 km, max 500 neighbours).
@@ -72,7 +72,7 @@ No explicit return payload on success. On error, raises an exception with a JSON
 | `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Output half-degree grid (write) |
 | `simple_grids/quart_deg/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_quart_{YYYYMMDD}.nc` | Output quarter-degree grid (write, when `resolution="quart"`) |
 
-Filename prefix for daily files is determined by the global source registry (`utilities/source_registry.py`).
+Filename prefix for daily files is determined by the global source registry (`utilities/source_profile.py`).
 
 ## Step Function
 

@@ -6,6 +6,7 @@ from netCDF4 import default_fillvals
 import warnings
 
 from enso_jobs.smoother import new_smoother
+from utilities.pipeline_layout import enso_filename
 
 warnings.filterwarnings("ignore")
 
@@ -144,7 +145,7 @@ class ENSOGridder:
             "standard_name": "longitude",
         }
 
-        filename = f'ENSO_{datetime.strftime(date, "%Y%m%d")}.nc'
+        filename = enso_filename(date)
         outpath = f"/tmp/{filename}"
         self.save_grid(enso_ds, outpath)
         return enso_ds

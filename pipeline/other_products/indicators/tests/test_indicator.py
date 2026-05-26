@@ -1,15 +1,4 @@
-import sys
 import unittest
-from unittest.mock import MagicMock
-
-# Mock external dependencies not available in test venv
-_aws_mock = MagicMock()
-sys.modules.setdefault("utilities", _aws_mock)
-sys.modules.setdefault("utilities.aws_utils", _aws_mock)
-
-_pyresample_mock = MagicMock()
-sys.modules.setdefault("pyresample", _pyresample_mock)
-sys.modules.setdefault("pyresample.utils", _pyresample_mock)
 
 from app import build_sg_key
 from indicators.compute_indicators import IndicatorProcessor

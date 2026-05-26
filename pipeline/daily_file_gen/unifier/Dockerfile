@@ -7,9 +7,14 @@ RUN pip install --upgrade pip \
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
+COPY utilities/ utilities/
+COPY setup.py setup.py
+
+RUN python -m pip install .
+
 COPY pipeline/daily_file_gen/unifier/app.py .
 COPY pipeline/daily_file_gen/unifier/config/ config/
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
 
 CMD [ "app.handler" ]

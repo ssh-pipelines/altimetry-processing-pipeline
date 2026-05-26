@@ -1,97 +1,45 @@
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-import yaml
+from utilities.source_profile import (
+    CollectionConfig,
+    SourceCommon,
+    list_sources_for_stage,
+    load_source_config,
+)
 
-from utilities.source_registry import get_source_entry
 
-
-@dataclass
+@dataclass(kw_only=True, frozen=True)
 class SmoothingConfig:
     speed: float
     sigma: float
 
 
-@dataclass
-class CollectionConfig:
-    shortname: str
-    concept_id: str
-    priority: int = 1
-    source_label: str = ""
-    source_url: str = ""
-    reference: str = ""
-
-
-@dataclass
-class SourceConfig:
-    source: str
-    product_type: str
-    filename_template: str
-    s3_prefix: str
+@dataclass(kw_only=True, frozen=True)
+class SourceConfig(SourceCommon):
     source_mss: str
     target_mss: str
     mss_diff_file: str
     smoothing: SmoothingConfig
-    collections: list[CollectionConfig] = field(default_factory=list)
-    discovery_type: str = "cmr"
-    source_bucket: str | None = None
-    source_prefix_pattern: str | None = None
-    source_filename_pattern: str | None = None
-    cycle_index_key: str | None = None
-    source_label: str = ""
-    source_url: str = ""
-    reference: str = ""
     bad_points: dict | None = None
 
-
-def _load_sources() -> dict[str, SourceConfig]:
-    config_path = os.path.join(os.path.dirname(__file__), "sources.yaml")
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-
-    configs = {}
-    for source_key, cfg in raw["sources"].items():
-        smoothing = SmoothingConfig(**cfg["smoothing"])
-        collections = [CollectionConfig(**c) for c in cfg.get("collections", [])]
-        registry = get_source_entry(source_key)
-
-        configs[source_key] = SourceConfig(
-            source=source_key,
-            product_type=registry.product_type,
-            filename_template=cfg["filename_template"],
-            s3_prefix=cfg["s3_prefix"],
-            source_mss=cfg["source_mss"],
-            target_mss=cfg["target_mss"],
-            mss_diff_file=cfg["mss_diff_file"],
-            smoothing=smoothing,
-            collections=collections,
-            discovery_type=registry.discovery_type,
-            source_bucket=cfg.get("source_bucket"),
-            source_prefix_pattern=cfg.get("source_prefix_pattern"),
-            source_filename_pattern=cfg.get("source_filename_pattern"),
-            cycle_index_key=cfg.get("cycle_index_key"),
-            source_label=cfg.get("source_label", ""),
-            source_url=cfg.get("source_url", ""),
-            reference=cfg.get("reference", ""),
-            bad_points=cfg.get("bad_points"),
-        )
-    return configs
-
-
-_SOURCE_CONFIGS: dict[str, SourceConfig] = {}
+    def __post_init__(self):
+        # Allow YAML-loaded smoothing dict to be coerced to SmoothingConfig.
+        if isinstance(self.smoothing, dict):
+            object.__setattr__(self, "smoothing", SmoothingConfig(**self.smoothing))
 
 
 def get_source_config(source: str) -> SourceConfig:
-    global _SOURCE_CONFIGS
-    if not _SOURCE_CONFIGS:
-        _SOURCE_CONFIGS = _load_sources()
-    if source not in _SOURCE_CONFIGS:
-        raise ValueError(f"Source '{source}' is not configured. Available sources: {list(_SOURCE_CONFIGS.keys())}")
-    return _SOURCE_CONFIGS[source]
+    return load_source_config(SourceConfig, "daily_files", source)
 
 
 def get_available_sources() -> list[str]:
-    global _SOURCE_CONFIGS
-    if not _SOURCE_CONFIGS:
-        _SOURCE_CONFIGS = _load_sources()
-    return list(_SOURCE_CONFIGS.keys())
+    return list_sources_for_stage("daily_files")
+
+
+__all__ = [
+    "SourceConfig",
+    "SmoothingConfig",
+    "CollectionConfig",
+    "get_source_config",
+    "get_available_sources",
+]

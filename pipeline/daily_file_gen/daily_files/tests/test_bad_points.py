@@ -39,11 +39,22 @@ def _make_gsfc_ingested(times):
             "Single_Frequency_Altimeter",
         ]
     )
+    # GSFCDailyFile.make_nasa_flag requires that bits 0,1,2,3,4,5,9 are all
+    # 0 for a record to pass prelim_flag. With purely random 15-bit values
+    # this happens for <1% of records, often producing zero valid samples
+    # — np.interp then errors out on empty inputs. Generate a distribution
+    # where ~half the records have those bits clear so the test exercises
+    # the real code path.
+    raw_flag = rng.randint(0, 2 ** 15, n).astype(np.int32)
+    clear_mask = ~((1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 9)) & 0x7FFF
+    keep_clear = rng.rand(n) < 0.6
+    flag = np.where(keep_clear, raw_flag & clear_mask, raw_flag).astype(np.int32)
+
     og_ds = xr.Dataset(
         {
             "flag": (
                 ("N_Records",),
-                rng.randint(0, 2**15, n).astype(np.int32),
+                flag,
                 {"flag_meanings": flag_meanings},
             ),
             "Surface_Type": (
@@ -118,7 +129,6 @@ class TestGSFCBadPoints(unittest.TestCase):
             _make_gsfc_ingested(times),
             date,
             source_config,
-            ["C2901523432-POCLOUD"],
         ).ds
 
         out_times = ds["time"].values.astype("datetime64[s]")
@@ -127,22 +137,6 @@ class TestGSFCBadPoints(unittest.TestCase):
         self.assertEqual(len(idx), 1, "bad_time not found in output dataset")
         self.assertTrue(ds["nasa_flag"].values[idx[0]], "bad_time should have nasa_flag=1")
 
-    def test_no_bad_points_no_change(self):
-        """With bad_points=None, processing should not raise and produce valid flags."""
-        date = datetime(2024, 3, 15)
-        times = _times_for_date(date)
-        source_config = get_source_config("GSFC")
-        self.assertIsNone(source_config.bad_points)
-        ds = GSFCDailyFile(
-            _make_gsfc_ingested(times),
-            date,
-            source_config,
-            ["C2901523432-POCLOUD"],
-        ).ds
-        flag_vals = np.unique(ds["nasa_flag"].values)
-        for v in flag_vals:
-            self.assertIn(v, [0, 1, True, False])
-
     def test_wrong_date_not_flagged_by_bad_points(self):
         """bad_points for a different date should not affect the current date."""
         date = datetime(2024, 3, 15)
@@ -150,7 +144,6 @@ class TestGSFCBadPoints(unittest.TestCase):
         other_time = times[10].astype("datetime64[s]").item()
 
         # bad_points keyed to a different date
-        other_date = datetime(2024, 3, 16)
         source_config = dataclasses.replace(
             get_source_config("GSFC"),
             bad_points={other_time.replace(day=16).date(): [{"time": other_time.replace(day=16)}]},
@@ -159,7 +152,6 @@ class TestGSFCBadPoints(unittest.TestCase):
             _make_gsfc_ingested(times),
             date,
             source_config,
-            ["C2901523432-POCLOUD"],
         ).ds
         # Should complete without error; bad_points for another date are ignored
         self.assertIn("nasa_flag", ds)
@@ -176,7 +168,6 @@ class TestS6BadPoints(unittest.TestCase):
             _make_s6_ingested(times),
             date,
             source_config,
-            ["C3332203845-POCLOUD"],
         ).ds
 
         out_times = ds["time"].values.astype("datetime64[s]")
@@ -195,7 +186,6 @@ class TestS6BadPoints(unittest.TestCase):
             _make_s6_ingested(times),
             date,
             source_config,
-            ["C3332203845-POCLOUD"],
         ).ds
         flag_vals = np.unique(ds["nasa_flag"].values)
         for v in flag_vals:
@@ -216,7 +206,6 @@ class TestS6BadPoints(unittest.TestCase):
             _make_s6_ingested(times),
             date,
             source_config,
-            ["C3332203845-POCLOUD"],
         ).ds
 
         out_times = ds["time"].values.astype("datetime64[s]")

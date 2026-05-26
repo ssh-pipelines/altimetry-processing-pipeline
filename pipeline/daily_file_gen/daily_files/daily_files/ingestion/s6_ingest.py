@@ -6,7 +6,6 @@ import netCDF4 as nc
 import numpy as np
 import xarray as xr
 
-from daily_files.fetching.enumerator import FileRef
 from daily_files.fetching.orbit_fetcher import OrbitFetcher
 from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.orbit_swap import run_orbit_swap
@@ -16,18 +15,19 @@ class S6Ingestor(Ingestor):
     def ingest(
         self,
         file_objs: Iterable[TextIO],
-        file_refs: list[FileRef] | None = None,
+        filenames: list[str] | None = None,
         **kwargs,
     ) -> IngestedData:
+        file_objs = list(file_objs)
         logging.info(f"Opening {len(file_objs)} files")
 
-        orbit_fetcher = OrbitFetcher() if file_refs else None
-        pairs = zip(file_objs, file_refs) if file_refs else ((f, None) for f in file_objs)
+        orbit_fetcher = OrbitFetcher() if filenames else None
+        names = filenames if filenames else [None] * len(file_objs)
 
         opened_files = []
-        for i, (file_obj, file_ref) in enumerate(pairs):
+        for i, (file_obj, filename) in enumerate(zip(file_objs, names)):
             try:
-                ds = self._open_with_orbit_swap(file_obj, file_ref, orbit_fetcher)
+                ds = self._open_with_orbit_swap(file_obj, filename, orbit_fetcher)
                 opened_files.append(ds)
             except Exception as e:
                 logging.warning(f"Unable to open file object {i}: {e}")
@@ -53,10 +53,10 @@ class S6Ingestor(Ingestor):
     def _open_with_orbit_swap(
         self,
         file_obj: TextIO,
-        file_ref: FileRef | None,
+        filename: str | None,
         orbit_fetcher: OrbitFetcher | None,
     ) -> xr.Dataset:
-        """Read a pass file and apply orbit swap if a FileRef and fetcher are provided.
+        """Read a pass file and apply orbit swap if filename + fetcher are provided.
 
         The raw bytes are read once and used both for the netCDF4 in-memory parse
         and (if orbit swap is requested) written to /tmp/ for the C executable.
@@ -65,41 +65,39 @@ class S6Ingestor(Ingestor):
         data = file_obj.read()
         ds = self._extract_grouped_data(data)
 
-        if file_ref is None or orbit_fetcher is None:
+        if filename is None or orbit_fetcher is None:
             return ds
 
-        tmp_nc = f"/tmp/{file_ref.title}"
+        tmp_nc = f"/tmp/{filename}"
         try:
             with open(tmp_nc, "wb") as f:
                 f.write(data)
 
-            orbit_path = orbit_fetcher.fetch(file_ref)
+            orbit_path = orbit_fetcher.fetch(filename)
             if orbit_path is None:
-                logging.warning(
-                    f"No orbit file for {file_ref.title}, using original ssha_nr"
-                )
+                logging.warning(f"No orbit file for {filename}, using original ssha_nr")
                 return ds
 
             swapped = run_orbit_swap(tmp_nc, orbit_path)
             if swapped is None:
                 logging.warning(
-                    f"Orbit swap returned no data for {file_ref.title}, using original ssha_nr"
+                    f"Orbit swap returned no data for {filename}, using original ssha_nr"
                 )
                 return ds
 
             if len(swapped) != len(ds["ssha_nr"]):
                 logging.warning(
-                    f"Orbit swap length mismatch for {file_ref.title} "
+                    f"Orbit swap length mismatch for {filename} "
                     f"(expected {len(ds['ssha_nr'])}, got {len(swapped)}), "
                     "using original ssha_nr"
                 )
                 return ds
 
             ds["ssha_nr"] = xr.DataArray(swapped, dims="time", attrs=ds["ssha_nr"].attrs)
-            logging.info(f"Orbit swap applied for {file_ref.title}")
+            logging.info(f"Orbit swap applied for {filename}")
         except Exception as e:
             logging.warning(
-                f"Orbit swap error for {file_ref.title}: {e}. Using original ssha_nr."
+                f"Orbit swap error for {filename}: {e}. Using original ssha_nr."
             )
         finally:
             if os.path.exists(tmp_nc):

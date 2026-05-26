@@ -5,19 +5,16 @@ import logging
 import boto3
 
 from indicators.compute_indicators import IndicatorProcessor
+from utilities.pipeline_layout import s3_uri, simple_grid_key
+from utilities.source_profile import get_source_profile
 
 s3 = boto3.client("s3")
 
 
 def build_sg_key(date_str: str, bucket: str, source: str) -> str:
-    """
-    Construct the deterministic S3 key for a simple grid file.
-    Mirrors the pattern in simple_grids/simple_gridder/gridder.py:28.
-    """
+    """Construct the deterministic S3 URI for a simple grid file."""
     date = datetime.strptime(date_str, "%Y-%m-%d")
-    year = str(date.year)
-    filename = f'{source}_alt_ref_simple_grid_v1_1_{date.strftime("%Y%m%d")}.nc'
-    return f"s3://{bucket}/simple_grids/{source}/{year}/{filename}"
+    return s3_uri(bucket, simple_grid_key(get_source_profile(source), date))
 
 
 def handler(event, context):

@@ -17,14 +17,11 @@ class S6DailyFile(DailyFile):
         ingested_data: IngestedData,
         date: datetime,
         source_config: SourceConfig,
-        collection_ids: list[str],
         source_files: str = "",
     ):
         self.original_ds = ingested_data.source_specific["original_ds"]
         self._ingested_source_specific = ingested_data.source_specific
-        super().__init__(
-            ingested_data, date, source_config, collection_ids, source_files
-        )
+        super().__init__(ingested_data, date, source_config, source_files)
 
     def _pre_process_setup(self):
         self.ds["mean_sea_surface_sol1"] = (

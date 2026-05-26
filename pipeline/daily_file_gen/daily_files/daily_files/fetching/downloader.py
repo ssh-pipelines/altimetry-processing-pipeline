@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from io import TextIOWrapper
+import gzip
+from io import BytesIO
 import logging
 from typing import Callable
 
+import requests
 import s3fs
 
-from daily_files.fetching.enumerator import FileRef
 from utilities.aws_utils import aws_manager
 
 
@@ -26,11 +27,11 @@ def get_podaac_s3_credentials() -> dict:
 
 class Downloader(ABC):
     @abstractmethod
-    def download(self, access_url: str) -> TextIOWrapper:
-        pass
+    def download(self, uri: str):
+        ...
 
-    def download_all(self, file_refs: list[FileRef]) -> list:
-        return [self.download(f.access_url) for f in file_refs]
+    def download_all(self, uris: list[str]) -> list:
+        return [self.download(uri) for uri in uris]
 
 
 class S3Downloader(Downloader):
@@ -46,18 +47,35 @@ class S3Downloader(Downloader):
         else:
             self.s3 = s3fs.S3FileSystem(anon=False)
 
-    def download(self, access_url: str) -> TextIOWrapper:
+    def download(self, uri: str):
         try:
-            logging.debug(f"Loading {access_url} into memory")
-            return self.s3.open(access_url)
+            logging.debug(f"Loading {uri} into memory")
+            return self.s3.open(uri)
         except Exception as e:
-            logging.exception(f"Error opening {access_url}")
+            logging.exception(f"Error opening {uri}")
             raise e
 
 
 class HttpDownloader(Downloader):
-    def __init__(self, auth: dict | None = None):
-        self.auth = auth
+    """Downloads granules over HTTP, transparently decompressing .nc.gz to .nc.
 
-    def download(self, access_url: str) -> TextIOWrapper:
-        raise NotImplementedError("HttpDownloader is a placeholder for future use.")
+    Returns a BytesIO containing raw NetCDF bytes that downstream ingestors can
+    pass directly to xr.open_dataset / netCDF4.Dataset(memory=...).
+    """
+
+    def __init__(self, session_fn: Callable[[], requests.Session]):
+        self.session = session_fn()
+
+    def download(self, uri: str) -> BytesIO:
+        try:
+            logging.debug(f"Downloading {uri}")
+            with self.session.get(uri, stream=True, timeout=120) as resp:
+                resp.raise_for_status()
+                raw = resp.raw
+                raw.decode_content = True
+                if uri.endswith(".gz"):
+                    return BytesIO(gzip.decompress(raw.read()))
+                return BytesIO(raw.read())
+        except Exception as e:
+            logging.exception(f"Error downloading {uri}")
+            raise e

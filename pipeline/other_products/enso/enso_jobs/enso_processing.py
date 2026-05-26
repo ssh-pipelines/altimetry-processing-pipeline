@@ -6,6 +6,14 @@ from datetime import datetime
 from enso_jobs.ensogridder import ENSOGridder
 from enso_jobs.ensomapper import ENSOMapper
 from utilities.aws_utils import AWSManager
+from utilities.pipeline_layout import (
+    enso_filename,
+    enso_grid_key,
+    enso_map_key,
+    s3_uri,
+    simple_grid_key,
+)
+from utilities.source_profile import get_source_profile
 
 aws_manager = AWSManager()
 
@@ -13,9 +21,10 @@ aws_manager = AWSManager()
 def start_job(date: datetime, bucket: str, source: str):
     logging.info(f"Processing {source} grid for {date.date()}")
 
+    profile = get_source_profile(source)
+
     # Stream simple grid from bucket based on date and source
-    filename = f'{source}_alt_ref_simple_grid_v1_1_{date.strftime("%Y%m%d")}.nc'
-    key = os.path.join(f"s3://{bucket}/simple_grids/{source}", str(date.year), filename)
+    key = s3_uri(bucket, simple_grid_key(profile, date))
     try:
         streamed_data = aws_manager.stream_obj(key)
         ds = xr.open_dataset(streamed_data, engine="h5netcdf")
@@ -35,11 +44,9 @@ def start_job(date: datetime, bucket: str, source: str):
         grid_ds = grid_processer.process_grid(ds, date)
         logging.info("Grid making complete")
 
-        date_str = date.strftime("%Y%m%d")
-
-        filename = f'ENSO_{date_str}.nc'
+        filename = enso_filename(date)
         src = f"/tmp/{filename}"
-        dst = f"s3://{bucket}/enso_grids/{source}/{filename}"
+        dst = s3_uri(bucket, enso_grid_key(source, date))
         aws_manager.upload_obj(src, dst)
         os.remove(src)
 
@@ -47,17 +54,12 @@ def start_job(date: datetime, bucket: str, source: str):
         mapper.make_maps(grid_ds)
         logging.info("Map making complete")
 
-        filename = f'ENSO_ortho_{date_str}.png'
-        src = f"/tmp/{filename}"
-        dst = f"s3://{bucket}/maps/enso_maps/{source}/ortho/{filename}"
-        aws_manager.upload_obj(src, dst)
-        os.remove(src)
-
-        filename = f'ENSO_plate_{date_str}.png'
-        src = f"/tmp/{filename}"
-        dst = f"s3://{bucket}/maps/enso_maps/{source}/plate/{filename}"
-        aws_manager.upload_obj(src, dst)
-        os.remove(src)
+        for kind in ("ortho", "plate"):
+            map_key = enso_map_key(source, date, kind)
+            filename = map_key.rsplit("/", 1)[-1]
+            src = f"/tmp/{filename}"
+            aws_manager.upload_obj(src, s3_uri(bucket, map_key))
+            os.remove(src)
 
     except Exception as e:
         logging.exception(f"Error processing {date}: {e}")

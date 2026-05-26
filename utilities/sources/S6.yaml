@@ -1,0 +1,51 @@
+common:
+  product_type: reference
+  discovery_type: cmr
+  unify: true
+  start_date: "2026-01-01"
+  collections:
+    - shortname: JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01
+      concept_id: C3332203845-POCLOUD
+      priority: 1
+      source_label: "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography G01"
+      source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01"
+      reference: "https://doi.org/10.5067/S6AP4-2LRNTR-G01"
+    - shortname: JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01_UNVALIDATED
+      concept_id: C3332203819-POCLOUD
+      priority: 2
+      source_label: "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) NTC Reduced Ocean Surface Topography (Unvalidated) G01"
+      source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01_UNVALIDATED"
+      reference: "https://doi.org/10.5067/S6AP4-2LRNUR-G01"
+    - shortname: JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F
+      concept_id: C1968979561-POCLOUD
+      priority: 3
+      source_label: "Sentinel-6A MF Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
+      source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6A_L2_ALT_LR_RED_OST_STC_F"
+      reference: "https://doi.org/10.5067/S6AP4-2LRST"
+
+pipeline_init: {}
+
+daily_files:
+  source_mss: DTU18
+  target_mss: DTU21
+  mss_diff_file: DTU18_minus_DTU21.nc
+  smoothing:
+    speed: 5.745
+    sigma: 15
+
+finalizer:
+  offset: 0.0291
+  pass_flag:
+    mean_num: 15.0
+    rms_num: 25.0
+    mean_threshold: 0.1
+    rms_threshold: 0.27
+
+unifier: {}
+
+xover:
+  crossover_type: self
+  cycle_length: 9.9156
+  window_size: 10
+  window_padding: 2
+  max_pass_number: 9999

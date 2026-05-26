@@ -144,7 +144,7 @@ class TestWriteResultsToS3(unittest.TestCase):
             proc.write_results_to_s3(results, "my-bucket")
 
         expected_local = "/tmp/GSFC_2024-01-15_bad_passes.json"
-        expected_s3 = "s3://my-bucket/aux_files/bad_passes/GSFC/2024-01-15.json"
+        expected_s3 = "s3://my-bucket/bad_passes/GSFC/2024-01-15.json"
 
         m.assert_called_once_with(expected_local, "w")
         handle = m()

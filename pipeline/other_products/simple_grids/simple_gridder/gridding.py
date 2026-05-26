@@ -160,7 +160,7 @@ class Gridder:
                     self.ROI,
                     sigmas=self.SIGMA,
                     neighbours=self.NEIGHBOURS,
-                    fill_value=np.NaN,
+                    fill_value=np.nan,
                     with_uncert=True,
                 )
         return resampled_ssh, counts

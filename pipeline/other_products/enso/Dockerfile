@@ -1,4 +1,5 @@
-FROM public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 ARG ROOT_DIR=pipeline/other_products/enso
 ARG CARTOPY_DATA_DIR=/opt/cartopy_data
@@ -29,6 +30,6 @@ RUN python -m pip install .
 
 COPY $ROOT_DIR/. ${LAMBDA_TASK_ROOT}
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/enso"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/enso"
 
 CMD [ "app.handler" ]

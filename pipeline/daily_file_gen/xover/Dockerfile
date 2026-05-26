@@ -1,4 +1,5 @@
-FROM public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 COPY pipeline/daily_file_gen/xover/requirements.txt .
 
@@ -15,6 +16,6 @@ RUN python -m pip install .
 COPY pipeline/daily_file_gen/xover/crossover crossover/
 COPY pipeline/daily_file_gen/xover/app.py .
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/crossover"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/crossover"
 
 CMD [ "app.handler" ]

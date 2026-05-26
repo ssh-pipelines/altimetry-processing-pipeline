@@ -8,7 +8,13 @@ from typing import Tuple, Optional
 
 from simple_gridder.gridding import Gridder
 from utilities.aws_utils import aws_manager
-from utilities.source_registry import daily_filename_prefix
+from utilities.pipeline_layout import (
+    daily_file_key,
+    s3_uri,
+    simple_grid_filename,
+    simple_grid_key,
+)
+from utilities.source_profile import get_source_profile
 
 
 class SimpleGridderJob:
@@ -17,17 +23,19 @@ class SimpleGridderJob:
         self.center_date: datetime = datetime.strptime(date, "%Y-%m-%d")
         self.start_date: datetime = self.center_date - timedelta(5)
         self.end_date: datetime = self.start_date + timedelta(9)
-        
+
         self.bucket: str = bucket
-        
+
         if source is None:
             self.source: str = "NASA-SSH"
         else:
             self.source: str = source
 
-        self.filename = f'{self.source}_alt_ref_simple_grid_v1_1_{self.center_date.strftime("%Y%m%d")}.nc'        
-        self.dst = f"s3://{self.bucket}/simple_grids/{self.source}/{str(self.center_date.year)}/{self.filename}"
-        
+        self.profile = get_source_profile(self.source)
+
+        self.filename = simple_grid_filename(self.profile, self.center_date)
+        self.dst = s3_uri(self.bucket, simple_grid_key(self.profile, self.center_date))
+
         if resolution == "quart":
             self.filename = self.filename.replace("simple_grid_v1_1", "simple_grid_quart_v1_1")
             self.dst = self.dst.replace("simple_grids/", "simple_grids/quart_deg/")
@@ -55,19 +63,15 @@ class SimpleGridderJob:
         return streamed_objects, streamed_filenames
 
     def generate_keys(self):
-        prefix = f"s3://{self.bucket}/daily_files/p3/{self.source}"
-
         dates_in_window = np.arange(
             self.start_date.strftime("%Y-%m-%d"),
             (self.end_date + timedelta(1)).strftime("%Y-%m-%d"),
             dtype="datetime64[D]",
         )
         keys = []
-        for date in dates_in_window:
-            date_dt = datetime.strptime(str(date), "%Y-%m-%d")
-            filename = f'{daily_filename_prefix(self.source)}_{date_dt.strftime("%Y%m%d")}.nc'
-            key = os.path.join(prefix, str(date_dt.year), filename)
-            keys.append(key)
+        for d in dates_in_window:
+            date_dt = datetime.strptime(str(d), "%Y-%m-%d")
+            keys.append(s3_uri(self.bucket, daily_file_key(self.profile, date_dt, "p3")))
         logging.info(f"Generated {len(keys)} keys")
         return keys
 

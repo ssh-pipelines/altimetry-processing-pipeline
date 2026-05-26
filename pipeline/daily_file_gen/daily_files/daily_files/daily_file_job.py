@@ -1,24 +1,24 @@
 from dataclasses import dataclass
 from datetime import datetime
 import logging
-import os
 from typing import Type
 import numpy as np
 import xarray as xr
 
 from utilities.aws_utils import aws_manager
+from utilities.pipeline_layout import daily_file_key, daily_file_filename, s3_uri
 
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
-from daily_files.fetching.enumerator import Enumerator
-from daily_files.fetching.cmr_enumerator import GSFCEnumerator, S6Enumerator
-from daily_files.fetching.s3_bucket_enumerator import S3BucketEnumerator
+from daily_files.fetching.aviso_auth import build_aviso_session
 from daily_files.fetching.downloader import (
     Downloader,
+    HttpDownloader,
     S3Downloader,
     get_podaac_s3_credentials,
 )
 
+from daily_files.ingestion.aviso_l2p_ingest import AvisoL2PIngestor
 from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
 from daily_files.ingestion.s6_ingest import S6Ingestor
@@ -31,7 +31,6 @@ from daily_files.processing.s6_daily_file import S6DailyFile
 
 @dataclass(frozen=True)
 class SourcePipeline:
-    enumerator: Type[Enumerator]
     downloader: Type[Downloader]
     downloader_kwargs: dict
     ingestor: Type[Ingestor]
@@ -40,39 +39,40 @@ class SourcePipeline:
 
 SOURCE_REGISTRY: dict[str, SourcePipeline] = {
     "GSFC": SourcePipeline(
-        enumerator=GSFCEnumerator,
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
         ingestor=GSFCIngestor,
         processor=GSFCDailyFile,
     ),
     "S6": SourcePipeline(
-        enumerator=S6Enumerator,
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
         ingestor=S6Ingestor,
         processor=S6DailyFile,
     ),
     "S6B": SourcePipeline(
-        enumerator=S6Enumerator,
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": get_podaac_s3_credentials},
         ingestor=S6Ingestor,
         processor=S6DailyFile,
     ),
     "GSFC_6.1": SourcePipeline(
-        enumerator=S3BucketEnumerator,
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": None},
         ingestor=GSFCIngestor,
         processor=GSFCDailyFile,
     ),
     "EXAMPLE_S3": SourcePipeline(
-        enumerator=S3BucketEnumerator,
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": None},
         ingestor=GSFCIngestor,
         processor=GSFCDailyFile,
+    ),
+    "S3B": SourcePipeline(
+        downloader=HttpDownloader,
+        downloader_kwargs={"session_fn": build_aviso_session},
+        ingestor=AvisoL2PIngestor,
+        processor=DailyFile,  # processing not yet implemented for high_latitude sources
     ),
 }
 
@@ -82,12 +82,15 @@ class AcquiredData:
     """Result of the data acquisition phase."""
 
     ingested_data: IngestedData
-    collection_ids: list[str]
-    granule_titles: list[str]
+    granule_filenames: list[str]
 
 
 class SourceNotSupported(Exception):
     pass
+
+
+def _filename_from_uri(uri: str) -> str:
+    return uri.rsplit("/", 1)[-1]
 
 
 class DailyFileJob:
@@ -101,31 +104,26 @@ class DailyFileJob:
             raise SourceNotSupported(f"{source} is not currently supported. Available: {list(SOURCE_REGISTRY.keys())}")
 
         pipeline = SOURCE_REGISTRY[source]
-        self.enumerator_cls = pipeline.enumerator
         self.downloader_cls = pipeline.downloader
         self.downloader_kwargs = pipeline.downloader_kwargs
         self.ingestor_cls = pipeline.ingestor
         self.processor_cls = pipeline.processor
 
-    def acquire(self, bucket: str) -> AcquiredData | None:
-        """Phase 1: Enumerate granules, download files, and ingest into normalized form."""
-        logging.info("Enumerating granules...")
-        enumerator = self.enumerator_cls(self.date, self.source_config, bucket)
-        file_refs = enumerator.enumerate()
-
-        if not file_refs:
+    def acquire(self, granules: list[str], bucket: str) -> AcquiredData | None:
+        """Phase 1: Download granule URIs and ingest into normalized form."""
+        if not granules:
             return None
 
         downloader = self.downloader_cls(**self.downloader_kwargs)
-        file_objs = downloader.download_all(file_refs)
+        file_objs = downloader.download_all(granules)
 
+        filenames = [_filename_from_uri(uri) for uri in granules]
         ingestor = self.ingestor_cls()
-        ingested_data = ingestor.ingest(file_objs, file_refs=file_refs, bucket=bucket)
+        ingested_data = ingestor.ingest(file_objs, filenames=filenames, bucket=bucket)
 
         return AcquiredData(
             ingested_data=ingested_data,
-            collection_ids=[f.collection_id for f in file_refs],
-            granule_titles=[f.title for f in file_refs],
+            granule_filenames=filenames,
         )
 
     def process(self, acquired: AcquiredData) -> xr.Dataset:
@@ -134,8 +132,7 @@ class DailyFileJob:
             acquired.ingested_data,
             self.date,
             self.source_config,
-            acquired.collection_ids,
-            source_files=", ".join(acquired.granule_titles),
+            source_files=", ".join(acquired.granule_filenames),
         ).ds
 
 
@@ -187,36 +184,22 @@ def make_empty(job: DailyFileJob) -> xr.Dataset:
     return daily_ds
 
 
-def _get_output_filename(job: DailyFileJob) -> str:
-    return job.source_config.filename_template.format(
-        source=job.source,
-        date=job.date.strftime("%Y%m%d"),
-    )
-
-
 def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
-    filename = _get_output_filename(job)
+    filename = daily_file_filename(job.source_config, job.date)
     out_path = f"/tmp/{filename}"
     save_ds(daily_ds, out_path)
 
-    s3_output_path = os.path.join(
-        f"s3://{bucket}/{job.source_config.s3_prefix}",
-        job.source,
-        str(job.date.year),
-        filename,
-    )
+    s3_output_path = s3_uri(bucket, daily_file_key(job.source_config, job.date, "p1"))
     aws_manager.upload_obj(out_path, s3_output_path)
     logging.info("Job complete.")
     daily_ds.close()
 
 
-def start_job(date: str, source: str, bucket: str):
+def start_job(date: str, source: str, bucket: str, granules: list[str]):
     job = DailyFileJob(date, source)
 
-    # Phase 1: Acquire data
-    acquired = job.acquire(bucket)
+    acquired = job.acquire(granules, bucket)
 
-    # Phase 2: Process into daily file
     if acquired:
         daily_ds = job.process(acquired)
     else:

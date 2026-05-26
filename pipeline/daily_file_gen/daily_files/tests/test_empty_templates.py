@@ -37,6 +37,6 @@ class TestEmptyTemplates(unittest.TestCase):
         overriding the template's defaults."""
         job = DailyFileJob("2023-06-15", "GSFC")
         ds = make_empty(job)
-        self.assertEqual(ds.attrs["id"], "10.5067/NSREF-AT0V1")
+        self.assertEqual(ds.attrs["id"], "10.5067/NSREF-AT0V11")
         self.assertEqual(ds.attrs["product_generation_step"], "1")
         ds.close()

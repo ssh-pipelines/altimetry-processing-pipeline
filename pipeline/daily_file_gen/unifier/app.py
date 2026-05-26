@@ -3,7 +3,10 @@ import logging
 
 import boto3
 
-from config.source_config import get_source_config
+from utilities.pipeline_layout import daily_file_key
+from utilities.source_profile import get_source_profile
+
+from config.source_config import get_available_sources, get_source_config
 
 
 def handler(event, context):
@@ -21,17 +24,19 @@ def handler(event, context):
     if None in [bucket, proc_date, source]:
         raise ValueError("One of date, source, or bucket job parameters missing.")
 
-    config = get_source_config(source)
+    available = get_available_sources()
+    if source not in available:
+        raise ValueError(
+            f"Source '{source}' is not configured for unification. Available: {available}"
+        )
+
+    src_config = get_source_config(source)
+    dst_profile = get_source_profile("NASA-SSH")
 
     date_obj = datetime.strptime(proc_date, "%Y-%m-%d").date()
-    date8 = date_obj.strftime("%Y%m%d")
-    year = str(date_obj.year)
 
-    src_filename = config.src_filename_template.format(source=source, date8=date8)
-    src_key = f"daily_files/p3/{source}/{year}/{src_filename}"
-
-    dst_filename = config.dst_filename_template.format(source=source, date8=date8)
-    dst_key = f"{config.dst_prefix}/{year}/{dst_filename}"
+    src_key = daily_file_key(src_config, date_obj, "p3")
+    dst_key = daily_file_key(dst_profile, date_obj, "p3")
 
     logging.info(f"Copying s3://{bucket}/{src_key} -> s3://{bucket}/{dst_key}")
 

@@ -1,0 +1,37 @@
+common:
+  product_type: reference
+  discovery_type: cmr
+  unify: false
+  start_date: "2025-11-26"
+  collections:
+    - shortname: JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G
+      concept_id: C3213767230-POCLOUD
+      priority: 1
+      source_label: "Sentinel-6B/Jason-CS L2 P4 Altimeter Low Resolution (LR) STC Reduced Ocean Surface Topography"
+      source_url: "https://podaac.jpl.nasa.gov/dataset/JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G"
+      reference: "https://doi.org/10.5067/S6BP4-2LRST"
+
+pipeline_init: {}
+
+daily_files:
+  source_mss: DTU18
+  target_mss: DTU21
+  mss_diff_file: DTU18_minus_DTU21.nc
+  smoothing:
+    speed: 5.745
+    sigma: 15
+
+finalizer:
+  offset: 0.0  # TODO: determine S6B offset
+  pass_flag:
+    mean_num: 15.0
+    rms_num: 25.0
+    mean_threshold: 0.1
+    rms_threshold: 0.27
+
+xover:
+  crossover_type: self
+  cycle_length: 9.9156
+  window_size: 10
+  window_padding: 2
+  max_pass_number: 9999

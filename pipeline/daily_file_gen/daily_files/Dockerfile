@@ -1,5 +1,9 @@
 # Build context must be root nasa-ssh-pipeline directory
 
+# Global ARG (declared before any FROM) so it's visible in the final FROM
+# below, which spans multiple build stages.
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+
 FROM alpine AS intermediate
 
 COPY pipeline/daily_file_gen/daily_files/daily_files/ref_files /tmp/ref_files
@@ -27,7 +31,7 @@ RUN mkdir /tmp/orbit_libs && \
     | awk '{print $3}' \
     | xargs -I{} cp {} /tmp/orbit_libs/
 
-FROM public.ecr.aws/lambda/python:3.11
+FROM ${BASE_IMAGE}
 
 COPY pipeline/daily_file_gen/daily_files/requirements.txt .
 
@@ -53,7 +57,7 @@ RUN python -m pip install .
 COPY pipeline/daily_file_gen/daily_files/daily_files daily_files/
 COPY pipeline/daily_file_gen/daily_files/app.py .
 
-ENV PYTHONPATH="${PYTHONPATH}:${LAMBDA_TASK_ROOT}/daily_files"
-ENV LD_LIBRARY_PATH="${LAMBDA_TASK_ROOT}/libs:${LD_LIBRARY_PATH}"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/daily_files"
+ENV LD_LIBRARY_PATH="${LAMBDA_TASK_ROOT}/libs"
 
 CMD [ "app.handler" ]

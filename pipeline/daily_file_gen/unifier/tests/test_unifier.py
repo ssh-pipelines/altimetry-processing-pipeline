@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from config.source_config import (
     get_source_config,
     get_available_sources,
-    _load_sources,
 )
 
 
@@ -23,19 +22,14 @@ class TestSourceConfig(unittest.TestCase):
         sources = get_available_sources()
         self.assertNotIn("S6B", sources)
 
-    def test_gsfc_config_values(self):
+    def test_gsfc_config_loads(self):
         cfg = get_source_config("GSFC")
-        self.assertEqual(cfg.dst_prefix, "daily_files/p3/NASA-SSH")
-        self.assertIn("{source}", cfg.src_filename_template)
-        self.assertIn("NASA-SSH", cfg.dst_filename_template)
+        self.assertEqual(cfg.source, "GSFC")
+        self.assertEqual(cfg.product_type, "reference")
 
-    def test_s6_config_values(self):
+    def test_s6_config_loads(self):
         cfg = get_source_config("S6")
-        self.assertEqual(cfg.dst_prefix, "daily_files/p3/NASA-SSH")
-
-    def test_unconfigured_source_raises(self):
-        with self.assertRaises(ValueError):
-            get_source_config("S6B")
+        self.assertEqual(cfg.source, "S6")
 
     def test_invalid_source_raises(self):
         with self.assertRaises(ValueError):
@@ -49,15 +43,8 @@ class TestSourceConfig(unittest.TestCase):
 class TestUnifierHandler(unittest.TestCase):
 
     @patch("app.boto3")
-    @patch("app.get_source_config")
-    def test_handler_copies_to_nasa_path(self, mock_get_config, mock_boto3):
+    def test_handler_copies_to_nasa_path(self, mock_boto3):
         from app import handler
-
-        mock_config = MagicMock()
-        mock_config.src_filename_template = "{source}_alt_ref_at_v1_1_{date8}.nc"
-        mock_config.dst_filename_template = "NASA-SSH_alt_ref_at_v1_1_{date8}.nc"
-        mock_config.dst_prefix = "daily_files/p3/NASA-SSH"
-        mock_get_config.return_value = mock_config
 
         mock_s3 = MagicMock()
         mock_boto3.client.return_value = mock_s3
@@ -76,15 +63,8 @@ class TestUnifierHandler(unittest.TestCase):
         )
 
     @patch("app.boto3")
-    @patch("app.get_source_config")
-    def test_handler_s6_copies_to_nasa_path(self, mock_get_config, mock_boto3):
+    def test_handler_s6_copies_to_nasa_path(self, mock_boto3):
         from app import handler
-
-        mock_config = MagicMock()
-        mock_config.src_filename_template = "{source}_alt_ref_at_v1_1_{date8}.nc"
-        mock_config.dst_filename_template = "NASA-SSH_alt_ref_at_v1_1_{date8}.nc"
-        mock_config.dst_prefix = "daily_files/p3/NASA-SSH"
-        mock_get_config.return_value = mock_config
 
         mock_s3 = MagicMock()
         mock_boto3.client.return_value = mock_s3
@@ -105,7 +85,7 @@ class TestUnifierHandler(unittest.TestCase):
 
 class TestUnifierSkipsUnconfigured(unittest.TestCase):
 
-    def test_unconfigured_source_raises_valueerror(self):
+    def test_unconfigured_source_raises(self):
         from app import handler
 
         event = {"bucket": "my-bucket", "date": "2025-06-01", "source": "S6B"}

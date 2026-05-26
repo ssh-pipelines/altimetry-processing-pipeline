@@ -1,10 +1,12 @@
 import dataclasses
 import unittest
+from unittest import mock
 import xarray as xr
 import numpy as np
 from datetime import datetime
 from daily_files.config.source_config import get_source_config
 from daily_files.ingestion.ingest import IngestedData
+from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
 from daily_files.processing.s6_daily_file import S6DailyFile
 
@@ -118,8 +120,9 @@ def _bad_points_config(source_config, bad_time):
     )
 
 
+@mock.patch.object(DailyFile, "get_mss_values", return_value=0.0)
 class TestGSFCBadPoints(unittest.TestCase):
-    def test_bad_point_is_flagged(self):
+    def test_bad_point_is_flagged(self, _mss):
         date = datetime(2024, 3, 15)
         times = _times_for_date(date)
         bad_time = times[10].astype("datetime64[s]").item()
@@ -137,7 +140,7 @@ class TestGSFCBadPoints(unittest.TestCase):
         self.assertEqual(len(idx), 1, "bad_time not found in output dataset")
         self.assertTrue(ds["nasa_flag"].values[idx[0]], "bad_time should have nasa_flag=1")
 
-    def test_wrong_date_not_flagged_by_bad_points(self):
+    def test_wrong_date_not_flagged_by_bad_points(self, _mss):
         """bad_points for a different date should not affect the current date."""
         date = datetime(2024, 3, 15)
         times = _times_for_date(date)
@@ -157,8 +160,9 @@ class TestGSFCBadPoints(unittest.TestCase):
         self.assertIn("nasa_flag", ds)
 
 
+@mock.patch.object(DailyFile, "get_mss_values", return_value=0.0)
 class TestS6BadPoints(unittest.TestCase):
-    def test_bad_point_is_flagged(self):
+    def test_bad_point_is_flagged(self, _mss):
         date = datetime(2024, 5, 10)
         times = _times_for_date(date)
         bad_time = times[20].astype("datetime64[s]").item()
@@ -176,7 +180,7 @@ class TestS6BadPoints(unittest.TestCase):
         self.assertEqual(len(idx), 1, "bad_time not found in output dataset")
         self.assertTrue(ds["nasa_flag"].values[idx[0]], "bad_time should have nasa_flag=1")
 
-    def test_no_bad_points_no_change(self):
+    def test_no_bad_points_no_change(self, _mss):
         """With bad_points=None, processing should not raise and produce valid flags."""
         date = datetime(2024, 5, 10)
         times = _times_for_date(date)
@@ -191,7 +195,7 @@ class TestS6BadPoints(unittest.TestCase):
         for v in flag_vals:
             self.assertIn(v, [0, 1, True, False])
 
-    def test_multiple_bad_points_all_flagged(self):
+    def test_multiple_bad_points_all_flagged(self, _mss):
         """All times listed under a date should be flagged."""
         date = datetime(2024, 5, 10)
         times = _times_for_date(date)

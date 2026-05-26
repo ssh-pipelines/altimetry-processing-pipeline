@@ -61,6 +61,24 @@ _SOURCE_FLAG_CONFIG: dict[str, dict] = {
             "flag_column_4": "rain_flag_nr",
         },
     },
+    "AvisoL2PDailyFile": {
+        "src_flag_dim": 1,
+        "nasa_flag_derivation": (
+            "nasa_flag is set to 0 for data that should be retained, and 1 for data that "
+            "should be removed. nasa_flag is 0 if: basin_flag is set to any valid, non-fill "
+            "value & data passes an along-track median check, saved in the median_filter_flag "
+            "variable & the following source_flag values are set to 0: validation_flag"
+        ),
+        "source_flag_attrs": {
+            "standard_name": "quality_flag",
+            "long_name": "Source data flag",
+            "comment": "AVISO L2P validation flag. See documentation for more details.",
+            "coverage_content_type": "auxiliaryInformation",
+            "flag_column_1": "validation_flag",
+            "flag_values": np.array([0, 1], dtype=np.int8),
+            "flag_meanings": "good bad",
+        },
+    },
 }
 
 _MEDIAN_FILTER_FLAG_ATTRS = {
@@ -99,6 +117,10 @@ def build_empty_dataset(source_config: SourceConfig, processor_cls: type) -> xr.
     flag_cfg = _SOURCE_FLAG_CONFIG[processor_name]
     src_flag_dim = flag_cfg["src_flag_dim"]
 
+    # high_latitude sources don't carry a target_mss in config — they normalize
+    # to DTU21 by interpolation at processing time (see ADR 0002).
+    target_mss = source_config.target_mss or "DTU21"
+
     basin_ids, names, basin_table = _load_basin_data()
 
     ds = xr.Dataset(
@@ -124,7 +146,7 @@ def build_empty_dataset(source_config: SourceConfig, processor_cls: type) -> xr.
     ds["time"].encoding["units"] = "seconds since 1990-01-01"
 
     # Variable attrs shared across all sources
-    for var, attrs in get_var_attrs(source_config.target_mss).items():
+    for var, attrs in get_var_attrs(target_mss).items():
         for attr, value in attrs.items():
             ds[var].attrs[attr] = value
 
@@ -153,7 +175,7 @@ def build_empty_dataset(source_config: SourceConfig, processor_cls: type) -> xr.
 
     # Global attrs
     ds.attrs.update(get_base_global_attrs())
-    ds.attrs["mean_sea_surface"] = source_config.target_mss
+    ds.attrs["mean_sea_surface"] = target_mss
     ds.attrs["granule_id"] = ""
     ds.attrs["flagged_passes"] = "N/A"
 

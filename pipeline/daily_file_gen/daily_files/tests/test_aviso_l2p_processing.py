@@ -11,36 +11,66 @@ from scipy.interpolate import RegularGridInterpolator
 from daily_files.config.dataset_schema import validate_dataset
 from daily_files.config.source_config import get_source_config
 from daily_files.daily_file_job import save_ds
-from daily_files.ingestion.aviso_l2p_ingest import AvisoL2PIngestor
+from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing import dtu21
 from daily_files.processing.aviso_l2p_daily_file import AvisoL2PDailyFile
 
 
-_FIXTURE = os.path.join(
-    os.path.dirname(__file__),
-    "fixtures",
-    "global_sla_l2p_ntc_s3b_C0101_P0745_20250106T234659_20250107T003225_20250213T162727.nc",
-)
+def _make_aviso_l2p_ingested_data(n=500, date=datetime(2025, 1, 7)):
+    """Build a synthetic IngestedData mimicking AvisoL2PIngestor output."""
+    rng = np.random.RandomState(31)
+    times = np.arange(
+        np.datetime64(date),
+        np.datetime64(date) + np.timedelta64(1, "D"),
+        np.timedelta64(86400 // n, "s"),
+    ).astype("datetime64[ns]")[:n]
+
+    ssha = rng.normal(0, 0.1, n)
+    lats = np.linspace(-66, 81, n)
+    lons = np.linspace(232, 358, n)
+    cycles = np.full(n, 101, dtype=np.int32)
+    passes = np.full(n, 745, dtype=np.int32)
+    dac = rng.normal(0, 0.01, n)
+    inv_bar_cor = np.zeros(n, dtype=np.float64)
+
+    mean_sea_surface = rng.normal(20, 5, n)
+    inter_mission_bias = np.full(n, -0.047)
+    validation_flag = rng.choice([0, 1], n, p=[0.9, 0.1]).astype(np.int8)
+
+    # Carry the same original_ds shape AvisoL2PIngestor would emit, in case
+    # downstream callers ever inspect it (the processor doesn't today).
+    original_ds = xr.Dataset(
+        {
+            "validation_flag": (("time",), validation_flag),
+            "mean_sea_surface": (("time",), mean_sea_surface),
+            "inter_mission_bias": (("time",), inter_mission_bias),
+        },
+        coords={"time": times},
+    )
+
+    return IngestedData(
+        ssha=ssha,
+        lat=lats,
+        lon=lons,
+        time=times,
+        cycles=cycles,
+        passes=passes,
+        dac=dac,
+        inv_bar_cor=inv_bar_cor,
+        source_specific={
+            "original_ds": original_ds,
+            "mean_sea_surface": mean_sea_surface,
+            "inter_mission_bias": inter_mission_bias,
+            "validation_flag": validation_flag,
+        },
+    )
 
 
-def _build_synthetic_dtu21_for_sample(margin_deg: float = 5.0, n: int = 100):
-    """Return a 100×100 RegularGridInterpolator over the lat/lon bbox of the
-    S3B sample (plus margin). Values are an analytic function of (lat, lon) so
-    the interpolated MSS is deterministic without loading the real grid."""
-    with xr.open_dataset(_FIXTURE) as ds:
-        lat_lo = float(np.nanmin(ds["latitude"].values)) - margin_deg
-        lat_hi = float(np.nanmax(ds["latitude"].values)) + margin_deg
-        lon_lo = float(np.nanmin(ds["longitude"].values)) - margin_deg
-        lon_hi = float(np.nanmax(ds["longitude"].values)) + margin_deg
-
-    lat_lo = max(lat_lo, -90.0)
-    lat_hi = min(lat_hi, 90.0)
-    lon_lo = max(lon_lo, 0.0)
-    lon_hi = min(lon_hi, 360.0)
-
-    lat = np.linspace(lat_lo, lat_hi, n)
-    lon = np.linspace(lon_lo, lon_hi, n)
-    # Smooth surface ~ tens of meters, like real MSS magnitudes
+def _synthetic_dtu21() -> RegularGridInterpolator:
+    """A 100×100 RegularGridInterpolator over the whole globe — values are a
+    smooth analytic function of (lat, lon), at MSS-realistic magnitudes."""
+    lat = np.linspace(-90.0, 90.0, 100)
+    lon = np.linspace(0.0, 360.0, 100)
     values = (
         20.0
         + 0.1 * lat.reshape(-1, 1)
@@ -67,17 +97,11 @@ class TestAvisoL2PProcessing(unittest.TestCase):
             handlers=[logging.StreamHandler()],
         )
 
-        # Inject a synthetic DTU21 so CI doesn't have to load the bundled grid.
-        dtu21.set_interpolator_for_test(_build_synthetic_dtu21_for_sample())
+        dtu21.set_interpolator_for_test(_synthetic_dtu21())
 
-        ingestor = AvisoL2PIngestor()
-        with open(_FIXTURE, "rb") as f:
-            ingested = ingestor.ingest([f])
-
-        # Sample granule spans 2025-01-06T23:46 → 2025-01-07T00:32, so date
-        # selection retains the records on either side depending on the date.
         cls.date = datetime(2025, 1, 7)
         source_config = get_source_config("S3B")
+        ingested = _make_aviso_l2p_ingested_data(date=cls.date)
         cls.daily_ds = AvisoL2PDailyFile(
             ingested,
             cls.date,

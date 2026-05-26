@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from io import BytesIO
 
@@ -39,10 +41,15 @@ def _make_l2p_bytes(cycle: int, pass_num: int, n: int, t_start: str) -> BytesIO:
         coords={"time": times},
         attrs={"cycle_number": cycle, "pass_number": pass_num},
     )
-    buf = BytesIO()
-    ds.to_netcdf(buf, engine="h5netcdf")
-    buf.seek(0)
-    return buf
+    # h5netcdf closes the BytesIO after writing, so route through a temp file.
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+        path = tmp.name
+    try:
+        ds.to_netcdf(path, engine="h5netcdf")
+        with open(path, "rb") as f:
+            return BytesIO(f.read())
+    finally:
+        os.remove(path)
 
 
 class TestAvisoL2PIngest(unittest.TestCase):

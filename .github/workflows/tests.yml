@@ -1,0 +1,52 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  unittest:
+    name: ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - bad_pass
+          - daily_files
+          - finalizer
+          - oer
+          - pipeline_init
+          - unifier
+          - xover
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            pipeline/pipeline_runtime/requirements.txt
+            pipeline/daily_file_gen/${{ matrix.module }}/requirements.txt
+            setup.py
+
+      - name: Install pipeline_runtime base
+        run: pip install -r pipeline/pipeline_runtime/requirements.txt
+
+      - name: Install ${{ matrix.module }} requirements
+        run: pip install -r pipeline/daily_file_gen/${{ matrix.module }}/requirements.txt
+
+      - name: Install shared utilities (editable)
+        run: pip install -e .
+
+      - name: Run unittests
+        working-directory: pipeline/daily_file_gen/${{ matrix.module }}
+        run: python -m unittest discover -s tests -t . -v

@@ -65,7 +65,9 @@ class TestHttpDownloader(unittest.TestCase):
         resp.raise_for_status.side_effect = requests.HTTPError("401 Unauthorized")
         session.get.return_value = resp
         dl = HttpDownloader(session_fn=lambda: session)
-        with self.assertRaises(requests.HTTPError):
+        # assertLogs captures the ERROR-level traceback HttpDownloader emits
+        # before re-raising, so it doesn't pollute test output.
+        with self.assertLogs(level="ERROR"), self.assertRaises(requests.HTTPError):
             dl.download("https://example.com/file.nc.gz")
 
 

@@ -66,7 +66,6 @@ daily_files/
 │   ├── test_bad_points.py                  # bad_points config flagging
 │   ├── test_empty_templates.py             # Empty template schema validation
 │   ├── test_smoothing.py                   # Smoothing filter edge cases
-│   └── testing_granules/                   # Sample granules (not tracked in repo)
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
@@ -76,15 +75,16 @@ daily_files/
 
 The code uses a plugin-style registry pattern. Each source is defined as a `SourcePipeline` — a bundle of three interchangeable components:
 
-| Component     | Base class   | GSFC implementation | S6/S6B implementation | S3 bucket / S3B   |
-|---------------|-------------|---------------------|-----------------------|-------------------|
-| **Downloader** | `Downloader` | `S3Downloader`     | `S3Downloader`        | `S3Downloader` (IAM) / `HttpDownloader` (AVISO) |
-| **Ingestor**   | `Ingestor`  | `GSFCIngestor` (pass LUT, NOIB DAC) | `S6Ingestor` (grouped NetCDF + orbit swap via C executable) | Source-specific |
-| **Processor**  | `DailyFile` | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction) | Source-specific |
+| Component      | Base class   | GSFC implementation                   | S6/S6B implementation                                       | S3 bucket / S3B                                 |
+| -------------- | ------------ | ------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| **Downloader** | `Downloader` | `S3Downloader`                        | `S3Downloader`                                              | `S3Downloader` (IAM) / `HttpDownloader` (AVISO) |
+| **Ingestor**   | `Ingestor`   | `GSFCIngestor` (pass LUT, NOIB DAC)   | `S6Ingestor` (grouped NetCDF + orbit swap via C executable) | Source-specific                                 |
+| **Processor**  | `DailyFile`  | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction)               | Source-specific                                 |
 
 Granule discovery happens upstream in `pipeline_init`, which writes a manifest of granule URIs per date. The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the three components and add a registry entry.
 
 Processing runs in two phases:
+
 1. **Acquire** — download URIs from the manifest, ingest into normalized `IngestedData`
 2. **Process** — run the source-specific `DailyFile` subclass to produce the output dataset
 
@@ -97,9 +97,7 @@ The Lambda receives one item from the jobs manifest per invocation:
   "bucket": "my-bucket",
   "date": "2025-01-15",
   "source": "S6",
-  "granules": [
-    "s3://podaac-ops-cumulus-protected/.../S6A_..._F09.nc"
-  ]
+  "granules": ["s3://podaac-ops-cumulus-protected/.../S6A_..._F09.nc"]
 }
 ```
 
@@ -120,10 +118,10 @@ All four fields are required. Available sources are defined in `daily_files/conf
 
 ## S3 paths
 
-| Path | Description |
-|------|-------------|
-| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file (write) |
-| `aux_files/GSFC_NOIB/Merged_..._Cycle_{NNNN}.V5_2.nc` | GSFC NOIB cycle files for DAC computation (read, GSFC only) |
+| Path                                                                    | Description                                                 |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file (write)                                |
+| `aux_files/GSFC_NOIB/Merged_..._Cycle_{NNNN}.V5_2.nc`                   | GSFC NOIB cycle files for DAC computation (read, GSFC only) |
 
 ## Source configuration
 
@@ -133,29 +131,29 @@ Each source has settings at two levels:
 
 **Stage-local config** (`daily_files/config/sources.yaml`) — daily-files-specific fields merged with the global registry:
 
-| Field               | Description                                              |
-|---------------------|----------------------------------------------------------|
-| `filename_template` | Output filename pattern (e.g. `{source}_alt_ref_at_v1_1_{date}.nc`) |
-| `s3_prefix`         | S3 key prefix for output files                           |
-| `source_mss`        | Source mean sea surface (e.g. DTU15, DTU18)              |
-| `target_mss`        | Target mean sea surface (DTU21)                          |
-| `mss_diff_file`     | MSS difference grid filename                             |
-| `empty_template`    | Empty NetCDF template filename                           |
-| `smoothing`         | Filter parameters: `speed` (km/s) and `sigma` (km)      |
-| `collections`       | CMR collection(s): `shortname`, `concept_id`, `priority`, `source_label`, `source_url`, `reference` |
-| `source_bucket`     | *(S3 bucket sources only)* S3 bucket containing source files |
-| `source_prefix_pattern` | *(S3 bucket sources only)* S3 prefix pattern with `{source}`, `{year}` placeholders |
-| `source_filename_pattern` | *(S3 bucket sources only)* Filename pattern with `{source}`, `{date8}` placeholders |
-| `cycle_index_key`   | *(S3 bucket sources only, optional)* S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date. |
-| `bad_points`        | *(optional)* Map of ISO date strings to lists of `{time: <ISO datetime>}` entries. Any observation whose timestamp matches a listed time (at second precision) will have `nasa_flag` forced to 1, regardless of other quality criteria. Supported for GSFC and S6/S6B sources. |
+| Field                     | Description                                                                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `filename_template`       | Output filename pattern (e.g. `{source}_alt_ref_at_v1_1_{date}.nc`)                                                                                                                                                                                                            |
+| `s3_prefix`               | S3 key prefix for output files                                                                                                                                                                                                                                                 |
+| `source_mss`              | Source mean sea surface (e.g. DTU15, DTU18)                                                                                                                                                                                                                                    |
+| `target_mss`              | Target mean sea surface (DTU21)                                                                                                                                                                                                                                                |
+| `mss_diff_file`           | MSS difference grid filename                                                                                                                                                                                                                                                   |
+| `empty_template`          | Empty NetCDF template filename                                                                                                                                                                                                                                                 |
+| `smoothing`               | Filter parameters: `speed` (km/s) and `sigma` (km)                                                                                                                                                                                                                             |
+| `collections`             | CMR collection(s): `shortname`, `concept_id`, `priority`, `source_label`, `source_url`, `reference`                                                                                                                                                                            |
+| `source_bucket`           | _(S3 bucket sources only)_ S3 bucket containing source files                                                                                                                                                                                                                   |
+| `source_prefix_pattern`   | _(S3 bucket sources only)_ S3 prefix pattern with `{source}`, `{year}` placeholders                                                                                                                                                                                            |
+| `source_filename_pattern` | _(S3 bucket sources only)_ Filename pattern with `{source}`, `{date8}` placeholders                                                                                                                                                                                            |
+| `cycle_index_key`         | _(S3 bucket sources only, optional)_ S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date.                   |
+| `bad_points`              | _(optional)_ Map of ISO date strings to lists of `{time: <ISO datetime>}` entries. Any observation whose timestamp matches a listed time (at second precision) will have `nasa_flag` forced to 1, regardless of other quality criteria. Supported for GSFC and S6/S6B sources. |
 
 Current sources:
 
-| Source | Collections | Source MSS | Target MSS |
-|--------|------------|------------|------------|
-| GSFC   | `MERGED_TP_J1_OSTM_OST_CYCLES_V52` | DTU15 | DTU21 |
-| S6     | `JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01`, `..._NTC_G01_UNVALIDATED`, `..._STC_F` | DTU18 | DTU21 |
-| S6B    | `JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G` | DTU18 | DTU21 |
+| Source | Collections                                                                      | Source MSS | Target MSS |
+| ------ | -------------------------------------------------------------------------------- | ---------- | ---------- |
+| GSFC   | `MERGED_TP_J1_OSTM_OST_CYCLES_V52`                                               | DTU15      | DTU21      |
+| S6     | `JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01`, `..._NTC_G01_UNVALIDATED`, `..._STC_F` | DTU18      | DTU21      |
+| S6B    | `JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G`                                           | DTU18      | DTU21      |
 
 To add a new source, add an entry to `utilities/sources.yaml` first, then add the stage-specific entry to `daily_files/config/sources.yaml`, implement the required components (enumerator, ingestor, processor), and register them in `SOURCE_REGISTRY`.
 
@@ -171,8 +169,6 @@ From the `daily_files/` directory:
 source .venv/bin/activate  # or use the devcontainer
 python -m unittest discover -s tests -t . -v
 ```
-
-Note: `test_gsfc_processing` and `test_s6_processing` require sample granules in `tests/testing_granules/` (not tracked in the repo). See `tests/README.md` for details. All other tests use synthetic data or mocks.
 
 ## Dependencies
 

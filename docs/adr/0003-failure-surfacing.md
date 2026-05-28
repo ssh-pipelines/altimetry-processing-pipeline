@@ -26,7 +26,13 @@ A key architectural fact constrained the design: **Distributed Map drops per-ite
 
 ### Topology
 
-Wire `failure_handling` into **parent-tier `Catch` blocks only**: `at_pipeline.asl.json` (7 stage Tasks) and `sg_pipeline.asl.json` (4 stage Tasks). Leave `pipeline.asl.json`'s top-tier Catches pointing at `Fail` — if `at_pipeline`'s Catch already fired, a top-tier notification would duplicate. Leaf SMs (`daily_file`, `xover`, `oer`, `bad_pass`, `finalizer`, `unifier`, `simple_grids`, `enso`) cannot host a Catch at the Map level for per-item context, so they are not modified.
+Wire `failure_handling` into **parent-tier `Catch` blocks**:
+
+- `at_pipeline.asl.json` (7 stage Tasks: Init pipeline, Daily File Execution, Xover 1, OER, Xover 2, Bad Pass, Finalizer).
+- `sg_pipeline.asl.json` (4 stage Tasks: Set SG Jobs, Simple Grids Execution, ENSO Execution, Indicators).
+- `pipeline.asl.json` (Unifier Execution only). The Unifier has no intermediate parent SM — pipeline.asl.json directly calls the leaf `unifier-sm` — so pipeline.asl.json *is* the parent tier for unifier failures. The other two top-tier Catches (Along Track Execution, SG Execution) keep pointing at `Fail`: their child SMs (`at_pipeline`, `sg_pipeline`) already notify from their own parent-tier Catches; a top-tier notification would duplicate.
+
+Total: 12 Catches wired across three ASL files. Leaf SMs (`daily_file`, `xover`, `oer`, `bad_pass`, `finalizer`, `unifier`, `simple_grids`, `enso`) cannot host a Catch at the Map level for per-item context, so they are not modified.
 
 ### Per-SM wiring pattern
 
@@ -59,7 +65,7 @@ One shared `Notify Failure` state per parent SM. Each stage Task's `Catch` sets 
 
 1. Read input `{stage, errorOutput, jobs_key, bucket, source}`.
 2. Derive `run_id` from `jobs_key` (segment 2 of `pipeline_runs/{source}/{run_id}/jobs.json`).
-3. Compute the ResultWriter prefix via `utilities/pipeline_layout.py:stage_results_prefix(source, run_id, stage)` → `pipeline_runs/{source}/{run_id}/results/{stage}/`.
+3. Compute the ResultWriter prefix inline: `pipeline_runs/{source}/{run_id}/results/{stage}/`. The shape mirrors `utilities/pipeline_layout.py:stage_results_prefix(source, run_id, stage)` but is duplicated here because `failure_handling` is an infra Lambda that does **not** ship the `utilities` package. A code comment in `failure_handling/app.py` points at the helper as the canonical reference.
 4. `s3:ListObjectsV2` under that prefix; collect any keys containing `/FAILED_`. The MapRunArn subdirectory is traversed implicitly — no Step Functions API call.
 5. Read each `FAILED_*.json`. Each entry's `Cause` is a JSON-stringified payload; parse it to extract `errorType`, `errorMessage`, `input`.
 6. Classify each failed item:
@@ -75,7 +81,9 @@ One shared `Notify Failure` state per parent SM. Each stage Task's `Catch` sets 
 
 ### Exception class change
 
-Introduce one shared `PipelineError(Exception)` class in `utilities/`. Every stage handler that currently raises `Exception(json.dumps(error_response))` raises `PipelineError(json.dumps(error_response))` instead. This is the machine-readable signal that distinguishes a **Code failure** (handler caught and packaged the error) from a **Runtime failure** (Lambda runtime killed the process before the handler could). No per-stage subclasses.
+Introduce one shared `PipelineError(Exception)` class in `utilities/errors.py`. Every containerized stage handler (`daily_files`, `xover`, `oer`, `bad_pass`, `finalizer`, `unifier`, `simple_grids`, `enso`, `indicators`) raises `PipelineError(json.dumps(error_response))` instead of `Exception(json.dumps(error_response))`. `unifier` previously had no `try/except` wrap; this ADR adds one for consistency so the **input** field (date, source) propagates through to the SNS message's affected-dates summary.
+
+The class name itself is the machine-readable signal `failure_handling` uses to distinguish **Code failures** from **Runtime failures** (`Lambda.Timeout`, `Lambda.OOM`). No per-stage subclasses — `failure_handling` already parses `errorType` from the packaged payload.
 
 ### IAM
 
@@ -91,7 +99,7 @@ Introduce one shared `PipelineError(Exception)` class in `utilities/`. Every sta
 - The failure taxonomy in CONTEXT.md is now codified in code (`PipelineError`), in the SNS message format, and in any future runbook.
 
 **Negative:**
-- `failure_handling`'s input shape becomes a load-bearing interface across 11 Catch wirings. Changing it later means touching every Catch.
+- `failure_handling`'s input shape becomes a load-bearing interface across 12 Catch wirings. Changing it later means touching every Catch.
 - The ResultWriter prefix layout is now duplicated in `pipeline_layout.py:stage_results_prefix` and in each leaf ASL's JSONata. A future cleanup could have `pipeline_init` compute and pass the prefix as an input parameter, eliminating the JSONata version. Out of scope here.
 - `pipeline_layout.py:stage_results_prefix` currently has the wrong signature (`stage_results_prefix(stage)` returning a source/run_id-less path). This ADR's implementation updates it to `stage_results_prefix(source, run_id, stage)` and updates `utilities/tests/test_pipeline_layout.py` to match. Any caller relying on the old signature must be updated; a grep shows only the test references it today.
 - `failure_handling` invocation adds ~one Lambda invocation of latency between failure and `Fail` transition. Acceptable: failures are exceptional and the parent SM already has the failed state.

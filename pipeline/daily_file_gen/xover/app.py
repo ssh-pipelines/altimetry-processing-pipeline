@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 from crossover.parallel_crossovers import Crossover
 from crossover.config.source_config import get_source_config
+from utilities.errors import PipelineError
 
 
 _CROSSOVER_PROCESSORS = {
@@ -53,4 +54,4 @@ def handler(event, context):
             "input": event,
         }
         print(f"Error: {error_response}")
-        raise Exception(json.dumps(error_response))
+        raise PipelineError(json.dumps(error_response))

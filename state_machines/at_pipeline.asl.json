@@ -21,10 +21,9 @@
       ],
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'pipeline_init', 'errorOutput': $states.errorOutput, 'jobs_key': '', 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -43,10 +42,9 @@
       "Next": "Xover 1 Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'daily_file', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -66,10 +64,9 @@
       "Next": "OER Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'xover', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -89,10 +86,9 @@
       "Next": "Xover 2 Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'oer', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -112,10 +108,9 @@
       "Next": "Bad Pass Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'xover', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -134,10 +129,9 @@
       "Next": "Finalizer Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'bad_pass', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -160,13 +154,34 @@
       },
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'finalizer', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ],
       "End": true
+    },
+    "Notify Failure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-failure_handling:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Fail"
     },
     "Fail": {
       "Type": "Fail"

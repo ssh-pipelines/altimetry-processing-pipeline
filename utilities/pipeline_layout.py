@@ -139,12 +139,17 @@ def jobs_manifest_key(source: str, run_id: str) -> str:
     return f"pipeline_runs/{source}/{run_id}/jobs.json"
 
 
-def stage_results_prefix(stage: str) -> str:
-    """Listing prefix for Distributed Map result writers.
+def stage_results_prefix(source: str, run_id: str, stage: str) -> str:
+    """Bucket-relative prefix for a stage's Distributed Map ResultWriter output.
 
-    Example: pipeline_runs/results/daily_file/
+    The actual on-disk layout under this prefix is `{MapRunArn}/{FAILED,SUCCEEDED,...}_n.json`;
+    callers list under this prefix to discover failed items without needing the MapRunArn
+    in advance. The leaf ASLs encode the same path shape via JSONata `$split`/`&` on
+    `jobs_key`; keep this helper and the ASL convention in sync.
+
+    Example: pipeline_runs/S6/20250528T120000/results/daily_file/
     """
-    return f"pipeline_runs/results/{stage}/"
+    return f"pipeline_runs/{source}/{run_id}/results/{stage}/"
 
 
 # ─── Simple grids ─────────────────────────────────────────────────────────

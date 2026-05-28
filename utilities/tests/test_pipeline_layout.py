@@ -109,7 +109,10 @@ class TestPipelineRuns(unittest.TestCase):
         self.assertEqual(key, "pipeline_runs/S6/20250219T120000/jobs.json")
 
     def test_stage_results_prefix(self):
-        self.assertEqual(stage_results_prefix("daily_file"), "pipeline_runs/results/daily_file/")
+        self.assertEqual(
+            stage_results_prefix("S6", "20250528T120000", "daily_file"),
+            "pipeline_runs/S6/20250528T120000/results/daily_file/",
+        )
 
 
 class TestSimpleGrid(unittest.TestCase):

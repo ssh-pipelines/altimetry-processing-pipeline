@@ -12,9 +12,7 @@
       "Next": "Need Unification?",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "Fail"
         }
       ]
@@ -39,10 +37,9 @@
       "Next": "SG Execution",
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "Fail"
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'unifier', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.Output.jobs_key, 'bucket': $states.input.Output.bucket, 'source': $states.input.Output.source } %}"
         }
       ]
     },
@@ -56,12 +53,32 @@
       "End": true,
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "Fail"
         }
       ]
+    },
+    "Notify Failure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-failure_handling:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Fail"
     },
     "Fail": {
       "Type": "Fail"

@@ -3,6 +3,7 @@ import json
 import logging
 
 from bad_passes.bad_pass_flag import XoverProcessor
+from utilities.errors import PipelineError
 
 
 def handler(event, context):
@@ -36,4 +37,4 @@ def handler(event, context):
             "input": event,
         }
         print(f"Error: {error_response}")
-        raise Exception(json.dumps(error_response))
+        raise PipelineError(json.dumps(error_response))

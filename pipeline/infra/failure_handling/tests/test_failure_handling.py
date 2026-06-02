@@ -111,6 +111,49 @@ class TestParseFailedItem(unittest.TestCase):
         self.assertEqual(result["errorType"], "Something")
         self.assertEqual(result["errorMessage"], "not json at all")
 
+    def test_map_failed_entry_runtime_timeout_recovers_entry_input(self):
+        """Realistic Distributed Map FAILED entry: handler never ran, so the
+        per-item input is only available at the entry's top-level `Input` field."""
+        entry = {
+            "Status": "FAILED",
+            "Error": "Sandbox.Timedout",
+            "Cause": "Task timed out after 15.00 seconds",
+            "Input": json.dumps({"date": "2025-02-01", "source": "S3B", "bucket": "test"}),
+            "ExecutionArn": "arn:aws:states:us-west-2:123:execution:test:abc",
+        }
+        result = app._parse_failed_item(entry)
+        self.assertEqual(result["errorType"], "Sandbox.Timedout")
+        self.assertEqual(result["category"], "Runtime failure")
+        self.assertEqual(result["input"], {"date": "2025-02-01", "source": "S3B", "bucket": "test"})
+
+    def test_entry_input_does_not_override_packaged_input(self):
+        """If the handler packaged an input (PipelineError path), prefer that
+        over the entry-level Input field — they should agree, but the packaged
+        one is what the handler actually saw at failure time."""
+        inner = json.dumps({
+            "errorType": "KeyError",
+            "errorMessage": "'cycle'",
+            "input": {"date": "2025-02-01", "source": "S3B", "from_handler": True},
+        })
+        outer = json.dumps({"errorType": "PipelineError", "errorMessage": inner})
+        entry = {
+            "Cause": outer,
+            "Error": "Lambda.Function",
+            "Input": json.dumps({"date": "2025-02-01", "source": "S3B", "from_handler": False}),
+        }
+        result = app._parse_failed_item(entry)
+        self.assertTrue(result["input"]["from_handler"])
+
+    def test_entry_input_non_json_string_preserved(self):
+        """Defensive: if entry Input isn't JSON, keep it as a raw string."""
+        result = app._parse_failed_item({
+            "Status": "FAILED",
+            "Error": "Sandbox.Timedout",
+            "Cause": "Task timed out",
+            "Input": "raw-string-not-json",
+        })
+        self.assertEqual(result["input"], "raw-string-not-json")
+
 
 class TestRunIdFromJobsKey(unittest.TestCase):
     def test_valid_jobs_key(self):

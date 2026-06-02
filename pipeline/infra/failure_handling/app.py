@@ -112,6 +112,20 @@ def _parse_failed_item(entry: dict) -> dict:
         error_message = cause_raw
         break
 
+    # Last resort: Distributed Map FAILED entries carry the per-item Map input
+    # at the entry level. Use it if the envelope walk above produced no input —
+    # the realistic case is Sandbox.Timedout / Lambda.OOM where the handler
+    # never ran to package its input into the PipelineError payload.
+    if item_input is None:
+        raw = entry.get("Input")
+        if isinstance(raw, str):
+            try:
+                item_input = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                item_input = raw
+        elif raw is not None:
+            item_input = raw
+
     return {
         "errorType": error_type or "Unknown",
         "errorMessage": error_message or "",
@@ -299,7 +313,7 @@ def lambda_handler(event, context):
         }]
         total_failed = 1
 
-    subject = f"Pipeline failure: {stage} / {source}"[:100]
+    subject = f"Pipeline failure: {stage} / {source} / {run_id}"[:100]
     message = _format_message(
         stage, source, run_id, top_cause, child_arn,
         deep_link, distinct, total_failed, overflow_url,

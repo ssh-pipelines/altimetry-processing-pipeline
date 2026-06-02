@@ -30,6 +30,8 @@ Set by each parent-SM `Catch`'s `Output` expression:
 }
 ```
 
+`jobs_key` is optional — stages that fail before the manifest is written (e.g. `pipeline_init`) omit it. The Lambda treats a missing `jobs_key` as `run_id = "unknown"` and falls back to the top-level `Cause` rather than listing S3.
+
 ## Tests
 
 ```bash

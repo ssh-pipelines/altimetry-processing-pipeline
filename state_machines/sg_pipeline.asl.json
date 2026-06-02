@@ -38,7 +38,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Arguments": {
-        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-sg_pipeline-sm",
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-simple_grids-sm",
         "Input": {
           "jobs_key": "{% $states.input.jobs_key %}",
           "bucket": "{% $states.input.bucket %}",

@@ -20,6 +20,12 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 AUTH_FAILURE_PATTERN = re.compile(r"\b(401|403|Unauthorized|Forbidden)\b")
 MAX_DISTINCT_FAILURES_IN_BODY = 10
 
+# Error-type prefixes/values that indicate the Lambda runtime (not handler code)
+# killed the process. `Sandbox.Timedout` is the Lambda execution-environment
+# timeout; `States.Timeout` is a state-level TimeoutSeconds breach.
+RUNTIME_ERROR_PREFIXES = ("Lambda.", "Sandbox.")
+RUNTIME_ERROR_TYPES = {"States.Timeout"}
+
 
 # Layout mirrors utilities/pipeline_layout.py:stage_results_prefix.
 # Duplicated here because infra Lambdas don't ship the utilities package.
@@ -34,7 +40,7 @@ def _run_id_from_jobs_key(jobs_key: str) -> str:
 
 
 def _classify(error_type: str, error_message: str) -> str:
-    if error_type.startswith("Lambda."):
+    if error_type.startswith(RUNTIME_ERROR_PREFIXES) or error_type in RUNTIME_ERROR_TYPES:
         return "Runtime failure"
     if error_type == "PipelineError" and AUTH_FAILURE_PATTERN.search(error_message or ""):
         return "Auth failure"
@@ -42,39 +48,65 @@ def _classify(error_type: str, error_message: str) -> str:
 
 
 def _parse_failed_item(entry: dict) -> dict:
-    """Extract structured info from one ResultWriter FAILED_*.json entry.
+    """Extract structured info from a failure envelope.
 
-    Step Functions wraps a handler-raised exception twice: the outer Cause is a
-    JSON-stringified `{errorType, errorMessage, ...}`; if the handler raised
-    PipelineError with our packaged payload, the *inner* errorMessage is itself
-    a JSON string carrying the real `{errorType, errorMessage, input}`. Unwrap
-    both. Runtime failures (Lambda.Timeout etc.) only have the outer layer.
+    Step Functions nests failure data in two distinct envelope shapes:
+      - Child-SM-failure envelope: {Cause, Error, ExecutionArn, Input, Status, ...}
+        where Cause is itself a JSON string of the next envelope.
+      - Lambda-failure envelope: {errorType, errorMessage, stackTrace}
+        where errorMessage may *itself* be a JSON string carrying our
+        PipelineError-packaged {errorType, errorMessage, input} payload.
+
+    A parent SM's Catch sees a child-SM-failure envelope at the top; the leaf
+    Lambda-failure envelope (with our packaged payload, if any) is nested one
+    or two levels deeper. Unwrap iteratively until we find the leaf or run out.
     """
     cause_raw = entry.get("Cause", "")
     error_type = entry.get("Error", "")
     error_message = ""
     item_input: Any = None
 
-    try:
-        cause = json.loads(cause_raw) if cause_raw else None
-    except (json.JSONDecodeError, TypeError):
-        cause = None
-
-    if isinstance(cause, dict):
-        outer_message = cause.get("errorMessage", "")
-        error_type = cause.get("errorType") or error_type
+    while cause_raw:
         try:
-            inner = json.loads(outer_message)
+            cause = json.loads(cause_raw)
         except (json.JSONDecodeError, TypeError):
-            inner = None
-        if isinstance(inner, dict):
-            error_type = inner.get("errorType", error_type)
-            error_message = inner.get("errorMessage", outer_message)
-            item_input = inner.get("input")
-        else:
-            error_message = outer_message
-    else:
+            error_message = cause_raw
+            break
+        if not isinstance(cause, dict):
+            error_message = cause_raw
+            break
+
+        if "errorType" in cause or "errorMessage" in cause:
+            error_type = cause.get("errorType", error_type)
+            outer_message = cause.get("errorMessage", "")
+            try:
+                inner = json.loads(outer_message)
+            except (json.JSONDecodeError, TypeError):
+                inner = None
+            if isinstance(inner, dict) and ("errorType" in inner or "input" in inner):
+                error_type = inner.get("errorType", error_type)
+                error_message = inner.get("errorMessage", outer_message)
+                item_input = inner.get("input", item_input)
+            else:
+                error_message = outer_message
+            break
+
+        if "Cause" in cause and "Error" in cause:
+            error_type = cause.get("Error", error_type)
+            sm_input = cause.get("Input")
+            if item_input is None and sm_input is not None:
+                if isinstance(sm_input, str):
+                    try:
+                        item_input = json.loads(sm_input)
+                    except (json.JSONDecodeError, TypeError):
+                        item_input = sm_input
+                else:
+                    item_input = sm_input
+            cause_raw = cause.get("Cause", "")
+            continue
+
         error_message = cause_raw
+        break
 
     return {
         "errorType": error_type or "Unknown",
@@ -149,6 +181,27 @@ def _cloudwatch_deep_link(child_arn: str | None) -> str:
     )
 
 
+def _sample_input_for_display(sample_input: Any) -> Any:
+    """Strip known-large fields (granule URI lists) so the sample is scannable."""
+    if not isinstance(sample_input, dict):
+        return sample_input
+    display = dict(sample_input)
+    granules = display.get("granules")
+    if isinstance(granules, list):
+        display["granules"] = f"[{len(granules)} URIs omitted]"
+    return display
+
+
+def _top_level_envelope_error(top_cause: str) -> str:
+    if not top_cause:
+        return ""
+    try:
+        env = json.loads(top_cause)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    return env.get("Error", "") if isinstance(env, dict) else ""
+
+
 def _format_message(
     stage: str,
     source: str,
@@ -165,11 +218,11 @@ def _format_message(
         f"Source: {source}",
         f"Run ID: {run_id}",
         f"Total failed items: {total_failed}",
-        "",
-        "Top-level cause:",
-        top_cause or "(none)",
-        "",
     ]
+    envelope_error = _top_level_envelope_error(top_cause)
+    if envelope_error:
+        lines.append(f"Top-level error: {envelope_error}")
+    lines.append("")
     if child_arn:
         lines += [f"Child execution: {child_arn}", f"Console: {deep_link}", ""]
 
@@ -184,7 +237,8 @@ def _format_message(
                 f"{group['errorMessage']} (x{group['count']})"
             )
             if group["sample_input"]:
-                lines.append(f"      Sample input: {json.dumps(group['sample_input'])}")
+                display = _sample_input_for_display(group["sample_input"])
+                lines.append(f"      Sample input: {json.dumps(display)}")
             if group["affected_dates"]:
                 dates_preview = ", ".join(group["affected_dates"][:5])
                 if len(group["affected_dates"]) > 5:

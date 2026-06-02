@@ -33,6 +33,6 @@ Set by each parent-SM `Catch`'s `Output` expression:
 ## Tests
 
 ```bash
-source ../pipeline_init/.venv/bin/activate
-python -m unittest pipeline.infra.tests.test_failure_handling
+cd pipeline/infra/failure_handling
+python -m unittest discover -s tests -t . -v
 ```

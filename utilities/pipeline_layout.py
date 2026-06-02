@@ -139,17 +139,29 @@ def jobs_manifest_key(source: str, run_id: str) -> str:
     return f"pipeline_runs/{source}/{run_id}/jobs.json"
 
 
-def stage_results_prefix(source: str, run_id: str, stage: str) -> str:
+def stage_results_prefix(jobs_key: str, stage: str) -> str:
     """Bucket-relative prefix for a stage's Distributed Map ResultWriter output.
+
+    Mirrors the JSONata used by every leaf ASL's ResultWriter:
+        $p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/
+    Must take `jobs_key` rather than (source, run_id) because post-unifier the
+    SM-input `source` is the unified product (e.g. "NASA-SSH") while jobs_key
+    still embeds the original source (e.g. "S6") — and the ResultWriter wrote
+    under the original-source path. Listing by the unified source would miss
+    everything.
 
     The actual on-disk layout under this prefix is `{MapRunArn}/{FAILED,SUCCEEDED,...}_n.json`;
     callers list under this prefix to discover failed items without needing the MapRunArn
-    in advance. The leaf ASLs encode the same path shape via JSONata `$split`/`&` on
-    `jobs_key`; keep this helper and the ASL convention in sync.
+    in advance.
 
-    Example: pipeline_runs/S6/20250528T120000/results/daily_file/
+    Example:
+        stage_results_prefix("pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso")
+        → "pipeline_runs/S6/20250528T120000/results/enso/"
     """
-    return f"pipeline_runs/{source}/{run_id}/results/{stage}/"
+    parts = jobs_key.split("/")
+    if len(parts) < 3:
+        raise ValueError(f"jobs_key too short to derive results prefix: {jobs_key!r}")
+    return f"{parts[0]}/{parts[1]}/{parts[2]}/results/{stage}/"
 
 
 # ─── Simple grids ─────────────────────────────────────────────────────────

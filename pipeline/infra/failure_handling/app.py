@@ -27,14 +27,23 @@ RUNTIME_ERROR_PREFIXES = ("Lambda.", "Sandbox.")
 RUNTIME_ERROR_TYPES = {"States.Timeout"}
 
 
-# Layout mirrors utilities/pipeline_layout.py:stage_results_prefix.
-# Duplicated here because infra Lambdas don't ship the utilities package.
-def _stage_results_prefix(source: str, run_id: str, stage: str) -> str:
-    return f"pipeline_runs/{source}/{run_id}/results/{stage}/"
+# Mirrors the JSONata in every leaf ASL's ResultWriter:
+#   "$p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/"
+# We must derive the prefix from jobs_key (not from the event's `source` field)
+# because post-unifier the SM input carries the unified source (e.g. "NASA-SSH")
+# while the original-source segment of jobs_key (e.g. "S6") is what was used
+# when the ResultWriter wrote FAILED_*.json. Duplicated here rather than imported
+# because failure_handling is an infra Lambda that doesn't ship `utilities`.
+def _results_prefix_from_jobs_key(jobs_key: str, stage: str) -> str | None:
+    parts = jobs_key.split("/")
+    if len(parts) < 3:
+        return None
+    return f"{parts[0]}/{parts[1]}/{parts[2]}/results/{stage}/"
 
 
 def _run_id_from_jobs_key(jobs_key: str) -> str:
-    # jobs_key shape: pipeline_runs/{source}/{run_id}/jobs.json
+    # jobs_key shape (AT-side): pipeline_runs/{source}/{run_id}/jobs.json
+    # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{unified}/sg_jobs.json
     parts = jobs_key.split("/")
     return parts[2] if len(parts) >= 3 else "unknown"
 
@@ -281,7 +290,7 @@ def lambda_handler(event, context):
     top_cause = error_output.get("Cause", "")
 
     run_id = _run_id_from_jobs_key(jobs_key)
-    prefix = _stage_results_prefix(source, run_id, stage)
+    prefix = _results_prefix_from_jobs_key(jobs_key, stage) if jobs_key else None
     child_arn = _child_execution_arn_from_cause(top_cause)
     deep_link = _cloudwatch_deep_link(child_arn)
 

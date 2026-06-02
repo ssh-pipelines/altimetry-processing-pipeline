@@ -65,7 +65,7 @@ One shared `Notify Failure` state per parent SM. Each stage Task's `Catch` sets 
 
 1. Read input `{stage, errorOutput, jobs_key, bucket, source}`.
 2. Derive `run_id` from `jobs_key` (segment 2 of `pipeline_runs/{source}/{run_id}/jobs.json`).
-3. Compute the ResultWriter prefix inline: `pipeline_runs/{source}/{run_id}/results/{stage}/`. The shape mirrors `utilities/pipeline_layout.py:stage_results_prefix(source, run_id, stage)` but is duplicated here because `failure_handling` is an infra Lambda that does **not** ship the `utilities` package. A code comment in `failure_handling/app.py` points at the helper as the canonical reference.
+3. Compute the ResultWriter prefix from `jobs_key` (not from the SM-input `source` field) by splitting on `/` and joining the first three path segments with `results/{stage}/`. This mirrors the JSONata expression in every leaf ASL's `ResultWriter.Prefix`. The shape mirrors `utilities/pipeline_layout.py:stage_results_prefix(jobs_key, stage)` but is duplicated here because `failure_handling` is an infra Lambda that does **not** ship the `utilities` package. A code comment in `failure_handling/app.py` points at the helper as the canonical reference. Using `jobs_key` rather than `source` is load-bearing for unified pipelines: post-unifier the SM-input `source` is the unified product (e.g. `NASA-SSH`), but the ResultWriter wrote under the original-source path (e.g. `S6`) embedded in `jobs_key`.
 4. `s3:ListObjectsV2` under that prefix; collect any keys containing `/FAILED_`. The MapRunArn subdirectory is traversed implicitly — no Step Functions API call.
 5. Read each `FAILED_*.json`. Each entry's `Cause` is a JSON-stringified payload; parse it to extract `errorType`, `errorMessage`, `input`.
 6. Classify each failed item:
@@ -101,7 +101,7 @@ The class name itself is the machine-readable signal `failure_handling` uses to 
 **Negative:**
 - `failure_handling`'s input shape becomes a load-bearing interface across 12 Catch wirings. Changing it later means touching every Catch.
 - The ResultWriter prefix layout is now duplicated in `pipeline_layout.py:stage_results_prefix` and in each leaf ASL's JSONata. A future cleanup could have `pipeline_init` compute and pass the prefix as an input parameter, eliminating the JSONata version. Out of scope here.
-- `pipeline_layout.py:stage_results_prefix` currently has the wrong signature (`stage_results_prefix(stage)` returning a source/run_id-less path). This ADR's implementation updates it to `stage_results_prefix(source, run_id, stage)` and updates `utilities/tests/test_pipeline_layout.py` to match. Any caller relying on the old signature must be updated; a grep shows only the test references it today.
+- `pipeline_layout.py:stage_results_prefix` currently has the wrong signature (`stage_results_prefix(stage)` returning a source/run_id-less path). This ADR's implementation updates it to `stage_results_prefix(jobs_key, stage)` and updates `utilities/tests/test_pipeline_layout.py` to match. Any caller relying on the old signature must be updated; a grep shows only the test references it today. The function takes `jobs_key` rather than `(source, run_id)` because the SM-input `source` diverges from the original-source segment of `jobs_key` post-unifier — and the ResultWriter wrote under the original-source path.
 - `failure_handling` invocation adds ~one Lambda invocation of latency between failure and `Fail` transition. Acceptable: failures are exceptional and the parent SM already has the failed state.
 
 ## Alternatives considered

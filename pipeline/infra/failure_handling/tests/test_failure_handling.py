@@ -167,12 +167,29 @@ class TestRunIdFromJobsKey(unittest.TestCase):
         self.assertEqual(app._run_id_from_jobs_key("foo"), "unknown")
 
 
-class TestStageResultsPrefix(unittest.TestCase):
-    def test_format(self):
+class TestResultsPrefixFromJobsKey(unittest.TestCase):
+    def test_at_side_jobs_key(self):
         self.assertEqual(
-            app._stage_results_prefix("S6", "20250528T120000", "daily_file"),
+            app._results_prefix_from_jobs_key(
+                "pipeline_runs/S6/20250528T120000/jobs.json", "daily_file"
+            ),
             "pipeline_runs/S6/20250528T120000/results/daily_file/",
         )
+
+    def test_sg_side_jobs_key_uses_original_source_segment(self):
+        """Post-unifier the SM input's `source` is "NASA-SSH" but the jobs_key
+        path's $p[1] is the original source. The prefix must use $p[1] to find
+        what the ResultWriter actually wrote."""
+        self.assertEqual(
+            app._results_prefix_from_jobs_key(
+                "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso"
+            ),
+            "pipeline_runs/S6/20250528T120000/results/enso/",
+        )
+
+    def test_short_jobs_key_returns_none(self):
+        self.assertIsNone(app._results_prefix_from_jobs_key("", "enso"))
+        self.assertIsNone(app._results_prefix_from_jobs_key("a/b", "enso"))
 
 
 class TestDedupe(unittest.TestCase):

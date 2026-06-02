@@ -6,7 +6,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Arguments": {
-        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-along_track-sm",
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-at_pipeline-sm",
         "Input": "{% $states.input %}"
       },
       "Next": "Need Unification?",

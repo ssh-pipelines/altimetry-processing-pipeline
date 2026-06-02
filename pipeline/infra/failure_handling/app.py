@@ -42,7 +42,11 @@ def _run_id_from_jobs_key(jobs_key: str) -> str:
 def _classify(error_type: str, error_message: str) -> str:
     if error_type.startswith(RUNTIME_ERROR_PREFIXES) or error_type in RUNTIME_ERROR_TYPES:
         return "Runtime failure"
-    if error_type == "PipelineError" and AUTH_FAILURE_PATTERN.search(error_message or ""):
+    # After _parse_failed_item unwraps a PipelineError-packaged payload, error_type
+    # is the inner Python exception (ClientError, HTTPError, ...) — not "PipelineError".
+    # Match on message content alone; the runtime branch above already excluded the
+    # Sandbox/Lambda cases where auth keywords might appear by coincidence.
+    if AUTH_FAILURE_PATTERN.search(error_message or ""):
         return "Auth failure"
     return "Code failure"
 

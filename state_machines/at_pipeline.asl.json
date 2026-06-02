@@ -23,7 +23,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'pipeline_init', 'errorOutput': $states.errorOutput, 'jobs_key': '', 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'pipeline_init', 'errorOutput': $states.errorOutput, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -66,7 +66,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'xover', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'xover_p1', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -110,7 +110,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'xover', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'xover_p2', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },

@@ -1,6 +1,8 @@
 # Deployment Pipelines
 
-This directory contains scripts used to build, tag, push, and deploy Docker images for both **development** and **production** environments. The workflow is tightly integrated with Git to ensure traceability, reproducibility, and minimal rebuild effort.
+This directory contains scripts used to build, tag, push, and deploy the pipeline's Lambda **targets** for both **development** and **production** environments. The workflow is tightly integrated with Git to ensure traceability, reproducibility, and minimal rebuild effort.
+
+What each script manages — which targets exist, where they live, which are heavy (`FROM` pipeline_runtime), which map to a Lambda, and how they are packaged — comes from the **Target registry** (`utilities/targets.py` + `utilities/targets.yaml`), the single source of truth. See `CONTEXT.md` → **Build & deploy** and `docs/adr/0004-target-registry.md`.
 
 ---
 
@@ -9,21 +11,25 @@ This directory contains scripts used to build, tag, push, and deploy Docker imag
 ```
 scripts/
 ├── dev/
-│   ├── build_and_push.sh     # Build + push images using git SHA tags
-│   ├── deploy.sh             # Update dev environment to use pushed images
+│   ├── build_and_push.sh     # Build + push container targets at git-SHA tags
+│   ├── deploy.sh             # Deploy changed targets to the dev environment
 │   └── pipeline.sh           # Orchestrates build, push, deploy for dev
 ├── prod/
-│   ├── build_and_push.sh     # Build + push images using RELEASE_VERSION tags
-│   ├── deploy.sh             # Deploy prod images
+│   ├── build_and_push.sh     # Build + push container targets at RELEASE_VERSION tags
+│   ├── deploy.sh             # Deploy targets to prod
 │   └── release.sh            # Full production release pipeline
 └── util/
+    ├── registry.sh           # Wrapper around the Target registry (registry_query)
+    ├── _build_and_push.sh    # Shared build/push core (container targets)
+    ├── _deploy.sh            # Shared deploy core (packaging seam: image vs zip)
     ├── ecr_login.sh          # Authenticates Docker with AWS ECR
-    ├── find_images.sh        # Enumerates all images in the monorepo
     └── load_env.sh           # Loads shared environment variables
 .env                          # File with deployment specific values
 ```
 
-Requires `.env` file at the repo root containg `AWS_REGION`,  `AWS_ACCOUNT_ID`, `AWS_PROFILE` key value pairs. `AWS_PROFILE` contains the profile name to use with valid credentials for accessing `AWS_ACCOUNT_ID`'s ECR and Lambda services with sufficient privelege   
+Requires a `.env` file at the repo root containing `AWS_REGION`, `AWS_ACCOUNT_ID`, `AWS_PROFILE` key/value pairs. `AWS_PROFILE` names the profile with valid credentials for `AWS_ACCOUNT_ID`'s ECR and Lambda services.
+
+The registry runs via `python3 -m utilities.targets`; the `utilities` package must be importable (`pip install .` from the repo root). If `python3` on PATH lacks it, set `REGISTRY_PY` (or `PYTHON`) to a venv interpreter.
 
 Scripts are enforced to be run from the root of the repo.
 
@@ -42,39 +48,33 @@ This provides:
 ## Running dev pipeline
 
 ```
-scripts/dev/pipeline.sh [--all] [--dry-run]
+scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>]
 ```
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `--all` | Forces build and deploy of all images within repo, bypassing git diff with main |
+| `--all` | Build and deploy every target, bypassing change detection |
 | `--dry-run` | Skips build, push, and deployment, logging steps to be taken instead |
+| `--base <ref>` | Git ref to diff against for change detection (default: `main`) |
 
 ### How the dev pipeline works
 
 1. **Load environment + authenticate with ECR**  
    Uses `load_env.sh` and `ecr_login.sh`.
 
-2. **Generate list of all images**  
-   Uses `util/find_images.sh`.
+2. **Detect which targets changed**  
+   Asks the Target registry: `registry_query dirty --base main`. Change-impact is dependency-aware — a change to `utilities/`, root `setup.py`, or `pipeline_runtime/` dirties the stages that depend on them, not just the directory that changed. (`--all` lists the full catalog instead.)
 
-3. **Detect which images changed**  
-   For each image directory, the pipeline compares:
-   ```
-   git diff main..HEAD
-   ```
-   Only changed images are rebuilt.
-
-4. **Build & push changed images**  
-   Tags are of the form:
+3. **Build & push changed container targets**  
+   `dev/build_and_push.sh` builds the container targets (skipping zip targets, which have no image). Tags are of the form:
    ```
    <registry>/dev/<image>:<git_sha>
    ```
 
-5. **Deploy updated images**  
-   The `dev/deploy.sh` script updates Lambda functions, ECS tasks, or other resources to pull the new dev-tagged image.
+4. **Deploy changed targets**  
+   `dev/deploy.sh` updates each deployable target's Lambda, branching on packaging kind: container targets via `--image-uri`, zip targets (the `pipeline/infra/` Lambdas) by zipping the source dir and using `--zip-file`. Non-deployable targets (e.g. `pipeline_runtime`) are skipped.
 
 ---
 
@@ -111,8 +111,8 @@ scripts/prod/release.sh --version <RELEASE_VERSION> [--no-cleanup] [--dry-run]
 2. **Load environment + authenticate**  
    Same shared utility scripts as dev.
 
-3. **Enumerate all images**  
-   Prod always rebuilds **every** image.
+3. **Enumerate all targets**  
+   From the Target registry (`registry_query catalog`). Prod always rebuilds **every** container target and deploys **every** deployable target.
 
 4. **Build & push all images**  
    Tags are of the form:
@@ -140,15 +140,20 @@ scripts/prod/release.sh --version <RELEASE_VERSION> [--no-cleanup] [--dry-run]
 
 # Utilities
 
-## `util/find_images.sh`
-Outputs the canonical list of Docker image directories.  
-Both dev and prod orchestrators use this to iterate through the full set of images.
+## `util/registry.sh`
+Wrapper exposing `registry_query <subcommand>` over the Target registry (`utilities/targets.py`). Used by every orchestrator and core to ask which targets exist, where they live, which are heavy/deployable, and which changed (`catalog` / `dirty`).
+
+## `util/_build_and_push.sh`
+Shared build/push core. Builds and pushes **container** targets (orders `pipeline_runtime` first, passes `BASE_IMAGE` to heavy stages, ensures the ECR repo exists). Skips zip targets.
+
+## `util/_deploy.sh`
+Shared deploy core (`deploy_targets`). Deploys each deployable target at the packaging seam: container → `update-function-code --image-uri`, zip → zip the source dir → `update-function-code --zip-file`.
 
 ## `util/ecr_login.sh`
 Authenticates Docker with AWS ECR and returns the registry URI.
 
 ## `util/load_env.sh`
-Loads shared environment variables (AWS account ID, region, repository name, etc.).  
+Loads shared environment variables (AWS account ID, region, profile, git SHA).  
 Used by all build/deploy scripts.
 
 ---
@@ -159,15 +164,15 @@ Used by all build/deploy scripts.
 | Feature | Behavior |
 |---------|----------|
 | Tag format | `dev/<image>:<git_sha>` |
-| Builds | Only changed images |
-| Deploys | Only rebuilt images |
-| Flags | `--all`, `--dry-run` |
+| Builds | Only changed targets (dependency-aware) |
+| Deploys | Only changed targets (container + zip) |
+| Flags | `--all`, `--dry-run`, `--base <ref>` |
 
 ### Prod pipeline (`prod/release.sh`)
 | Feature | Behavior |
 |---------|----------|
 | Tag format | `prod/<image>:<RELEASE_VERSION>` |
-| Builds | All images, always |
-| Deploys | Entire environment |
+| Builds | All container targets, always |
+| Deploys | All deployable targets (container + zip) |
 | Cleanup | ON by default (removes dev+prod images locally) |
 | Flags | `--version`, `--no-cleanup`, `--dry-run` |

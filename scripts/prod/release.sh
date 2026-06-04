@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Production release: build + push + deploy every target at an explicit version.
+# The full set of targets comes from the Target registry (utilities/targets.py).
+#
+# Usage: scripts/prod/release.sh --version <RELEASE_VERSION> [--no-cleanup] [--dry-run]
+
 # Ensure we are in the repo root
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$REPO_ROOT" ] || [ "$(pwd)" != "$REPO_ROOT" ]; then
@@ -10,7 +15,7 @@ fi
 
 PROD="$(cd "$(dirname "$0")" && pwd)"
 UTIL="$PROD/../util"
-
+source "$UTIL/registry.sh"
 source "$UTIL/load_env.sh"
 
 # -----------------------------
@@ -21,22 +26,10 @@ RELEASE_VERSION=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --no-cleanup)
-            NO_CLEANUP=true
-            shift
-            ;;
-        --version)
-            RELEASE_VERSION="$2"
-            shift 2
-            ;;
-        --dry-run)
-            export DRY_RUN=1
-            shift
-            ;;
-        *)
-            echo "Unknown argument: $1"
-            exit 1
-            ;;
+        --no-cleanup) NO_CLEANUP=true; shift ;;
+        --version)    RELEASE_VERSION="$2"; shift 2 ;;
+        --dry-run)    export DRY_RUN=1; shift ;;
+        *)            echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
 
@@ -46,30 +39,33 @@ if [ -z "$RELEASE_VERSION" ]; then
 fi
 
 # -----------------------------
-# Discover all images
+# Discover all targets (registry is the source of truth)
 # -----------------------------
-IMAGES=()
-while IFS= read -r img; do
-    IMAGES+=("$img")
-done < <("$UTIL/find_images.sh")
+ALL_TARGETS=()
+while IFS= read -r name; do
+    [ -n "$name" ] && ALL_TARGETS+=("$name")
+done < <(registry_query catalog | cut -f1)
 
-if [ ${#IMAGES[@]} -eq 0 ]; then
-    echo "No Docker images found!"
+if [ ${#ALL_TARGETS[@]} -eq 0 ]; then
+    echo "No targets found in the registry!"
     exit 1
 fi
+
+# Container targets only, for local image cleanup at the end.
+CONTAINER_TARGETS=()
+while IFS= read -r name; do
+    [ -n "$name" ] && CONTAINER_TARGETS+=("$name")
+done < <(registry_query catalog | awk -F'\t' '$3=="container"{print $1}')
 
 # Log in to ECR once
 export REGISTRY=$("$UTIL/ecr_login.sh")
 
 # -----------------------------
-# Build and push ALL images
+# Build/push all container targets, deploy all deployable targets
+# (build_and_push skips zip targets; deploy skips non-deployable ones)
 # -----------------------------
-"$PROD/build_and_push.sh" "$RELEASE_VERSION" "${IMAGES[@]}"
-
-# -----------------------------
-# Deploy ALL images
-# -----------------------------
-"$PROD/deploy.sh" "$RELEASE_VERSION" "${IMAGES[@]}"
+"$PROD/build_and_push.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
+"$PROD/deploy.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
 
 # -----------------------------
 # Optional cleanup
@@ -78,12 +74,12 @@ if [ "$NO_CLEANUP" = true ] || [ -n "$DRY_RUN" ]; then
     echo "Skipping cleanup (flag: --no-cleanup or DRY_RUN mode)"
 else
     echo "Cleaning up local prod images..."
-    for IMAGE in "${IMAGES[@]}"; do
+    for IMAGE in "${CONTAINER_TARGETS[@]}"; do
         docker rmi "$REGISTRY/prod/$IMAGE:$RELEASE_VERSION" || true
     done
 
     echo "Cleaning up local dev images..."
-    for IMAGE in "${IMAGES[@]}"; do
+    for IMAGE in "${CONTAINER_TARGETS[@]}"; do
         # Remove *all* dev-tagged images for this image
         docker images "$REGISTRY/dev/$IMAGE" -q | xargs -r docker rmi || true
     done

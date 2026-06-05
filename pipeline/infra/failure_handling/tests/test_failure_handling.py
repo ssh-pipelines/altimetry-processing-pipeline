@@ -266,5 +266,89 @@ class TestTopLevelEnvelopeError(unittest.TestCase):
         self.assertEqual(app._top_level_envelope_error("plain text"), "")
 
 
+class TestOrigSourceFromJobsKey(unittest.TestCase):
+    def test_at_side(self):
+        self.assertEqual(
+            app._orig_source_from_jobs_key("pipeline_runs/S6/20250528T120000/jobs.json"),
+            "S6",
+        )
+
+    def test_sg_side_after_unification(self):
+        self.assertEqual(
+            app._orig_source_from_jobs_key("pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json"),
+            "S6",
+        )
+
+    def test_short_path(self):
+        self.assertEqual(app._orig_source_from_jobs_key(""), "unknown")
+        self.assertEqual(app._orig_source_from_jobs_key("pipeline_runs"), "unknown")
+
+
+class TestFormatSuccessMessage(unittest.TestCase):
+    def test_unified_source_shows_arrow(self):
+        msg = app._format_success_message(
+            orig_source="S6",
+            sg_source="NASA-SSH",
+            run_id="20250528T120000",
+            completed_at="2025-05-28T14:00:00Z",
+            bucket="my-bucket",
+            counts={"finalizer": 45, "simple_grids": 4, "enso": 4},
+        )
+        self.assertIn("S6 → NASA-SSH", msg)
+        self.assertIn("Along-track P3 files: 45", msg)
+        self.assertIn("daily_files/p3/S6/2025/", msg)
+        self.assertIn("Simple grids: 4", msg)
+        self.assertIn("simple_grids/NASA-SSH/2025/", msg)
+        self.assertIn("ENSO files: 4", msg)
+        self.assertIn("Indicators: complete", msg)
+
+    def test_no_unification_single_source(self):
+        msg = app._format_success_message(
+            orig_source="S6",
+            sg_source="S6",
+            run_id="20250528T120000",
+            completed_at="2025-05-28T14:00:00Z",
+            bucket="my-bucket",
+            counts={"finalizer": 30, "simple_grids": 2, "enso": 2},
+        )
+        self.assertIn("Source: S6", msg)
+        self.assertNotIn("→", msg)
+        self.assertIn("simple_grids/S6/2025/", msg)
+
+    def test_zero_counts_show_fallback_text(self):
+        msg = app._format_success_message(
+            orig_source="S6",
+            sg_source="S6",
+            run_id="20250528T120000",
+            completed_at="2025-05-28T14:00:00Z",
+            bucket="my-bucket",
+            counts={},
+        )
+        self.assertIn("0 (or ResultWriter output not found)", msg)
+
+    def test_no_enso_line_when_count_zero(self):
+        msg = app._format_success_message(
+            orig_source="S6",
+            sg_source="S6",
+            run_id="20250528T120000",
+            completed_at="2025-05-28T14:00:00Z",
+            bucket="my-bucket",
+            counts={"finalizer": 10, "simple_grids": 1, "enso": 0},
+        )
+        self.assertNotIn("ENSO", msg)
+
+    def test_year_derived_from_run_id(self):
+        msg = app._format_success_message(
+            orig_source="S3B",
+            sg_source="NASA-SSH",
+            run_id="20241215T090000",
+            completed_at="2024-12-15T09:00:00Z",
+            bucket="b",
+            counts={"finalizer": 1, "simple_grids": 1},
+        )
+        self.assertIn("p3/S3B/2024/", msg)
+        self.assertIn("simple_grids/NASA-SSH/2024/", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

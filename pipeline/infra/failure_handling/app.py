@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -46,6 +47,11 @@ def _run_id_from_jobs_key(jobs_key: str) -> str:
     # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{unified}/sg_jobs.json
     parts = jobs_key.split("/")
     return parts[2] if len(parts) >= 3 else "unknown"
+
+
+def _orig_source_from_jobs_key(jobs_key: str) -> str:
+    parts = jobs_key.split("/")
+    return parts[1] if len(parts) >= 2 else "unknown"
 
 
 def _classify(error_type: str, error_message: str) -> str:
@@ -229,7 +235,61 @@ def _top_level_envelope_error(top_cause: str) -> str:
     return env.get("Error", "") if isinstance(env, dict) else ""
 
 
-def _format_message(
+def _count_succeeded(bucket: str, prefix: str) -> int:
+    """Count items across all SUCCEEDED_*.json files under a ResultWriter prefix."""
+    paginator = s3.get_paginator("list_objects_v2")
+    count = 0
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if "/SUCCEEDED_" in obj["Key"]:
+                try:
+                    body = s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read()
+                    items = json.loads(body)
+                    if isinstance(items, list):
+                        count += len(items)
+                except Exception as e:
+                    logger.warning("Could not read SUCCEEDED file %s: %s", obj["Key"], e)
+    return count
+
+
+def _format_success_message(
+    orig_source: str,
+    sg_source: str,
+    run_id: str,
+    completed_at: str,
+    bucket: str,
+    counts: dict,
+) -> str:
+    year = run_id[:4] if len(run_id) >= 4 else "unknown"
+    source_line = (
+        f"Source: {orig_source} → {sg_source}"
+        if sg_source != orig_source
+        else f"Source: {orig_source}"
+    )
+    lines = [source_line, f"Run ID: {run_id}", f"Completed: {completed_at}", "", "Final products:"]
+
+    at_count = counts.get("finalizer", 0)
+    sg_count = counts.get("simple_grids", 0)
+    enso_count = counts.get("enso", 0)
+
+    if at_count > 0:
+        lines.append(f"  Along-track P3 files: {at_count}")
+        lines.append(f"    s3://{bucket}/daily_files/p3/{orig_source}/{year}/")
+    else:
+        lines.append("  Along-track P3 files: 0 (or ResultWriter output not found)")
+    if sg_count > 0:
+        lines.append(f"  Simple grids: {sg_count}")
+        lines.append(f"    s3://{bucket}/simple_grids/{sg_source}/{year}/")
+    else:
+        lines.append("  Simple grids: 0 (or ResultWriter output not found)")
+    if enso_count > 0:
+        lines.append(f"  ENSO files: {enso_count}")
+    lines.append("  Indicators: complete")
+
+    return "\n".join(lines)
+
+
+def _format_failure_message(
     stage: str,
     source: str,
     run_id: str,
@@ -280,7 +340,7 @@ def _format_message(
     return "\n".join(lines)
 
 
-def lambda_handler(event, context):
+def _handle_failure(event: dict) -> dict:
     stage = event.get("stage", "unknown")
     source = event.get("source", "unknown")
     bucket = event.get("bucket", "")
@@ -323,7 +383,7 @@ def lambda_handler(event, context):
         total_failed = 1
 
     subject = f"Pipeline failure: {stage} / {source} / {run_id}"[:100]
-    message = _format_message(
+    message = _format_failure_message(
         stage, source, run_id, top_cause, child_arn,
         deep_link, distinct, total_failed, overflow_url,
     )
@@ -336,3 +396,38 @@ def lambda_handler(event, context):
         logger.error("Failed to publish SNS for %s/%s: %s", stage, source, e)
 
     return {"status": "notified", "stage": stage, "source": source, "failed_count": total_failed}
+
+
+def _handle_success(event: dict) -> dict:
+    jobs_key = event.get("jobs_key", "")
+    bucket = event.get("bucket", "")
+    sg_source = event.get("source", "unknown")
+
+    orig_source = _orig_source_from_jobs_key(jobs_key)
+    run_id = _run_id_from_jobs_key(jobs_key)
+    completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    counts: dict = {}
+    for stage in ("finalizer", "simple_grids", "enso"):
+        prefix = _results_prefix_from_jobs_key(jobs_key, stage)
+        if bucket and prefix:
+            try:
+                counts[stage] = _count_succeeded(bucket, prefix)
+            except Exception as e:
+                logger.warning("Could not count %s results: %s", stage, e)
+
+    subject = f"Pipeline success: {orig_source} / {run_id}"[:100]
+    message = _format_success_message(orig_source, sg_source, run_id, completed_at, bucket, counts)
+
+    try:
+        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
+    except Exception as e:
+        logger.error("Failed to publish SNS for %s/%s: %s", orig_source, run_id, e)
+
+    return {"status": "notified", "source": orig_source, "run_id": run_id}
+
+
+def lambda_handler(event, context):
+    if event.get("success"):
+        return _handle_success(event)
+    return _handle_failure(event)

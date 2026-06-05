@@ -50,13 +50,45 @@
         "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-sg_pipeline-sm",
         "Input": "{% $states.input.Output %}"
       },
-      "End": true,
+      "Output": "{% $states.input.Output %}",
+      "Next": "Notify Success",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Fail"
         }
       ]
+    },
+    "Notify Success": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-failure_handling:$LATEST",
+        "Payload": "{% { 'success': true, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Succeed"
+        }
+      ],
+      "Next": "Succeed"
+    },
+    "Succeed": {
+      "Type": "Succeed"
     },
     "Notify Failure": {
       "Type": "Task",

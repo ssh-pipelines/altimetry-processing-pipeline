@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Prod deploy wrapper. Deploys the given targets at the release-version tag via
+# the shared deploy core, which queries the Target registry and branches on
+# packaging kind (container image vs zip).
+#
+# Usage: scripts/prod/deploy.sh <version> <target> [<target>...]
+
 UTIL="$(cd "$(dirname "$0")/../util" && pwd)"
 source "$UTIL/load_env.sh"
 
@@ -12,39 +18,20 @@ if [ -z "$DRY_RUN" ]; then
 fi
 
 RELEASE_VERSION="$1"
-shift
-IMAGES=("$@")
+shift || true
 
-if [ -z "$RELEASE_VERSION" ]; then
-    echo "deploy.sh requires: <version> <image>..."
+if [ -z "$RELEASE_VERSION" ] || [ "$#" -eq 0 ]; then
+    echo "deploy.sh requires: <version> <target>..."
     exit 1
 fi
 
-# Images that are build-only artifacts (base images, etc.) — pushed to ECR for
-# stage builds to consume, but with no corresponding Lambda function to update.
-BUILD_ONLY_IMAGES=(pipeline_runtime)
+if [ -z "$REGISTRY" ]; then
+    echo "REGISTRY not set, logging in to ECR..." >&2
+    export REGISTRY=$("$UTIL/ecr_login.sh")
+fi
 
-is_build_only() {
-    for s in "${BUILD_ONLY_IMAGES[@]}"; do
-        [[ "$s" == "$1" ]] && return 0
-    done
-    return 1
-}
+export ENV="prod"
+export TAG="$RELEASE_VERSION"
 
-for IMAGE in "${IMAGES[@]}"; do
-    if is_build_only "$IMAGE"; then
-        echo "Skipping deploy for $IMAGE (base image; no Lambda function)"
-        continue
-    fi
-
-    FULL="$REGISTRY/prod/$IMAGE:$RELEASE_VERSION"
-
-    if [ -z "$DRY_RUN" ]; then
-        aws --profile "$AWS_PROFILE" lambda update-function-code \
-            --function-name "prod-${IMAGE}" \
-            --image-uri "$FULL"
-        echo "Deployed prod image: $FULL"
-    else
-        echo "[DRY-RUN] Would deploy prod image: $FULL"
-    fi
-done
+source "$UTIL/_deploy.sh"
+deploy_targets "$@"

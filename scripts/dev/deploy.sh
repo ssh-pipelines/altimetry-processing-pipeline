@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Dev deploy wrapper. Deploys the given targets at the current git-SHA tag via
+# the shared deploy core, which queries the Target registry and branches on
+# packaging kind (container image vs zip).
+#
+# Usage: scripts/dev/deploy.sh <target> [<target>...]
+
 UTIL="$(cd "$(dirname "$0")/../util" && pwd)"
 source "$UTIL/load_env.sh"
 
 if [ -z "$REGISTRY" ]; then
-    echo "REGISTRY not set, assuming manual run"
-    echo "Logging in to ECR..."
-    DEV="$(cd "$(dirname "$0")" && pwd)"
-    UTIL="$DEV/../util"
-
+    echo "REGISTRY not set, logging in to ECR..." >&2
     export REGISTRY=$("$UTIL/ecr_login.sh")
 fi
 
@@ -20,39 +22,13 @@ if [ -z "$DRY_RUN" ]; then
     : "${AWS_PROFILE:?AWS_PROFILE not set}"
 fi
 
-IMAGES=("$@")
-if [ ${#IMAGES[@]} -eq 0 ]; then
-    echo "No images provided to deploy.sh"
+if [ "$#" -eq 0 ]; then
+    echo "No targets provided to deploy.sh"
     exit 1
 fi
 
-# Images that are build-only artifacts (base images, etc.) — pushed to ECR for
-# stage builds to consume, but with no corresponding Lambda function to update.
-BUILD_ONLY_IMAGES=(pipeline_runtime)
+export ENV="dev"
+export TAG="dev-${GIT_SHA}"
 
-is_build_only() {
-    for s in "${BUILD_ONLY_IMAGES[@]}"; do
-        [[ "$s" == "$1" ]] && return 0
-    done
-    return 1
-}
-
-TAG="dev-${GIT_SHA}"
-
-for IMAGE in "${IMAGES[@]}"; do
-    if is_build_only "$IMAGE"; then
-        echo "Skipping deploy for $IMAGE (base image; no Lambda function)"
-        continue
-    fi
-
-    FULL="$REGISTRY/dev/$IMAGE:$TAG"
-
-    if [ -z "$DRY_RUN" ]; then
-        aws --profile "$AWS_PROFILE" lambda update-function-code \
-            --function-name "dev-${IMAGE}" \
-            --image-uri "$FULL"
-        echo "Deployed dev image: $FULL"
-    else
-        echo "[DRY-RUN] Would deploy dev image: $FULL to function ${IMAGE}-dev"
-    fi
-done
+source "$UTIL/_deploy.sh"
+deploy_targets "$@"

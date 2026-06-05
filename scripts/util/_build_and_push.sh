@@ -5,17 +5,25 @@ set -eo pipefail
 # scripts/prod/build_and_push.sh, which set ENV, RELEASE_VERSION, and REGISTRY
 # before exec'ing into this script.
 #
+# Builds and pushes CONTAINER targets only — zip targets (the pipeline/infra
+# Lambdas) have no image and are packaged at deploy time. Which targets exist,
+# where they live, and which are heavy all come from the Target registry
+# (utilities/targets.py); there are no hardcoded lists here.
+#
 # Responsibilities:
-#   - Pass BASE_REGISTRY / BASE_TAG build args to heavy stages so they can
-#     FROM the matching pipeline_runtime tag.
+#   - Pass the BASE_IMAGE build arg to heavy stages so they FROM the matching
+#     pipeline_runtime tag.
 #   - Order pipeline_runtime first when it's part of the same invocation, so
-#     stages can pull it.
-#   - When pipeline_runtime is not in this invocation, verify the expected
-#     tag exists in ECR before letting any heavy stage build proceed.
+#     stages can FROM it.
+#   - When pipeline_runtime is not in this invocation, verify the expected tag
+#     exists in ECR before letting any heavy stage build proceed.
 
 : "${ENV:?ENV must be set by the wrapper (dev or prod)}"
 : "${RELEASE_VERSION:?RELEASE_VERSION must be set by the wrapper}"
 : "${REGISTRY:?REGISTRY must be set by the wrapper}"
+
+UTIL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$UTIL/registry.sh"
 
 IMAGES=("$@")
 if [ ${#IMAGES[@]} -eq 0 ]; then
@@ -23,38 +31,38 @@ if [ ${#IMAGES[@]} -eq 0 ]; then
   exit 1
 fi
 
-# Stages whose Dockerfiles FROM pipeline_runtime. Update this list when adding
-# a new heavy stage. Lightweight stages (pipeline_init, unifier) are NOT here
-# and build straight on top of the AWS Lambda Python base image.
-HEAVY_STAGES=(bad_pass xover daily_files oer finalizer indicators simple_grids enso)
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-is_heavy_stage() {
-  local name="$1"
-  for s in "${HEAVY_STAGES[@]}"; do
-    [[ "$s" == "$name" ]] && return 0
-  done
-  return 1
-}
+# Snapshot the catalog once; look fields up with awk (bash 3.2-safe — no
+# associative arrays). Columns: 1=name 2=path 3=packaging 4=heavy 5=deployable.
+CATALOG="$(mktemp)"
+trap 'rm -f "$CATALOG"' EXIT
+registry_query catalog > "$CATALOG"
+
+tfield()       { awk -F'\t' -v n="$1" -v c="$2" '$1==n{print $c}' "$CATALOG"; }
+is_heavy()     { [ "$(tfield "$1" 4)" = "true" ]; }
+packaging_of() { tfield "$1" 3; }
+path_of()      { tfield "$1" 2; }
 
 # Sort: pipeline_runtime first if requested, so its tag exists in the local
 # Docker cache before any stage tries to FROM it.
 SORTED=()
 runtime_in_list=0
 for IMAGE in "${IMAGES[@]}"; do
-  if [[ "$IMAGE" == "pipeline_runtime" ]]; then
+  if [ "$IMAGE" = "pipeline_runtime" ]; then
     SORTED+=("$IMAGE")
     runtime_in_list=1
   fi
 done
 for IMAGE in "${IMAGES[@]}"; do
-  [[ "$IMAGE" != "pipeline_runtime" ]] && SORTED+=("$IMAGE")
+  [ "$IMAGE" != "pipeline_runtime" ] && SORTED+=("$IMAGE")
 done
 
 # Precondition: heavy stages need a matching pipeline_runtime tag to FROM. If
 # the runtime isn't being (re)built in this invocation, verify the tag exists.
 if [ "$runtime_in_list" -eq 0 ]; then
   for IMAGE in "${IMAGES[@]}"; do
-    if is_heavy_stage "$IMAGE"; then
+    if is_heavy "$IMAGE"; then
       RUNTIME_REPO="$ENV/pipeline_runtime"
       if ! aws ecr describe-images \
             --repository-name "$RUNTIME_REPO" \
@@ -71,15 +79,18 @@ if [ "$runtime_in_list" -eq 0 ]; then
   done
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-
 for IMAGE in "${SORTED[@]}"; do
-  DIR=$(find "$REPO_ROOT/pipeline" -type d -name "$IMAGE" | head -1)
-  if [ -z "$DIR" ]; then
-    echo "Error: cannot find directory for image '$IMAGE' under pipeline/"
+  PKG="$(packaging_of "$IMAGE")"
+  if [ -z "$PKG" ]; then
+    echo "Error: unknown target '$IMAGE' (not in the Target registry)"
     exit 1
   fi
+  if [ "$PKG" != "container" ]; then
+    echo "Skipping $IMAGE (packaging=$PKG; packaged at deploy time, not built)"
+    continue
+  fi
 
+  DIR="$REPO_ROOT/$(path_of "$IMAGE")"
   FULL="$REGISTRY/$ENV/$IMAGE:$RELEASE_VERSION"
   REPO_NAME="$ENV/$IMAGE"
 
@@ -89,7 +100,7 @@ for IMAGE in "${SORTED[@]}"; do
     --build-arg "RELEASE_VERSION=$RELEASE_VERSION"
   )
 
-  if is_heavy_stage "$IMAGE"; then
+  if is_heavy "$IMAGE"; then
     BUILD_ARGS+=(
       --build-arg "BASE_IMAGE=$REGISTRY/$ENV/pipeline_runtime:$RELEASE_VERSION"
     )

@@ -160,7 +160,9 @@ def dirty(changed_paths: Iterable[str]) -> list[Target]:
     Edges (see CONTEXT.md -> Change-impact):
       - own dir changed                     -> any target
       - utilities/ or setup.py changed      -> every container target except pipeline_runtime
-      - pipeline_runtime/ changed           -> every heavy target
+      - pipeline_runtime/ changed           -> every heavy target + pipeline_runtime itself
+      - any heavy target in result          -> pipeline_runtime (must exist in ECR at the
+                                              target SHA even when its content is unchanged)
     """
     changed = [c for c in changed_paths if c and c.strip()]
 
@@ -181,6 +183,15 @@ def dirty(changed_paths: Iterable[str]) -> list[Target]:
         runtime_edge = t.heavy and runtime_changed
         if own or shared_edge or runtime_edge:
             result.append(t)
+
+    # If any heavy stage needs to be built, pipeline_runtime must also be
+    # available at the target SHA — the SHA-tagged ECR image won't exist even
+    # when its own content is unchanged.
+    if any(t.heavy for t in result):
+        runtime = get(_RUNTIME_NAME)
+        if runtime not in result:
+            result.insert(0, runtime)
+
     return result
 
 

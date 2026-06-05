@@ -92,18 +92,26 @@ class TestChangeImpact(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(self._names([]), set())
 
-    def test_own_dir(self):
-        oer = reg.get("oer").path
-        self.assertEqual(self._names([f"{oer}/processing.py"]), {"oer"})
+    def test_own_dir_light_container(self):
+        pi = reg.get("pipeline_init").path
+        self.assertEqual(self._names([f"{pi}/handler.py"]), {"pipeline_init"})
 
-    def test_shared_utilities_dirties_all_containers_except_runtime(self):
+    def test_heavy_own_dir_includes_runtime(self):
+        # Changing a heavy stage's own dir triggers a build; pipeline_runtime must
+        # also be built so the SHA-tagged ECR image exists, even if its content
+        # hasn't changed.
+        oer = reg.get("oer").path
+        self.assertEqual(self._names([f"{oer}/processing.py"]), {"oer", "pipeline_runtime"})
+
+    def test_shared_utilities_dirties_all_containers(self):
+        # Heavy stages are dirty → pipeline_runtime is added via the build-dep edge.
         self.assertEqual(
             self._names(["utilities/aws_utils.py"]),
-            ALL_CONTAINER - BASE_IMAGE,
+            ALL_CONTAINER,
         )
 
-    def test_setup_py_dirties_all_containers_except_runtime(self):
-        self.assertEqual(self._names(["setup.py"]), ALL_CONTAINER - BASE_IMAGE)
+    def test_setup_py_dirties_all_containers(self):
+        self.assertEqual(self._names(["setup.py"]), ALL_CONTAINER)
 
     def test_runtime_change_dirties_heavy_and_runtime_itself(self):
         rt = reg.get("pipeline_runtime").path
@@ -123,7 +131,7 @@ class TestChangeImpact(unittest.TestCase):
         oer = reg.get("oer").path
         self.assertEqual(
             self._names([f"{oer}/x.py", "utilities/aws_utils.py"]),
-            ALL_CONTAINER - BASE_IMAGE,
+            ALL_CONTAINER,
         )
 
 

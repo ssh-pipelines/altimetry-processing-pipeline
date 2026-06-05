@@ -69,6 +69,11 @@ deploy_targets() {
               >/dev/null )
           aws --profile "$AWS_PROFILE" lambda update-function-code \
             --function-name "$fn" --zip-file "fileb://$zipfile"
+          aws --profile "$AWS_PROFILE" lambda wait function-updated-v2 \
+            --function-name "$fn"
+          aws --profile "$AWS_PROFILE" lambda update-function-configuration \
+            --function-name "$fn" --handler "app.lambda_handler" \
+            > /dev/null
           rm -f "$zipfile"
           echo "Deployed $fn <- $dir (zip)"
         else

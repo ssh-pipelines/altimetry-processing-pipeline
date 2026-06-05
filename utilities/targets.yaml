@@ -1,0 +1,37 @@
+# Declared build/deploy facts per Target. See CONTEXT.md -> Build & deploy and
+# docs/adr/0004-target-registry.md.
+#
+# Existence and packaging kind are DERIVED from the filesystem (a Dockerfile =>
+# container, an infra app.py => zip). This file declares only the two facts that
+# can't be reliably derived:
+#   heavy      - container image FROMs pipeline_runtime via the BASE_IMAGE
+#                override (container targets only; guarded by a test against the
+#                Dockerfile's actual base parameterization)
+#   deployable - target maps to a ${stage}-${name} Lambda the deploy step updates
+#
+# Defaults: heavy=false, deployable=true. Every target MUST be listed so the
+# consistency test can pin this manifest to the filesystem. This file is
+# path-less so it survives directory moves (e.g. the planned pipeline/ -> src/).
+targets:
+  # ── container — heavy stages (FROM pipeline_runtime) ──────────────────
+  bad_pass:      {heavy: true}
+  daily_files:   {heavy: true}
+  finalizer:     {heavy: true}
+  oer:           {heavy: true}
+  xover:         {heavy: true}
+  enso:          {heavy: true}
+  indicators:    {heavy: true}
+  simple_grids:  {heavy: true}
+
+  # ── container — lightweight stages (literal FROM lambda/python) ───────
+  pipeline_init: {}
+  unifier:       {}
+
+  # ── container — base image (built + pushed, never deployed) ───────────
+  pipeline_runtime: {deployable: false}
+
+  # ── zip — infra Lambdas ───────────────────────────────────────────────
+  failure_handling: {}
+  podaac_auth:      {}
+  rewrite_manifest: {}
+  set_sg_jobs:      {}

@@ -40,7 +40,6 @@ export STAGE
 # ── Validate ────────────────────────────────────────────────────────
 : "${AWS_ACCOUNT_ID:?AWS_ACCOUNT_ID not set — add it to .env or export it}"
 : "${AWS_REGION:?AWS_REGION not set — add it to .env or export it}"
-: "${SNS_TOPIC_ARN:?SNS_TOPIC_ARN not set — add it to .env or export it}"
 
 # ── Render ──────────────────────────────────────────────────────────
 TEMPLATE_DIR="$REPO_ROOT/state_machines"
@@ -57,7 +56,6 @@ render_file() {
         -e "s/\${AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" \
         -e "s/\${AWS_REGION}/$AWS_REGION/g" \
         -e "s/\${STAGE}/$STAGE/g" \
-        -e "s|\${SNS_TOPIC_ARN}|$SNS_TOPIC_ARN|g" \
         "$src" > "$OUT_DIR/$name"
     echo "  rendered → rendered/$name"
 }

@@ -129,6 +129,36 @@ class TestPipelineRuns(unittest.TestCase):
         with self.assertRaises(ValueError):
             stage_results_prefix("a/b", "enso")
 
+    def test_jobs_key_identity(self):
+        self.assertEqual(
+            layout.jobs_key_identity("pipeline_runs/S6/20250528T120000/jobs.json"),
+            ("S6", "20250528T120000"),
+        )
+
+    def test_jobs_key_identity_unified_uses_original_source(self):
+        self.assertEqual(
+            layout.jobs_key_identity(
+                "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
+            ),
+            ("S6", "20250528T120000"),
+        )
+
+    def test_jobs_key_identity_rejects_short(self):
+        with self.assertRaises(ValueError):
+            layout.jobs_key_identity("a/b")
+
+    def test_sg_jobs_key(self):
+        self.assertEqual(
+            layout.sg_jobs_key("pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"),
+            "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json",
+        )
+
+    def test_run_summary_key(self):
+        self.assertEqual(
+            layout.run_summary_key("S6", "20250528T120000"),
+            "pipeline_runs/S6/20250528T120000/summary.json",
+        )
+
 
 class TestSimpleGrid(unittest.TestCase):
     def test_simple_grid_key(self):

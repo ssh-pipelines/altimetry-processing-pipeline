@@ -26,6 +26,7 @@ targets:
   # ── container — lightweight stages (literal FROM lambda/python) ───────
   pipeline_init: {}
   unifier:       {}
+  run_summary:   {}  # orchestration Lambda; ships utilities (see ADR 0005)
 
   # ── container — base image (built + pushed, never deployed) ───────────
   pipeline_runtime: {deployable: false}

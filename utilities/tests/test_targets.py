@@ -8,7 +8,7 @@ from utilities.targets import Packaging
 # Expected catalog, kept here as an independent assertion of intent (the module
 # derives this from the filesystem; this pins what we expect to find).
 HEAVY = {"bad_pass", "daily_files", "finalizer", "oer", "xover", "enso", "indicators", "simple_grids"}
-LIGHT_CONTAINER = {"pipeline_init", "unifier"}
+LIGHT_CONTAINER = {"pipeline_init", "unifier", "run_summary"}
 BASE_IMAGE = {"pipeline_runtime"}
 ZIP = {"failure_handling", "podaac_auth", "rewrite_manifest", "set_sg_jobs"}
 

@@ -139,6 +139,42 @@ def jobs_manifest_key(source: str, run_id: str) -> str:
     return f"pipeline_runs/{source}/{run_id}/jobs.json"
 
 
+def jobs_key_identity(jobs_key: str) -> tuple[str, str]:
+    """The ``(source, run_id)`` embedded in a jobs manifest key.
+
+    ``source`` is the *original* source segment (e.g. ``S6``) even for a unified
+    run whose manifest lives under a further ``{unified}/`` segment — it is always
+    ``parts[1]``, matching ``stage_results_prefix``'s first-three-segments rule.
+
+    Example: jobs_key_identity("pipeline_runs/S6/20250528T120000/jobs.json")
+             → ("S6", "20250528T120000")
+    """
+    parts = jobs_key.split("/")
+    if len(parts) < 3:
+        raise ValueError(f"jobs_key too short to derive identity: {jobs_key!r}")
+    return parts[1], parts[2]
+
+
+def sg_jobs_key(jobs_key: str) -> str:
+    """The gridded (simple-grid/ENSO) manifest key for a run, derived from the
+    along-track jobs manifest key. Mirrors the exact convention `set_sg_jobs`
+    writes by, so the two stay coupled to one definition.
+
+    Example: sg_jobs_key("pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json")
+             → "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json"
+    """
+    return jobs_key.replace("/jobs.json", "/sg_jobs.json")
+
+
+def run_summary_key(source: str, run_id: str) -> str:
+    """Bucket-relative key for a run's Run summary artifact, written alongside
+    the jobs manifest.
+
+    Example: pipeline_runs/S6/20250528T120000/summary.json
+    """
+    return f"pipeline_runs/{source}/{run_id}/summary.json"
+
+
 def stage_results_prefix(jobs_key: str, stage: str) -> str:
     """Bucket-relative prefix for a stage's Distributed Map ResultWriter output.
 

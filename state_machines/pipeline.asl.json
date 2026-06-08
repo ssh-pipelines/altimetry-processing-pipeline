@@ -51,7 +51,7 @@
         "Input": "{% $states.input.Output %}"
       },
       "Output": "{% $states.input.Output %}",
-      "Next": "Notify Success",
+      "Next": "Run Summary",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
@@ -59,12 +59,12 @@
         }
       ]
     },
-    "Notify Success": {
+    "Run Summary": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Arguments": {
-        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-failure_handling:$LATEST",
-        "Payload": "{% { 'success': true, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-run_summary:$LATEST",
+        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
       },
       "Retry": [
         {

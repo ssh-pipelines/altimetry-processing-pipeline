@@ -62,7 +62,27 @@ The Lambda receives one item from the jobs manifest per invocation:
 
 ## Lambda output
 
-No explicit return payload on success. On error, raises an exception with a JSON body containing `status`, `errorType`, `errorMessage`, and the original `input`.
+A **Job outcome** (`JobOutcome.to_dict()`). On a normal run it declares the grid key:
+
+```json
+{
+  "schema_version": 1,
+  "stage": "simple_grids",
+  "status": "success",
+  "date": "2025-01-15",
+  "source": "NASA-SSH",
+  "outputs": [
+    {"key": "simple_grids/NASA-SSH/2025/NASA-SSH_alt_ref_simple_grid_v1_1_20250115.nc", "kind": "simple_grid"}
+  ],
+  "metadata": {}
+}
+```
+
+When the 10-day window has no daily files to grid, it returns `status: "skipped"` with
+`metadata.skip_reason` instead of producing nothing silently — `run_summary` lists the date
+under `missing` with that reason rather than as an unexplained gap. On error it raises an
+exception with a JSON body containing `status`, `errorType`, `errorMessage`, and the original
+`input` (the failure path).
 
 ## S3 paths
 
@@ -83,11 +103,18 @@ Part of the `simple_grid_pipeline` orchestration defined in `state_machines/simp
 3. **ENSO Execution** — downstream stage
 4. **Indicators** — downstream stage
 
-Results are written to `pipeline_runs/results/simple_grids/` in S3.
+The Map's invoke task unwraps the Lambda result (`Output: {% $states.result.Payload %}`) so the **Job outcome** is what the `ResultWriter` persists under `pipeline_runs/{source}/{run_id}/results/simple_grids/` for `run_summary` to read.
 
 ## Running tests
 
-No unit tests currently exist for this stage.
+From the `simple_grids/` directory:
+
+```bash
+python -m unittest discover -s tests -t . -v
+```
+
+`tests/test_simple_grids.py` covers the handler's Job-outcome shape (success and the
+no-daily-files skip). The job is also wired into CI (`.github/workflows/tests.yml`).
 
 ## Dependencies
 

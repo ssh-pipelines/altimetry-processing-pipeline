@@ -9,7 +9,7 @@ For each processing date, the Lambda:
 1. **Fetches crossover files** from S3 for a sliding window (10 days back + 1 day pad on each side) under `crossovers/p1/{source}/{year}/`. Raises if no crossover files are found.
 2. **Creates a polygon** — extracts SSH crossover pairs, computes `ssh1 - ssh2` differences, filters to the target day with a 2-hour margin, discards differences with absolute value > 0.3 m, and fits a piecewise cubic spline via `oerfit`. Returns zero coefficients when no data falls within the window. Uploads the polygon NetCDF to S3.
 3. **Evaluates the correction** — evaluates the fitted spline (via `scipy.interpolate.PPoly`) at each daily-file time step and negates it to produce an additive OER correction. Uploads the correction NetCDF to S3.
-4. **Applies the correction** — adds the OER correction to `ssha` and `ssha_smoothed`, attaches the `oer` variable to the daily file, sets `product_generation_step = "2"` and updates `history`. Uploads the P2 daily file to S3 with zlib compression.
+4. **Applies the correction** — adds the OER correction to `ssha` and `ssha_smoothed`, attaches the `oer` variable to the daily file, sets `product_generation_step = "2"`, updates `history`, and appends a `processing_history` step (generation step 2, recording the correction source) to the in-file provenance trail (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005). Uploads the P2 daily file to S3 with zlib compression.
 
 All intermediate and final NetCDFs are written to a temporary directory that is cleaned up after the run.
 

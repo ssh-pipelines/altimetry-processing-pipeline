@@ -60,7 +60,25 @@ All three fields are required.
 
 ## Lambda output
 
-No explicit return payload on success. On error, raises an exception with a JSON body containing `status`, `errorType`, `errorMessage`, and the original `input`.
+A **Job outcome** (`JobOutcome.to_dict()`) declaring the ENSO grid key:
+
+```json
+{
+  "schema_version": 1,
+  "stage": "enso",
+  "status": "success",
+  "date": "2025-01-15",
+  "source": "NASA-SSH",
+  "outputs": [
+    {"key": "enso_grids/NASA-SSH/ENSO_20250115.nc", "kind": "enso_grid"}
+  ],
+  "metadata": {}
+}
+```
+
+Processing errors now **raise** (previously they were swallowed) so the failure path records
+them — the handler returns only on a genuine success. On error it raises a JSON body
+containing `status`, `errorType`, `errorMessage`, and the original `input`.
 
 ## S3 paths
 

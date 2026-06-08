@@ -10,10 +10,33 @@ pipeline succeeds. Given `{jobs_key, bucket, source}` it:
    reading the **Job specs** (expected dates);
 2. reads **Job outcomes** from each owned stage's `ResultWriter` SUCCEEDED files
    (`along_track ← {finalizer, unifier}`, `gridded ← {simple_grids, enso}`);
-3. reconciles expected vs produced per **Product pipeline**, collecting `missing`
+3. reads `pipeline_init`'s `run_params.json` sidecar (absent ⇒ `{}` ⇒ "scheduled defaults")
+   so the notification can report how the run was invoked;
+4. reconciles expected vs produced per **Product pipeline**, collecting `missing`
    (and skip reasons) and a per-deliverable `provenance_incomplete` count;
-4. writes the **Run summary** to `pipeline_runs/{source}/{run_id}/summary.json`;
-5. publishes the success SNS.
+5. writes the **Run summary** to `pipeline_runs/{source}/{run_id}/summary.json`;
+6. renders and publishes the success SNS.
+
+## Reading SUCCEEDED entries
+
+Each owned stage's Map invoke task must unwrap the Lambda result with
+`Output: {% $states.result.Payload %}`, so the `ResultWriter` persists the **Job outcome**
+itself (not the raw Lambda invoke envelope). `_outcome_from_entry` also **defensively unwraps**
+a `{"Payload": {…}}` envelope when the outcome's `status` key is absent — a regression guard
+after the unifier Map originally omitted that unwrap and was reported as `produced: 0` despite
+unification succeeding.
+
+## Notification
+
+The rendered email:
+
+- shows invocation params (`start`/`end`/`force_update`, or "scheduled defaults");
+- **folds the unifier's `nasa_ssh_p3` into the finalizer's `daily_file_p3` line** as a
+  unification annotation (`16 produced → all unified to NASA-SSH`, or `→ 0 of 16 unified …`
+  on a shortfall) — they are the same P3 file in two prefixes, so a separate row read as a
+  phantom failure. `summary.json` still carries both keys;
+- lists produced filenames (basenames) per deliverable, capped at 40 with an `… (N total)`
+  overflow, alongside the `missing` dates and reasons.
 
 ## Why it lives in `infra/` but is containerized
 

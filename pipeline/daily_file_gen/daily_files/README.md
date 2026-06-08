@@ -23,7 +23,8 @@ For each processing date, the Lambda:
    - Computes `ssha_smoothed` using a 19-point Gaussian-like along-track filter
    - Sets variable and global CF-compliant metadata
 6. **Validates** the output dataset against a schema (required global attributes, variables, and per-variable attributes).
-7. **Uploads** the P1 daily file to S3 and removes the local temp copy.
+7. **Appends a `processing_history` step** (generation step 1, recording the source files / granule count) before uploading — the first entry in the in-file provenance trail that OER and the finalizer extend (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005).
+8. **Uploads** the P1 daily file to S3 and removes the local temp copy.
 
 If no granules are found for a date, an empty template NetCDF with appropriate metadata is uploaded instead.
 

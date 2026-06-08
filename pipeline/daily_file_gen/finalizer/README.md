@@ -15,9 +15,10 @@ For each processing date, the Lambda:
 5. **Applies bad-pass flags** — sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
 6. **Handles the absolute offset** — if the source offset is non-zero, removes any previously applied offset (via `absolute_offset_applied` attribute) and adds the configured one to both `ssha` and `ssha_smoothed`.
 7. **Sets global attributes** — `product_generation_step = "3"`, `history`, `granule_id`, `absolute_offset_applied`, and sorts all global attributes alphabetically (case-insensitive).
-8. **Uploads** the finalized P3 file to S3 and removes the local temp copy.
+8. **Appends a `processing_history` step** (generation step 3) recording the bad-pass/offset application — see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005.
+9. **Uploads** the finalized P3 file to S3 and removes the local temp copy.
 
-On success, the handler returns `product_type` and `unify` from the source config alongside the original event fields, which downstream steps (e.g., the unifier) use to decide further processing.
+As a **deliverable stage** the handler returns a **Job outcome** (`utilities.job_outcome.JobOutcome`) declaring the P3 key it wrote — the success-side analog of the structured failure entry (ADR 0005). The Distributed Map's `ResultWriter` persists it to `SUCCEEDED_n.json`, and the `run_summary` Lambda reconciles it against the jobs manifest. The outcome's `metadata` carries the file's `processing_history`, a `provenance_complete` flag, and the `product_type`/`unify` source-config fields. An upload failure now **raises** (previously returned silently) so the failure path records it.
 
 ## Directory structure
 
@@ -54,13 +55,21 @@ All three fields are required. Available sources are defined in `finalization/co
 
 ## Lambda output
 
+A **Job outcome** (`JobOutcome.to_dict()`):
+
 ```json
 {
+  "schema_version": 1,
+  "stage": "finalizer",
   "status": "success",
-  "data": {
-    "bucket": "my-bucket",
-    "date": "2025-01-15",
-    "source": "S6",
+  "date": "2025-01-15",
+  "source": "S6",
+  "outputs": [
+    {"key": "daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250115.nc", "kind": "daily_file_p3"}
+  ],
+  "metadata": {
+    "processing_history": [ ... ],
+    "provenance_complete": true,
     "product_type": "reference",
     "unify": true
   }
@@ -102,7 +111,7 @@ To add a new source, add an entry to `utilities/sources.yaml` first, then add th
 
 ## Step Function
 
-Defined in `state_machines/finalizer.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `finalizer` Lambda for each date. Results are written to `pipeline_runs/results/finalizer/` in S3.
+Defined in `state_machines/finalizer.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `finalizer` Lambda for each date. The Map's invoke task unwraps the Lambda result (`Output: {% $states.result.Payload %}`) so the **Job outcome** — not the raw Lambda envelope — is what the `ResultWriter` persists under `pipeline_runs/{source}/{run_id}/results/finalizer/` for `run_summary` to read.
 
 ## Running tests
 

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from utilities.job_outcome import SCHEMA_VERSION, SKIPPED, SUCCESS
 from utilities.pipeline_layout import (
     jobs_key_identity,
+    run_params_key,
     run_summary_key,
     sg_jobs_key,
     stage_results_prefix,
@@ -126,13 +127,15 @@ def build_summary(
     manifests: dict[str, list[dict]],
     outcomes: dict[str, dict[str, list[dict]]],
     *,
+    run_params: dict | None = None,
     completed_at: str | None = None,
 ) -> dict:
     """Assemble the Run summary artifact.
 
     `manifests` maps a Product-pipeline name to its Job specs; `outcomes` maps a
-    Product-pipeline name to its `{stage: [outcome, ...]}`. Both are passed in (already
-    loaded) so this stays pure and testable.
+    Product-pipeline name to its `{stage: [outcome, ...]}`; `run_params` is the
+    pipeline_init invocation sidecar (or `{}` for legacy runs without one). All are
+    passed in (already loaded) so this stays pure and testable.
     """
     source, run_id = jobs_key_identity(jobs_key)
     unified_source = _unified_source(jobs_key)
@@ -154,6 +157,7 @@ def build_summary(
         "source": source,
         "unified_source": unified_source,
         "completed_at": completed_at,
+        "parameters": run_params or {},
         "product_pipelines": product_pipelines,
     }
 
@@ -224,8 +228,29 @@ def _outcome_from_entry(entry: dict) -> dict | None:
     return output if isinstance(output, dict) else None
 
 
-def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict]:
-    """Load all manifests + outcomes for a run, keyed by Product-pipeline name."""
+def read_run_params(s3, bucket: str, jobs_key: str) -> dict:
+    """Load the pipeline_init params sidecar for a run. A missing/invalid sidecar
+    (legacy runs predating the feature) yields ``{}`` — the notification then shows
+    "scheduled defaults" rather than erroring."""
+    source, run_id = jobs_key_identity(jobs_key)
+    try:
+        body = s3.get_object(Bucket=bucket, Key=run_params_key(source, run_id))["Body"].read()
+    except Exception as e:
+        logger.info("No run params sidecar for %s (%s); treating as defaults.", jobs_key, e)
+        return {}
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        logger.warning("Run params for %s is not valid JSON; ignoring.", jobs_key)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict]:
+    """Load all manifests, outcomes, and the params sidecar for a run.
+
+    Manifests + outcomes are keyed by Product-pipeline name; run_params is the flat
+    pipeline_init invocation sidecar (or ``{}`` when absent)."""
     manifests: dict[str, list[dict]] = {}
     outcomes: dict[str, dict[str, list[dict]]] = {}
     for name, cfg in PRODUCT_PIPELINES.items():
@@ -234,10 +259,95 @@ def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict]:
             spec["stage"]: read_outcomes(s3, bucket, stage_results_prefix(jobs_key, spec["stage"]))
             for spec in cfg["deliverables"]
         }
-    return manifests, outcomes
+    run_params = read_run_params(s3, bucket, jobs_key)
+    return manifests, outcomes, run_params
 
 
 # ─── SNS rendering ────────────────────────────────────────────────────────
+
+# Human-friendly deliverable names for the notification. `nasa_ssh_p3` has no entry
+# because it is folded into the `daily_file_p3` line as a unification annotation (the
+# two are the same P3 file in two locations — see `_along_track_lines`).
+_DELIVERABLE_LABELS = {
+    "daily_file_p3": "p3 daily files",
+    "simple_grid": "simple grids",
+    "enso": "ENSO grids",
+}
+
+# Cap on filenames listed per deliverable before collapsing to a total (a force_update
+# backfill can produce hundreds; a nominal weekly/monthly run lists in full).
+_MAX_LISTED = 40
+
+
+def _basename(key: str) -> str:
+    return key.rsplit("/", 1)[-1]
+
+
+def _params_line(summary: dict) -> str:
+    """One line describing how the run was invoked. Nominal runs (no overrides) read
+    'scheduled defaults'; absent sidecar (legacy runs) is treated the same."""
+    params = summary.get("parameters") or {}
+    overrides = []
+    if params.get("start"):
+        overrides.append(f"start={params['start']}")
+    if params.get("end"):
+        overrides.append(f"end={params['end']}")
+    if params.get("force_update"):
+        overrides.append("force_update=true")
+    return "Parameters: " + (", ".join(overrides) if overrides else "none (scheduled defaults)")
+
+
+def _deliverable_lines(label: str, d: dict, *, suffix: str = "") -> list[str]:
+    """Header line for one deliverable (counts + any skip/lineage flags + optional
+    unification suffix), followed by its produced filenames (capped)."""
+    header = f"  {label} [{d['stage']}]: {d['produced']} produced{suffix}"
+    flags = []
+    if d.get("skipped"):
+        flags.append(f"{d['skipped']} skipped")
+    if d.get("provenance_incomplete"):
+        flags.append(f"{d['provenance_incomplete']} incomplete-lineage")
+    if flags:
+        header += " (" + ", ".join(flags) + ")"
+
+    lines = [header]
+    names = [_basename(o["key"]) for o in d.get("outputs", []) if o.get("key")]
+    for n in names[:_MAX_LISTED]:
+        lines.append(f"    {n}")
+    if len(names) > _MAX_LISTED:
+        lines.append(f"    … ({len(names)} total)")
+    return lines
+
+
+def _along_track_lines(deliverables: dict, unified_source: str | None) -> list[str]:
+    """Render the along-track deliverables, folding the unifier's `nasa_ssh_p3` into the
+    finalizer's `daily_file_p3` line — they are the same P3 file, in the source prefix and
+    (when unified) the NASA-SSH prefix. The fold surfaces a unification shortfall instead of
+    hiding it as a separate, confusing '0 produced' row."""
+    p3 = deliverables.get("daily_file_p3")
+    unified = deliverables.get("nasa_ssh_p3")
+
+    suffix = ""
+    if p3 is not None and unified is not None:
+        dest = unified_source or "NASA-SSH"
+        uc = unified["produced"]
+        suffix = f" → all unified to {dest}" if uc == p3["produced"] \
+            else f" → {uc} of {p3['produced']} unified to {dest}"
+
+    lines: list[str] = []
+    for kind, d in deliverables.items():
+        if kind == "nasa_ssh_p3":
+            continue  # folded into the daily_file_p3 line
+        label = _DELIVERABLE_LABELS.get(kind, kind)
+        lines += _deliverable_lines(label, d, suffix=suffix if kind == "daily_file_p3" else "")
+    return lines
+
+
+def _missing_line(missing: list[dict]) -> str:
+    preview = ", ".join(f"{m['date']} ({m['reason']})" for m in missing[:5])
+    if len(missing) > 5:
+        preview += f", … ({len(missing)} total)"
+    return f"  missing: {preview}"
+
 
 def render_notification(summary: dict) -> tuple[str, str]:
     """(subject, body) for the success SNS, rendered from the Run summary artifact."""
@@ -246,24 +356,23 @@ def render_notification(summary: dict) -> tuple[str, str]:
     run_id = summary["run_id"]
 
     source_line = f"Source: {source} → {unified}" if unified else f"Source: {source}"
-    lines = [source_line, f"Run ID: {run_id}", f"Completed: {summary['completed_at']}", ""]
+    lines = [
+        source_line,
+        f"Run ID: {run_id}",
+        f"Completed: {summary['completed_at']}",
+        _params_line(summary),
+        "",
+    ]
 
     for name, section in summary["product_pipelines"].items():
         lines.append(f"{name} (expected {section['expected']}):")
-        for kind, d in section["deliverables"].items():
-            extra = ""
-            if d.get("skipped"):
-                extra += f", {d['skipped']} skipped"
-            if d.get("provenance_incomplete"):
-                extra += f", {d['provenance_incomplete']} incomplete-lineage"
-            lines.append(f"  {kind} [{d['stage']}]: {d['produced']} produced{extra}")
+        if name == "along_track":
+            lines += _along_track_lines(section["deliverables"], unified)
+        else:
+            for kind, d in section["deliverables"].items():
+                lines += _deliverable_lines(_DELIVERABLE_LABELS.get(kind, kind), d)
         if section["missing"]:
-            preview = ", ".join(
-                f"{m['date']} ({m['reason']})" for m in section["missing"][:5]
-            )
-            if len(section["missing"]) > 5:
-                preview += f", … ({len(section['missing'])} total)"
-            lines.append(f"  missing: {preview}")
+            lines.append(_missing_line(section["missing"]))
         lines.append("")
 
     subject = f"Pipeline success: {source} / {run_id}"[:100]

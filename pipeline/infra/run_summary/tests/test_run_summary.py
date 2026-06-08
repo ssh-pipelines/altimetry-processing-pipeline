@@ -225,6 +225,22 @@ class TestS3IO(unittest.TestCase):
         self.assertEqual(len(outcomes), 1)
         self.assertEqual(outcomes[0]["date"], "2025-01-01")
 
+    def test_read_run_params_missing_is_empty(self):
+        s3 = FakeS3()
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        self.assertEqual(summarizer.read_run_params(s3, "b", jobs_key), {})
+
+    def test_read_run_params_parses_sidecar(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
+        # derived from the original-source segment, not the unified one
+        params_key = "pipeline_runs/S6/20250528T120000/run_params.json"
+        s3 = FakeS3({params_key: json.dumps(
+            {"source": "S6", "start": "2025-05-01", "end": "2025-05-31", "force_update": True}
+        ).encode()})
+        params = summarizer.read_run_params(s3, "b", jobs_key)
+        self.assertEqual(params["start"], "2025-05-01")
+        self.assertTrue(params["force_update"])
+
 
 # ---------------------------------------------------------------------------
 # Notification rendering
@@ -253,6 +269,109 @@ class TestRenderNotification(unittest.TestCase):
         self.assertIn("Pipeline success: S6 / R1", subject)
         self.assertIn("S6 → NASA-SSH", body)
         self.assertIn("incomplete-lineage", body)
+        # nominal run with no parameters sidecar
+        self.assertIn("Parameters: none (scheduled defaults)", body)
+
+    def test_params_overrides_rendered(self):
+        summary = {
+            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "parameters": {"start": "2025-05-01", "end": "2025-05-31", "force_update": True},
+            "product_pipelines": {},
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("Parameters: start=2025-05-01, end=2025-05-31, force_update=true", body)
+
+    def test_along_track_folds_unifier_when_complete(self):
+        summary = {
+            "source": "S6", "unified_source": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "parameters": {},
+            "product_pipelines": {
+                "along_track": {
+                    "expected": 2,
+                    "deliverables": {
+                        "daily_file_p3": {
+                            "stage": "finalizer", "produced": 2, "skipped": 0,
+                            "provenance_incomplete": 0,
+                            "outputs": [
+                                {"key": "daily_files/p3/S6/2026/S6_x_20260201.nc", "kind": "daily_file_p3"},
+                                {"key": "daily_files/p3/S6/2026/S6_x_20260202.nc", "kind": "daily_file_p3"},
+                            ],
+                        },
+                        "nasa_ssh_p3": {
+                            "stage": "unifier", "produced": 2, "skipped": 0,
+                            "provenance_incomplete": 0, "outputs": [],
+                        },
+                    },
+                    "missing": [],
+                },
+            },
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("p3 daily files [finalizer]: 2 produced → all unified to NASA-SSH", body)
+        # the unifier is folded in, not shown as its own confusing row
+        self.assertNotIn("nasa_ssh_p3", body)
+        self.assertNotIn("[unifier]", body)
+        # filenames are listed
+        self.assertIn("S6_x_20260201.nc", body)
+
+    def test_along_track_surfaces_unification_shortfall(self):
+        summary = {
+            "source": "S6", "unified_source": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "parameters": {},
+            "product_pipelines": {
+                "along_track": {
+                    "expected": 16,
+                    "deliverables": {
+                        "daily_file_p3": {
+                            "stage": "finalizer", "produced": 16, "skipped": 0,
+                            "provenance_incomplete": 0, "outputs": [],
+                        },
+                        "nasa_ssh_p3": {
+                            "stage": "unifier", "produced": 0, "skipped": 0,
+                            "provenance_incomplete": 0, "outputs": [],
+                        },
+                    },
+                    "missing": [],
+                },
+            },
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("16 produced → 0 of 16 unified to NASA-SSH", body)
+
+    def test_filenames_capped(self):
+        outputs = [{"key": f"d/f_{i}.nc", "kind": "simple_grid"} for i in range(summarizer._MAX_LISTED + 5)]
+        summary = {
+            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "parameters": {},
+            "product_pipelines": {
+                "gridded": {
+                    "expected": len(outputs),
+                    "deliverables": {
+                        "simple_grid": {
+                            "stage": "simple_grids", "produced": len(outputs),
+                            "skipped": 0, "provenance_incomplete": 0, "outputs": outputs,
+                        },
+                    },
+                    "missing": [],
+                },
+            },
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn(f"… ({len(outputs)} total)", body)
+
+
+class TestBuildSummaryParameters(unittest.TestCase):
+    def test_parameters_threaded_into_artifact(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        summary = summarizer.build_summary(
+            jobs_key, {}, {}, run_params={"force_update": True}, completed_at="t"
+        )
+        self.assertEqual(summary["parameters"], {"force_update": True})
+
+    def test_parameters_default_empty(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
+        self.assertEqual(summary["parameters"], {})
 
 
 if __name__ == "__main__":

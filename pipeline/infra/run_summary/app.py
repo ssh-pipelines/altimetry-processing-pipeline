@@ -33,8 +33,8 @@ def handler(event, context):
         logger.error("run_summary requires jobs_key and bucket; got %s", event)
         return {"status": "skipped", "reason": "missing jobs_key or bucket"}
 
-    manifests, outcomes = summarizer.gather(s3, bucket, jobs_key)
-    summary = summarizer.build_summary(jobs_key, manifests, outcomes)
+    manifests, outcomes, run_params = summarizer.gather(s3, bucket, jobs_key)
+    summary = summarizer.build_summary(jobs_key, manifests, outcomes, run_params=run_params)
 
     key = summarizer.summary_key(jobs_key)
     try:

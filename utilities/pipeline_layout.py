@@ -175,6 +175,17 @@ def run_summary_key(source: str, run_id: str) -> str:
     return f"pipeline_runs/{source}/{run_id}/summary.json"
 
 
+def run_params_key(source: str, run_id: str) -> str:
+    """Bucket-relative key for a run's parameters sidecar, written by pipeline_init
+    alongside the jobs manifest. Records the overrides the run was launched with
+    (start/end/force_update); a nominal scheduled run records the resolved defaults.
+    The Run summary reads it back so the notification can show how a run was invoked.
+
+    Example: pipeline_runs/S6/20250528T120000/run_params.json
+    """
+    return f"pipeline_runs/{source}/{run_id}/run_params.json"
+
+
 def stage_results_prefix(jobs_key: str, stage: str) -> str:
     """Bucket-relative prefix for a stage's Distributed Map ResultWriter output.
 

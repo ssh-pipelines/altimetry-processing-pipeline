@@ -18,7 +18,9 @@ from utilities.source_profile import get_source_profile
 aws_manager = AWSManager()
 
 
-def start_job(date: datetime, bucket: str, source: str):
+def start_job(date: datetime, bucket: str, source: str) -> str:
+    """Process the ENSO grid (and maps) for a date. Returns the bucket-relative key of
+    the ENSO grid written."""
     logging.info(f"Processing {source} grid for {date.date()}")
 
     profile = get_source_profile(source)
@@ -46,8 +48,8 @@ def start_job(date: datetime, bucket: str, source: str):
 
         filename = enso_filename(date)
         src = f"/tmp/{filename}"
-        dst = s3_uri(bucket, enso_grid_key(source, date))
-        aws_manager.upload_obj(src, dst)
+        grid_key = enso_grid_key(source, date)
+        aws_manager.upload_obj(src, s3_uri(bucket, grid_key))
         os.remove(src)
 
         # Make maps
@@ -61,5 +63,8 @@ def start_job(date: datetime, bucket: str, source: str):
             aws_manager.upload_obj(src, s3_uri(bucket, map_key))
             os.remove(src)
 
+        return grid_key
+
     except Exception as e:
         logging.exception(f"Error processing {date}: {e}")
+        raise

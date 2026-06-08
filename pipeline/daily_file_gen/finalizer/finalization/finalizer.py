@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import date, datetime
 
 import numpy as np
@@ -14,7 +15,17 @@ from utilities.pipeline_layout import (
     daily_file_key,
     s3_uri,
 )
+from utilities.provenance import append_to_nc, read_from_nc
 from finalization.config.source_config import get_source_config
+
+
+@dataclass
+class FinalizerResult:
+    """What `Finalizer.process` produced for one date: the bucket-relative P3 key it
+    wrote and the file's `processing_history` lineage read back for the Job outcome."""
+
+    key: str
+    processing_history: list[dict]
 
 
 class Finalizer:
@@ -129,6 +140,16 @@ class Finalizer:
 
         ds.granule_id = filename
 
+        append_to_nc(
+            ds,
+            stage="finalizer",
+            generation_step=3,
+            bad_passes_applied=not self.bad_pass_df.empty,
+            absolute_offset_applied=self.config.offset,
+            bad_pass_source=bad_pass_key(self.source, self.processing_date),
+        )
+        processing_history = read_from_nc(ds)
+
         # Sort the global attributes by deleting / replacing
         sorted_attributes = sorted(ds.ncattrs(), key=lambda x: x.lower())
         attribute_data = {attr: ds.getncattr(attr) for attr in sorted_attributes}
@@ -146,8 +167,13 @@ class Finalizer:
             os.remove(local_filepath)
         except Exception as e:
             logging.exception(e)
-            return
+            raise
         logging.info(f"Processing {filename} complete. ")
+
+        return FinalizerResult(
+            key=daily_file_key(self.config, self.processing_date, "p3"),
+            processing_history=processing_history,
+        )
 
 
 def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:

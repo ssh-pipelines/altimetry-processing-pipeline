@@ -83,6 +83,34 @@ class TestUnifierHandler(unittest.TestCase):
         )
 
 
+class TestUnifierJobOutcome(unittest.TestCase):
+
+    @patch("app.boto3")
+    def test_handler_declares_nasa_ssh_output(self, mock_boto3):
+        from app import handler
+
+        mock_boto3.client.return_value = MagicMock()
+
+        event = {"bucket": "my-bucket", "date": "2025-02-10", "source": "S6"}
+        result = handler(event, None)
+
+        self.assertEqual(result["stage"], "unifier")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["date"], "2025-02-10")
+        self.assertEqual(result["source"], "NASA-SSH")
+        self.assertEqual(
+            result["outputs"],
+            [{
+                "key": "daily_files/p3/NASA-SSH/2025/NASA-SSH_alt_ref_at_v1_1_20250210.nc",
+                "kind": "nasa_ssh_p3",
+            }],
+        )
+        self.assertEqual(
+            result["metadata"]["copied_from"],
+            "daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250210.nc",
+        )
+
+
 class TestUnifierSkipsUnconfigured(unittest.TestCase):
 
     def test_unconfigured_source_raises(self):

@@ -49,7 +49,12 @@ def lambda_handler(event, context):
     # Discard any Monday whose window has no overlap with the actual daily file dates,
     # otherwise simple grids silently skips the date and downstream stages (ENSO) fail.
     min_job_date = min(date.fromisoformat(job["date"]) for job in jobs)
-    sg_jobs = {m for m in sg_jobs if m + timedelta(days=4) >= min_job_date}
+    max_job_date = max(date.fromisoformat(job["date"]) for job in jobs)
+    sg_jobs = {
+        m for m in sg_jobs
+        if m + timedelta(days=4) >= min_job_date
+        and m - timedelta(days=5) <= max_job_date
+    }
 
     filtered_jobs = [{"date": d.isoformat(), "bucket": bucket, "source": source} for d in sorted(sg_jobs)]
 

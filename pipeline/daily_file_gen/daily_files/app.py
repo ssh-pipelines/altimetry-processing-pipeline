@@ -2,6 +2,7 @@ import json
 import logging
 from daily_files import daily_file_job
 from daily_files.config.source_config import get_available_sources
+from utilities.errors import PipelineError
 
 
 def handler(event, context):
@@ -38,4 +39,4 @@ def handler(event, context):
             "input": event,
         }
         print(f"Error: {error_response}")
-        raise Exception(json.dumps(error_response))
+        raise PipelineError(json.dumps(error_response))

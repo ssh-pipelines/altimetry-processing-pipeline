@@ -5,6 +5,7 @@ import logging
 import boto3
 
 from indicators.compute_indicators import IndicatorProcessor
+from utilities.errors import PipelineError
 from utilities.pipeline_layout import s3_uri, simple_grid_key
 from utilities.source_profile import get_source_profile
 
@@ -51,4 +52,4 @@ def handler(event, context):
             "input": event,
         }
         print(f"Error: {error_response}")
-        raise Exception(json.dumps(error_response))
+        raise PipelineError(json.dumps(error_response))

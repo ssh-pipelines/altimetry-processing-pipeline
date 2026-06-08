@@ -108,8 +108,26 @@ class TestPipelineRuns(unittest.TestCase):
         key = jobs_manifest_key("S6", "20250219T120000")
         self.assertEqual(key, "pipeline_runs/S6/20250219T120000/jobs.json")
 
-    def test_stage_results_prefix(self):
-        self.assertEqual(stage_results_prefix("daily_file"), "pipeline_runs/results/daily_file/")
+    def test_stage_results_prefix_at_side(self):
+        self.assertEqual(
+            stage_results_prefix(
+                "pipeline_runs/S6/20250528T120000/jobs.json", "daily_file"
+            ),
+            "pipeline_runs/S6/20250528T120000/results/daily_file/",
+        )
+
+    def test_stage_results_prefix_sg_side_uses_original_source(self):
+        """Post-unifier sg_jobs.json: $p[1] is the original source, $p[2] is run_id."""
+        self.assertEqual(
+            stage_results_prefix(
+                "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso"
+            ),
+            "pipeline_runs/S6/20250528T120000/results/enso/",
+        )
+
+    def test_stage_results_prefix_rejects_short_jobs_key(self):
+        with self.assertRaises(ValueError):
+            stage_results_prefix("a/b", "enso")
 
 
 class TestSimpleGrid(unittest.TestCase):

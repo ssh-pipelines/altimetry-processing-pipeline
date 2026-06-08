@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 from enso_jobs import enso_processing
+from utilities.errors import PipelineError
 
 
 def handler(event, context):
@@ -22,4 +23,4 @@ def handler(event, context):
             "input": event,
         }
         print(f"Error: {error_response}")
-        raise Exception(json.dumps(error_response))
+        raise PipelineError(json.dumps(error_response))

@@ -69,7 +69,19 @@ def handler(event, context):
 
     logging.info(f"Generated {len(jobs)} jobs for processing")
 
-    jobs_key = write_manifest(bucket, source, jobs)
+    # Record how this run was invoked. `start`/`end`/`force_update` are the *given*
+    # overrides (null/false on a nominal scheduled run); `resolved_*` capture the range
+    # actually planned after defaulting/capping, for unambiguous provenance.
+    run_params = {
+        "start": event.get("start"),
+        "end": event.get("end"),
+        "force_update": force_update,
+        "defaults_used": not (event.get("start") or event.get("end")),
+        "resolved_start": start.isoformat(),
+        "resolved_end": end.isoformat(),
+    }
+
+    jobs_key = write_manifest(bucket, source, jobs, run_params)
 
     return {
         "jobs_key": jobs_key,

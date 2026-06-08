@@ -13,6 +13,7 @@ from utilities.pipeline_layout import (
     daily_file_filename,
     daily_file_prefix,
     jobs_manifest_key,
+    run_params_key,
 )
 
 
@@ -101,7 +102,14 @@ def scan_existing_p3_mod_times(
     return results
 
 
-def write_manifest(bucket: str, source: str, jobs: list[dict]) -> str:
+def write_manifest(bucket: str, source: str, jobs: list[dict], run_params: dict) -> str:
+    """Write the jobs manifest and a sibling ``run_params.json`` for the same run_id.
+
+    The params sidecar records how the run was invoked (overrides or resolved defaults)
+    so the Run summary can report it; it is deliberately separate from ``jobs.json`` to
+    keep the manifest a bare list its iterators (Distributed Maps, rewrite_manifest,
+    set_sg_jobs) already depend on.
+    """
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     key = jobs_manifest_key(source, run_id)
     _s3.put_object(
@@ -111,6 +119,15 @@ def write_manifest(bucket: str, source: str, jobs: list[dict]) -> str:
         ContentType="application/json",
     )
     logging.info(f"Wrote manifest to s3://{bucket}/{key}")
+
+    params_key = run_params_key(source, run_id)
+    _s3.put_object(
+        Bucket=bucket,
+        Key=params_key,
+        Body=json.dumps({"source": source, "run_id": run_id, **run_params}),
+        ContentType="application/json",
+    )
+    logging.info(f"Wrote run params to s3://{bucket}/{params_key}")
     return key
 
 

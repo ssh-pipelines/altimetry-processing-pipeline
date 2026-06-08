@@ -7,6 +7,7 @@ import xarray as xr
 
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import daily_file_key, daily_file_filename, s3_uri
+from utilities.provenance import append_to_xr
 
 from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
@@ -205,5 +206,13 @@ def start_job(date: str, source: str, bucket: str, granules: list[str]):
         daily_ds = job.process(acquired)
     else:
         daily_ds = make_empty(job)
+
+    append_to_xr(
+        daily_ds,
+        stage="daily_files",
+        generation_step=1,
+        source_files=daily_ds.attrs.get("source_files", ""),
+        granule_count=len(granules),
+    )
 
     upload_ds(daily_ds, job, bucket)

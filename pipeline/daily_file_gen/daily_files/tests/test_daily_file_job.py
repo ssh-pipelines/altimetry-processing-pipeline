@@ -1,5 +1,7 @@
+import json
 import unittest
 from unittest.mock import patch, MagicMock
+import xarray as xr
 from daily_files.config.source_config import get_source_config
 from datetime import datetime
 
@@ -9,6 +11,7 @@ from daily_files.daily_file_job import (
     SourcePipeline,
     SOURCE_REGISTRY,
     AcquiredData,
+    start_job,
 )
 from utilities.pipeline_layout import daily_file_filename
 from daily_files.fetching.downloader import S3Downloader
@@ -98,3 +101,30 @@ class TestAcquirePhase(unittest.TestCase):
         _, kwargs = mock_ingestor.ingest.call_args
         self.assertEqual(kwargs["filenames"], ["f1.nc"])
         self.assertEqual(kwargs["bucket"], "test-bucket")
+
+
+class TestProvenanceWiring(unittest.TestCase):
+    """start_job stamps a daily_files (P1) step into processing_history before upload."""
+
+    @patch("daily_files.daily_file_job.upload_ds")
+    @patch("daily_files.daily_file_job.DailyFileJob")
+    def test_processing_history_stamped_on_empty_path(self, mock_job_cls, mock_upload):
+        captured = {}
+
+        def capture(ds, job, bucket):
+            captured["ds"] = ds
+
+        mock_upload.side_effect = capture
+
+        mock_job = mock_job_cls.return_value
+        mock_job.acquire.return_value = None  # empty path
+        produced = xr.Dataset(attrs={"source_files": ""})
+
+        with patch("daily_files.daily_file_job.make_empty", return_value=produced):
+            start_job("2025-01-07", "GSFC", "bucket", granules=[])
+
+        steps = json.loads(captured["ds"].attrs["processing_history"])
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0]["stage"], "daily_files")
+        self.assertEqual(steps[0]["product_generation_step"], "1")
+        self.assertEqual(steps[0]["granule_count"], 0)

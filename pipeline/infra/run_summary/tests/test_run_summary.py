@@ -225,6 +225,20 @@ class TestS3IO(unittest.TestCase):
         self.assertEqual(len(outcomes), 1)
         self.assertEqual(outcomes[0]["date"], "2025-01-01")
 
+    def test_read_outcomes_unwraps_lambda_envelope(self):
+        """Defensive: a Map invoke task missing the `Output: $states.result.Payload`
+        unwrap writes the raw Lambda envelope; reconciliation must still see the outcome
+        (regression guard for the unifier `produced: 0` bug)."""
+        prefix = "p/"
+        outcome = _outcome("unifier", "2025-01-01", "nasa_ssh_p3", "u1")
+        envelope = {"Payload": outcome, "StatusCode": 200, "ExecutedVersion": "$LATEST"}
+        body = json.dumps([{"Input": {}, "Output": envelope}]).encode()
+        s3 = FakeS3({prefix + "x/SUCCEEDED_0.json": body})
+        outcomes = summarizer.read_outcomes(s3, "b", prefix)
+        self.assertEqual(len(outcomes), 1)
+        self.assertEqual(outcomes[0]["status"], "success")
+        self.assertEqual(outcomes[0]["stage"], "unifier")
+
     def test_read_run_params_missing_is_empty(self):
         s3 = FakeS3()
         jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"

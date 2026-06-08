@@ -225,7 +225,15 @@ def _outcome_from_entry(entry: dict) -> dict | None:
             output = json.loads(output)
         except (json.JSONDecodeError, TypeError):
             return None
-    return output if isinstance(output, dict) else None
+    if not isinstance(output, dict):
+        return None
+    # Defensive: a Map whose invoke task omits `Output: {% $states.result.Payload %}`
+    # writes the raw Lambda invoke envelope ({Payload, StatusCode, ...}) instead of the
+    # Job outcome (this once silently zeroed the unifier deliverable). Unwrap it so
+    # reconciliation still sees the outcome even if a stage's ASL regresses.
+    if "status" not in output and isinstance(output.get("Payload"), dict):
+        output = output["Payload"]
+    return output
 
 
 def read_run_params(s3, bucket: str, jobs_key: str) -> dict:

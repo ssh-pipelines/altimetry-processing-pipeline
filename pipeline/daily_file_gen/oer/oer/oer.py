@@ -19,6 +19,7 @@ from utilities.pipeline_layout import (
     oer_polygon_key,
     s3_uri,
 )
+from utilities.provenance import append_to_xr
 from utilities.source_profile import get_source_profile
 
 _DTYPE_OVERRIDES = {
@@ -125,6 +126,13 @@ class OerCorrection:
     def apply_oer(self, daily_file_ds: xr.Dataset, correction_ds: xr.Dataset) -> xr.Dataset:
         """Apply the OER correction to the daily file and upload the p2 result to S3."""
         ds = apply_correction(daily_file_ds, correction_ds)
+
+        append_to_xr(
+            ds,
+            stage="oer",
+            generation_step=2,
+            correction_source=oer_correction_key(self.source, self.date),
+        )
 
         if "time" in ds["basin_names_table"].dims:
             if ds["basin_names_table"].time.size > 0:

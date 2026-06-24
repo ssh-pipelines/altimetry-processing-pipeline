@@ -71,6 +71,82 @@ jobs:
         working-directory: pipeline/infra/failure_handling
         run: python -m unittest discover -s tests -t . -v
 
+  set_sg_jobs:
+    name: set_sg_jobs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install boto3
+        run: pip install boto3
+
+      - name: Run unittests
+        working-directory: pipeline/infra/set_sg_jobs
+        run: python -m unittest discover -s tests -t . -v
+
+  run_summary:
+    name: run_summary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: setup.py
+
+      # run_summary ships utilities; the editable install pulls boto3 + pyyaml.
+      - name: Install shared utilities (editable)
+        run: pip install -e .
+
+      - name: Run unittests
+        working-directory: pipeline/infra/run_summary
+        run: python -m unittest discover -s tests -t . -v
+
+  # other_products module. enso is deliberately not wired yet: its existing
+  # test_enso.py depends on LFS data (data/simple_grids/...) and the checkout
+  # uses lfs: false, so a discover job there would go red until that test is
+  # made CI-safe.
+  simple_grids:
+    name: simple_grids
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            pipeline/pipeline_runtime/requirements.txt
+            pipeline/other_products/simple_grids/requirements.txt
+            setup.py
+
+      - name: Install pipeline_runtime base
+        run: pip install -r pipeline/pipeline_runtime/requirements.txt
+
+      - name: Install simple_grids requirements
+        run: pip install -r pipeline/other_products/simple_grids/requirements.txt
+
+      - name: Install shared utilities (editable)
+        run: pip install -e .
+
+      - name: Run unittests
+        working-directory: pipeline/other_products/simple_grids
+        run: python -m unittest discover -s tests -t . -v
+
   utilities:
     name: utilities
     runs-on: ubuntu-latest

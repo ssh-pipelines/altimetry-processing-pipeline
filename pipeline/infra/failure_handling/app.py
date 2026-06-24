@@ -3,7 +3,6 @@ import logging
 import os
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -20,7 +19,6 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 
 AUTH_FAILURE_PATTERN = re.compile(r"\b(401|403|Unauthorized|Forbidden)\b")
 MAX_DISTINCT_FAILURES_IN_BODY = 10
-MAX_FILES_LISTED = 25
 
 # Error-type prefixes/values that indicate the Lambda runtime (not handler code)
 # killed the process. `Sandbox.Timedout` is the Lambda execution-environment
@@ -48,11 +46,6 @@ def _run_id_from_jobs_key(jobs_key: str) -> str:
     # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{unified}/sg_jobs.json
     parts = jobs_key.split("/")
     return parts[2] if len(parts) >= 3 else "unknown"
-
-
-def _orig_source_from_jobs_key(jobs_key: str) -> str:
-    parts = jobs_key.split("/")
-    return parts[1] if len(parts) >= 2 else "unknown"
 
 
 def _classify(error_type: str, error_message: str) -> str:
@@ -236,105 +229,6 @@ def _top_level_envelope_error(top_cause: str) -> str:
     return env.get("Error", "") if isinstance(env, dict) else ""
 
 
-def _read_succeeded(bucket: str, prefix: str) -> tuple[int, set[str]]:
-    """(item count, set of ISO dates) across all SUCCEEDED_*.json files under a
-    ResultWriter prefix. Each successful map item's Input carries the processing
-    `date`; we collect those to scope the final-product file listings to this run.
-    """
-    paginator = s3.get_paginator("list_objects_v2")
-    count = 0
-    dates: set[str] = set()
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            if "/SUCCEEDED_" not in obj["Key"]:
-                continue
-            try:
-                items = json.loads(s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read())
-            except Exception as e:
-                logger.warning("Could not read SUCCEEDED file %s: %s", obj["Key"], e)
-                continue
-            if not isinstance(items, list):
-                continue
-            count += len(items)
-            for entry in items:
-                raw = entry.get("Input") if isinstance(entry, dict) else None
-                if isinstance(raw, str):
-                    try:
-                        raw = json.loads(raw)
-                    except (json.JSONDecodeError, TypeError):
-                        raw = None
-                if isinstance(raw, dict) and raw.get("date"):
-                    dates.add(raw["date"])
-    return count, dates
-
-
-def _years(dates: set[str]) -> set[int]:
-    years: set[int] = set()
-    for d in dates:
-        try:
-            years.add(int(d[:4]))
-        except (ValueError, TypeError):
-            continue
-    return years
-
-
-def _list_product_files(bucket: str, prefixes: list[str], dates: set[str]) -> list[str]:
-    """Leaf filenames under the given listing prefixes whose name carries one of
-    the run's dates. Product filenames embed the date as a YYYYMMDD token
-    (e.g. ..._20250107.nc), so we match on that compact form. Listing the live
-    objects — rather than reconstructing names — keeps this authoritative without
-    importing `utilities`, which infra Lambdas don't ship.
-    """
-    tokens = {d.replace("-", "") for d in dates}
-    if not tokens:
-        return []
-    paginator = s3.get_paginator("list_objects_v2")
-    names: set[str] = set()
-    for prefix in prefixes:
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-            for obj in page.get("Contents", []):
-                name = obj["Key"].rsplit("/", 1)[-1]
-                if name and any(tok in name for tok in tokens):
-                    names.add(name)
-    return sorted(names)
-
-
-def _format_file_lines(files: list[str]) -> list[str]:
-    lines = [f"    {name}" for name in files[:MAX_FILES_LISTED]]
-    if len(files) > MAX_FILES_LISTED:
-        lines.append(f"    ...and {len(files) - MAX_FILES_LISTED} more")
-    return lines
-
-
-def _format_success_message(
-    orig_source: str,
-    sg_source: str,
-    run_id: str,
-    completed_at: str,
-    products: list[dict],
-) -> str:
-    source_line = (
-        f"Source: {orig_source} → {sg_source}"
-        if sg_source != orig_source
-        else f"Source: {orig_source}"
-    )
-    lines = [source_line, f"Run ID: {run_id}", f"Completed: {completed_at}", "", "Final products:"]
-
-    for product in products:
-        count = product["count"]
-        if count == 0:
-            # Always-on products report a zero line so a silent gap is visible;
-            # optional products (ENSO) are simply omitted when absent.
-            if product.get("always"):
-                lines.append(f"  {product['label']}: 0 (or ResultWriter output not found)")
-            continue
-        lines.append(f"  {product['label']}: {count}")
-        lines += _format_file_lines(product["files"])
-
-    lines.append("  Indicators: complete")
-    return "\n".join(lines)
-
-
 def _format_failure_message(
     stage: str,
     source: str,
@@ -444,53 +338,8 @@ def _handle_failure(event: dict) -> dict:
     return {"status": "notified", "stage": stage, "source": source, "failed_count": total_failed}
 
 
-def _handle_success(event: dict) -> dict:
-    jobs_key = event.get("jobs_key", "")
-    bucket = event.get("bucket", "")
-    sg_source = event.get("source", "unknown")
-
-    orig_source = _orig_source_from_jobs_key(jobs_key)
-    run_id = _run_id_from_jobs_key(jobs_key)
-    completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    # Final-product listings. Along-track P3 files end up under the unified
-    # source's prefix when the run unified (sg_source == "NASA-SSH"); for a
-    # non-unified run sg_source == orig_source, so the same prefix is correct.
-    # Simple grids and ENSO are likewise written under sg_source. Each spec is
-    # (label, ResultWriter stage, listing-prefix builder, always-show).
-    product_specs = [
-        ("Along-track P3 files", "finalizer",
-         lambda years: [f"daily_files/p3/{sg_source}/{y}/" for y in years], True),
-        ("Simple grids", "simple_grids",
-         lambda years: [f"simple_grids/{sg_source}/{y}/" for y in years], True),
-        ("ENSO files", "enso",
-         lambda _years: [f"enso_grids/{sg_source}/"], False),
-    ]
-
-    products: list[dict] = []
-    for label, stage, prefixes_fn, always in product_specs:
-        count, files = 0, []
-        prefix = _results_prefix_from_jobs_key(jobs_key, stage)
-        if bucket and prefix:
-            try:
-                count, dates = _read_succeeded(bucket, prefix)
-                files = _list_product_files(bucket, prefixes_fn(_years(dates)), dates)
-            except Exception as e:
-                logger.warning("Could not gather %s results: %s", stage, e)
-        products.append({"label": label, "count": count, "files": files, "always": always})
-
-    subject = f"Pipeline success: {orig_source} / {run_id}"[:100]
-    message = _format_success_message(orig_source, sg_source, run_id, completed_at, products)
-
-    try:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
-    except Exception as e:
-        logger.error("Failed to publish SNS for %s/%s: %s", orig_source, run_id, e)
-
-    return {"status": "notified", "source": orig_source, "run_id": run_id}
-
-
 def lambda_handler(event, context):
-    if event.get("success"):
-        return _handle_success(event)
+    # Failure-only by charter (ADR 0003). The success path moved to the
+    # `run_summary` Lambda (ADR 0005), which reconciles declared Job outcomes
+    # against the jobs manifest instead of inferring products from S3 listings.
     return _handle_failure(event)

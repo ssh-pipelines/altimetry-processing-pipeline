@@ -517,5 +517,101 @@ class TestProcessS6B(unittest.TestCase, _ProcessTestMixin):
             self._cleanup()
 
 
+# ---------------------------------------------------------------------------
+# Tests — process() returns a FinalizerResult (Job-outcome inputs)
+# ---------------------------------------------------------------------------
+
+class TestProcessResult(unittest.TestCase, _ProcessTestMixin):
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_returns_key_and_processing_history(self, mock_aws):
+        proc_date = date(2020, 5, 1)
+        self._setup_process_mocks(mock_aws, source="GSFC")
+        try:
+            f = Finalizer(proc_date, "GSFC", "bucket")
+            result = f.process("bucket")
+
+            self.assertEqual(
+                result.key,
+                "daily_files/p3/GSFC/2020/GSFC_alt_ref_at_v1_1_20200501.nc",
+            )
+            # the finalizer step (P3) is appended to processing_history
+            self.assertTrue(
+                any(s["stage"] == "finalizer" for s in result.processing_history)
+            )
+            self.assertEqual(result.processing_history[-1]["product_generation_step"], "3")
+        finally:
+            self._cleanup()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_processing_history_persisted_to_file(self, mock_aws):
+        proc_date = date(2020, 5, 1)
+        self._setup_process_mocks(mock_aws, source="GSFC")
+        try:
+            f = Finalizer(proc_date, "GSFC", "bucket")
+            f.process("bucket")
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            self.assertIn("processing_history", ds.ncattrs())
+            steps = json.loads(ds.getncattr("processing_history"))
+            self.assertEqual(steps[-1]["stage"], "finalizer")
+            ds.close()
+        finally:
+            self._cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Tests — handler returns a Job outcome
+# ---------------------------------------------------------------------------
+
+class TestFinalizerHandlerOutcome(unittest.TestCase):
+
+    @patch("app.Finalizer")
+    def test_handler_returns_job_outcome(self, mock_finalizer_cls):
+        from app import handler
+        from finalization.finalizer import FinalizerResult
+
+        mock_finalizer_cls.return_value.process.return_value = FinalizerResult(
+            key="daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250210.nc",
+            processing_history=[
+                {"stage": "daily_files", "product_generation_step": "1"},
+                {"stage": "oer", "product_generation_step": "2"},
+                {"stage": "finalizer", "product_generation_step": "3"},
+            ],
+        )
+
+        event = {"bucket": "b", "date": "2025-02-10", "source": "S6"}
+        result = handler(event, None)
+
+        self.assertEqual(result["stage"], "finalizer")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["date"], "2025-02-10")
+        self.assertEqual(result["source"], "S6")
+        self.assertEqual(
+            result["outputs"],
+            [{
+                "key": "daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250210.nc",
+                "kind": "daily_file_p3",
+            }],
+        )
+        self.assertTrue(result["metadata"]["provenance_complete"])
+
+    @patch("app.Finalizer")
+    def test_handler_flags_incomplete_provenance(self, mock_finalizer_cls):
+        from app import handler
+        from finalization.finalizer import FinalizerResult
+
+        # legacy file: only the P3 step recorded (gap at P1/P2)
+        mock_finalizer_cls.return_value.process.return_value = FinalizerResult(
+            key="daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250210.nc",
+            processing_history=[
+                {"stage": "finalizer", "product_generation_step": "3"},
+            ],
+        )
+
+        event = {"bucket": "b", "date": "2025-02-10", "source": "S6"}
+        result = handler(event, None)
+        self.assertFalse(result["metadata"]["provenance_complete"])
+
+
 if __name__ == "__main__":
     unittest.main()

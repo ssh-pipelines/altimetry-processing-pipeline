@@ -12,7 +12,7 @@ For each invocation, the Lambda:
    - **CMR** (`cmr`): Queries NASA CMR for granule modification times using the source's configured `concept_id`(s). For sources with multiple collections (e.g., S6), resolves per-cycle/pass priority so the highest-priority collection wins.
    - **S3 bucket** (`s3_bucket`): Lists the source bucket and extracts modification times from S3 object metadata. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and uses the `LastModified` of covering cycle files as the source modification time for each date.
 4. **Compares timestamps** — a date needs processing if: no daily file exists, no source granule exists but no daily file either, or the source granule was modified after the daily file was last generated. With `force_update`, all dates are included unconditionally.
-5. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing.
+5. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording how the run was invoked (the given `start`/`end`/`force_update` overrides, a `defaults_used` flag, and the `resolved_start`/`resolved_end`). The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (Distributed Maps, `rewrite_manifest`, `set_sg_jobs`) depend on; `run_summary` reads the sidecar to report invocation parameters in the success notification (see ADR 0005).
 6. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
 
 ## Directory structure
@@ -76,6 +76,7 @@ Each entry in the manifest is a job for one date:
 |------|-------------|
 | `{s3_prefix}/{year}/{filename_pattern}` | Existing daily files queried for modification times (read) |
 | `pipeline_runs/{source}/{run_id}/jobs.json` | Jobs manifest written for downstream stages (write) |
+| `pipeline_runs/{source}/{run_id}/run_params.json` | Invocation params sidecar read by `run_summary` (write) |
 
 The `s3_prefix` and `filename_pattern` are source-specific (see Source Configuration below).
 

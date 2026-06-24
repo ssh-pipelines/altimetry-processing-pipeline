@@ -2,6 +2,8 @@
 
 Lambda invoked from parent state machines' `Catch` paths. Reads the failed Distributed Map's `ResultWriter` output from S3, classifies each failed item as **Code failure**, **Runtime failure**, or **Auth failure**, deduplicates by `(category, errorType, errorMessage)`, and publishes one SNS notification with the result. Falls back to the top-level `Cause` when no per-item output exists (e.g. `pipeline_init` failures, `ItemReader` failures).
 
+This Lambda is **failure-only**. The success notification it used to emit (by inferring produced files from live S3 listings) now lives in the `run_summary` Lambda, which reconciles declared **Job outcomes** against the jobs manifest — see [ADR 0005](../../../docs/adr/0005-job-outcome-contract-and-run-summary.md).
+
 See [`docs/adr/0003-failure-surfacing.md`](../../../docs/adr/0003-failure-surfacing.md) for the full design — topology, wiring, alternatives rejected.
 
 ## Environment

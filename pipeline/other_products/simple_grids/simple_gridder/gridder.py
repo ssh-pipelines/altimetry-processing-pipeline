@@ -34,11 +34,13 @@ class SimpleGridderJob:
         self.profile = get_source_profile(self.source)
 
         self.filename = simple_grid_filename(self.profile, self.center_date)
-        self.dst = s3_uri(self.bucket, simple_grid_key(self.profile, self.center_date))
+        self.key = simple_grid_key(self.profile, self.center_date)
 
         if resolution == "quart":
             self.filename = self.filename.replace("simple_grid_v1_1", "simple_grid_quart_v1_1")
-            self.dst = self.dst.replace("simple_grids/", "simple_grids/quart_deg/")
+            self.key = self.key.replace("simple_grids/", "simple_grids/quart_deg/")
+
+        self.dst = s3_uri(self.bucket, self.key)
 
     def fetch_daily_files(self) -> Tuple[list[TextIOWrapper], list[str]]:
         """
@@ -107,10 +109,13 @@ class SimpleGridderJob:
         aws_manager.upload_obj(filepath, self.dst)
 
 
-def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
+def start_job(date: str, source: str, resolution: Optional[str], bucket: str) -> Optional[str]:
     """
     - date: str (%Y-%m-%d) The center of the ten day window
     - source: str | Iterable[str] The name(s) of along track sources to include in the grid
+
+    Returns the bucket-relative key of the grid written, or ``None`` when the date is
+    skipped because no daily files were available in the window.
     """
 
     simple_gridder_job = SimpleGridderJob(date, bucket, source, resolution)
@@ -118,7 +123,7 @@ def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
 
     if not filenames:
         logging.info(f"No daily files found or opened for {source} on {date}")
-        return
+        return None
 
     gridder = Gridder(
         simple_gridder_job.center_date,
@@ -133,3 +138,5 @@ def start_job(date: str, source: str, resolution: Optional[str], bucket: str):
 
     simple_gridder_job.save_grid(ds)
     simple_gridder_job.upload_grid()
+
+    return simple_gridder_job.key

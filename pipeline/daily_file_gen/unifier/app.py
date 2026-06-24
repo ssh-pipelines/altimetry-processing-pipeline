@@ -5,6 +5,7 @@ import logging
 import boto3
 
 from utilities.errors import PipelineError
+from utilities.job_outcome import JobOutcome, Output
 from utilities.pipeline_layout import daily_file_key
 from utilities.source_profile import get_source_profile
 
@@ -51,7 +52,18 @@ def handler(event, context):
         )
 
         logging.info(f"Unification complete for {source} {proc_date}")
-        return {"status": "success", "data": {**event, "source": "NASA-SSH"}}
+        # The unifier is a deliberately lightweight byte-copy Lambda (no NetCDF engine), so
+        # it does not re-read `processing_history` from the file. The copy preserves that
+        # lineage in-file; the along-track P3 (finalizer) Job outcome already carries the
+        # authoritative `provenance_complete`. We omit the flag here — run_summary treats its
+        # absence as "unknown" rather than failing reconciliation (see ADR 0005).
+        return JobOutcome.success(
+            stage="unifier",
+            date=date_obj.isoformat(),
+            source="NASA-SSH",
+            outputs=[Output(key=dst_key, kind="nasa_ssh_p3")],
+            metadata={"copied_from": src_key},
+        ).to_dict()
     except Exception as e:
         error_response = {
             "status": "error",

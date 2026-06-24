@@ -88,4 +88,5 @@ def handler(event, context):
         "bucket": bucket,
         "source": source,
         "unify": config.unify,
+        "job_count": len(jobs),
     }

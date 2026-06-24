@@ -9,13 +9,29 @@
         "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-at_pipeline-sm",
         "Input": "{% $states.input %}"
       },
-      "Next": "Need Unification?",
+      "Next": "Has Jobs?",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Fail"
         }
       ]
+    },
+    "Has Jobs?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Next": "Need Unification?",
+          "Condition": "{% $states.input.Output.job_count > 0 %}"
+        }
+      ],
+      "Default": "No Jobs Summary"
+    },
+    "No Jobs Summary": {
+      "Type": "Pass",
+      "Comment": "Fast exit: the along-track run found no dates to process. Skip unification and the SG pipeline; unwrap the execution result to the bare run identity Run Summary expects, then summarize (empty manifests reconcile to expected 0 / produced 0).",
+      "Output": "{% $states.input.Output %}",
+      "Next": "Run Summary"
     },
     "Need Unification?": {
       "Type": "Choice",

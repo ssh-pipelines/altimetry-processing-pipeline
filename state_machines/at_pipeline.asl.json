@@ -5,7 +5,7 @@
     "Init pipeline": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-pipeline_init:$LATEST",
-      "Next": "Daily File Execution",
+      "Next": "Has Jobs?",
       "Retry": [
         {
           "ErrorEquals": [
@@ -26,6 +26,28 @@
           "Output": "{% { 'stage': 'pipeline_init', 'errorOutput': $states.errorOutput, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
+    },
+    "Has Jobs?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Next": "Daily File Execution",
+          "Condition": "{% $states.input.job_count > 0 %}"
+        }
+      ],
+      "Default": "No Jobs"
+    },
+    "No Jobs": {
+      "Type": "Pass",
+      "Comment": "Fast exit: pipeline_init found no dates to process. Skip the daily_file→finalizer chain and hand the unchanged run identity back to the orchestrator, which skips unification/SG and goes straight to Run Summary.",
+      "Output": {
+        "jobs_key": "{% $states.input.jobs_key %}",
+        "bucket": "{% $states.input.bucket %}",
+        "source": "{% $states.input.source %}",
+        "unify": "{% $states.input.unify %}",
+        "job_count": "{% $states.input.job_count %}"
+      },
+      "End": true
     },
     "Daily File Execution": {
       "Type": "Task",
@@ -150,7 +172,8 @@
         "jobs_key": "{% $states.input.jobs_key %}",
         "bucket": "{% $states.input.bucket %}",
         "source": "{% $states.input.source %}",
-        "unify": "{% $states.input.unify %}"
+        "unify": "{% $states.input.unify %}",
+        "job_count": "{% $states.input.job_count %}"
       },
       "Catch": [
         {

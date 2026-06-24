@@ -8,6 +8,11 @@ if [ -f "$ENV_FILE" ]; then
     export $(grep -v '^#' "$ENV_FILE" | xargs)
 fi
 
+# Disable the AWS CLI v2 pager so deploy commands don't block on `less` after
+# each update-function-code / update-state-machine call (an empty value turns
+# paging off entirely). Sourced by every build/deploy wrapper.
+export AWS_PAGER=""
+
 # Optional: set some defaults
 export BRANCH=${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
 export GIT_SHA=${GIT_SHA:-$(git rev-parse --short HEAD)}

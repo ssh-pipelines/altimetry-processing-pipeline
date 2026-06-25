@@ -40,9 +40,12 @@ deploy_targets() {
       break
     fi
 
+    # Stage-aware: the registry reports a target non-deployable when this stage
+    # doesn't own it — the base image (never deployed) or a shared singleton
+    # restricted to another stage (e.g. podaac_cred_update is prod-only).
     deployable="$(_tfield "$catalog" "$IMAGE" 5)"
     if [ "$deployable" != "true" ]; then
-      echo "Skipping $IMAGE (not deployable; e.g. base image)"
+      echo "Skipping $IMAGE (not deployable in $ENV)"
       continue
     fi
 

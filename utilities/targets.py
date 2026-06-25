@@ -46,6 +46,13 @@ class Target:
     packaging: Packaging
     heavy: bool
     deployable: bool
+    # Explicit Lambda function name, overriding the ``${stage}-${name}`` default.
+    # Used for stage-agnostic singletons whose one function is shared across
+    # stages (e.g. the podaac_cred_update credential refresher).
+    function_override: str | None = None
+    # Stages whose deploy step updates this target's Lambda; None means every
+    # stage. Restricts a shared singleton to the controlled path (e.g. prod only).
+    deploy_stages: tuple[str, ...] | None = None
 
     def ecr_repo(self, stage: str) -> str:
         if self.packaging is not Packaging.CONTAINER:
@@ -55,7 +62,19 @@ class Target:
     def function_name(self, stage: str) -> str:
         if not self.deployable:
             raise ValueError(f"{self.name!r} is not deployable; it has no Lambda function")
+        if self.function_override:
+            return self.function_override
         return f"{stage}-{self.name}"
+
+    def deployable_in(self, stage: str) -> bool:
+        """Whether deploying ``stage`` updates this target's Lambda.
+
+        Defaults to every stage; ``deploy_stages`` in targets.yaml narrows it so
+        a shared singleton is only touched by the stage(s) that own it.
+        """
+        return self.deployable and (
+            self.deploy_stages is None or stage in self.deploy_stages
+        )
 
 
 def _find_repo_root() -> Path:
@@ -132,9 +151,27 @@ def targets() -> list[Target]:
         facts = declared.get(name) or {}
         heavy = bool(facts.get("heavy", False))
         deployable = bool(facts.get("deployable", True))
+        function_override = facts.get("function")
+        raw_stages = facts.get("deploy_stages")
+        deploy_stages = tuple(raw_stages) if raw_stages is not None else None
         if packaging is Packaging.ZIP and heavy:
             raise RuntimeError(f"Target registry: zip target {name!r} cannot be heavy.")
-        result.append(Target(name, path, packaging, heavy, deployable))
+        if not deployable and (function_override or deploy_stages is not None):
+            raise RuntimeError(
+                f"Target registry: {name!r} is not deployable but declares "
+                f"function/deploy_stages."
+            )
+        result.append(
+            Target(
+                name,
+                path,
+                packaging,
+                heavy,
+                deployable,
+                function_override=function_override,
+                deploy_stages=deploy_stages,
+            )
+        )
 
     _CACHE = result
     return result
@@ -200,7 +237,12 @@ def dirty(changed_paths: Iterable[str]) -> list[Target]:
 def _cmd_catalog(stage: str | None) -> int:
     for t in targets():
         ecr = t.ecr_repo(stage) if (stage and t.packaging is Packaging.CONTAINER) else ""
-        fn = t.function_name(stage) if (stage and t.deployable) else ""
+        # With a stage, the deployable column is stage-specific so the deploy
+        # core skips targets this stage doesn't own (e.g. the prod-only
+        # podaac_cred_update singleton is not deployable in dev). Without a
+        # stage it reports the static fact.
+        deployable = t.deployable_in(stage) if stage else t.deployable
+        fn = t.function_name(stage) if (stage and deployable) else ""
         print(
             "\t".join(
                 [
@@ -208,7 +250,7 @@ def _cmd_catalog(stage: str | None) -> int:
                     str(t.path),
                     t.packaging.value,
                     "true" if t.heavy else "false",
-                    "true" if t.deployable else "false",
+                    "true" if deployable else "false",
                     ecr,
                     fn,
                 ]

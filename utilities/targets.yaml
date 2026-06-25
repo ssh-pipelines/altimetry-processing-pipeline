@@ -2,12 +2,15 @@
 # docs/adr/0004-target-registry.md.
 #
 # Existence and packaging kind are DERIVED from the filesystem (a Dockerfile =>
-# container, an infra app.py => zip). This file declares only the two facts that
+# container, an infra app.py => zip). This file declares only the facts that
 # can't be reliably derived:
-#   heavy      - container image FROMs pipeline_runtime via the BASE_IMAGE
-#                override (container targets only; guarded by a test against the
-#                Dockerfile's actual base parameterization)
-#   deployable - target maps to a ${stage}-${name} Lambda the deploy step updates
+#   heavy         - container image FROMs pipeline_runtime via the BASE_IMAGE
+#                   override (container targets only; guarded by a test against
+#                   the Dockerfile's actual base parameterization)
+#   deployable    - target maps to a Lambda the deploy step updates
+#   function      - explicit Lambda name, overriding the ${stage}-${name} default
+#                   (for stage-agnostic singletons that share one function)
+#   deploy_stages - stages whose deploy updates this Lambda (default: all)
 #
 # Defaults: heavy=false, deployable=true. Every target MUST be listed so the
 # consistency test can pin this manifest to the filesystem. This file is
@@ -33,6 +36,9 @@ targets:
 
   # ── zip — infra Lambdas ───────────────────────────────────────────────
   failure_handling: {}
-  podaac_auth:      {}
+  # Stage-agnostic singleton: one shared function (podaac_cred_update) refreshes
+  # PODAAC/EDL creds into fixed Secrets Manager secrets for every stage. Deployed
+  # only from prod so a dev push can't overwrite the function prod relies on.
+  podaac_auth:      {function: podaac_cred_update, deploy_stages: [prod]}
   rewrite_manifest: {}
   set_sg_jobs:      {}

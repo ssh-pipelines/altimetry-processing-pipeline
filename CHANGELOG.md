@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `run_summary`. (#34)
 
 ### Fixed
+- Production releases no longer fail trying to deploy a nonexistent
+  `prod-podaac_auth`. The Target registry now supports stage-agnostic singletons
+  via `function` (explicit Lambda name) and `deploy_stages` (which stages deploy
+  it): the shared `podaac_cred_update` credential refresher is deployed under its
+  real name, from prod only.
 - `set_sg_jobs` no longer crashes with `min() iterable argument is empty` on no-new-files
   runs; an empty manifest now yields an empty `sg_jobs.json`. (#34)
 - Deploy scripts no longer block on the AWS CLI v2 pager after each

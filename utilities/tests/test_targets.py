@@ -73,6 +73,25 @@ class TestNamingHelpers(unittest.TestCase):
         self.assertEqual(reg.get("oer").function_name("prod"), "prod-oer")
         self.assertEqual(reg.get("failure_handling").function_name("dev"), "dev-failure_handling")
 
+    def test_function_name_override_is_stage_agnostic(self):
+        # podaac_auth is a shared singleton: one function name for every stage.
+        pa = reg.get("podaac_auth")
+        self.assertEqual(pa.function_name("prod"), "podaac_cred_update")
+        self.assertEqual(pa.function_name("dev"), "podaac_cred_update")
+
+    def test_deployable_in_defaults_to_all_stages(self):
+        oer = reg.get("oer")
+        self.assertTrue(oer.deployable_in("dev"))
+        self.assertTrue(oer.deployable_in("prod"))
+
+    def test_deploy_stages_restricts_singleton_to_prod(self):
+        # The shared podaac_cred_update Lambda is only deployed from prod, so the
+        # dev pipeline skips it (no dev-podaac_auth) and release.sh targets the
+        # real shared name (no prod-podaac_auth).
+        pa = reg.get("podaac_auth")
+        self.assertTrue(pa.deployable_in("prod"))
+        self.assertFalse(pa.deployable_in("dev"))
+
     def test_ecr_repo_rejects_zip(self):
         with self.assertRaises(ValueError):
             reg.get("failure_handling").ecr_repo("dev")

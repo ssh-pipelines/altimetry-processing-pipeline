@@ -11,21 +11,26 @@ source "$REPO_ROOT/scripts/util/load_env.sh"
 STAGE="dev"
 TARGET_FILE=""
 DRY_RUN=false
+VERSION=""
 
 # ── Parse arguments ─────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stage)    STAGE="$2";       shift 2 ;;
         --file)     TARGET_FILE="$2"; shift 2 ;;
+        --version)  VERSION="$2";     shift 2 ;;
         --dry-run)  DRY_RUN=true;     shift   ;;
         -h|--help)
-            echo "Usage: $0 [--stage dev|prod] [--file <name>.asl.json] [--dry-run]"
+            echo "Usage: $0 [--stage dev|prod] [--file <name>.asl.json] [--version <v>] [--dry-run]"
             echo ""
             echo "Deploys rendered state machine definitions to AWS."
             echo ""
             echo "Options:"
             echo "  --stage     Deployment stage (default: dev)"
             echo "  --file      Deploy a single rendered file instead of all"
+            echo "  --version   Stamp each deployed machine with a 'version' resource"
+            echo "              tag (release tag in prod, git sha in dev) so the live"
+            echo "              version is queryable for rollback decisions"
             echo "  --dry-run   Print commands without executing"
             echo ""
             echo "Required environment variables (via .env or exported):"
@@ -86,6 +91,16 @@ deploy_file() {
             --definition "file://$filepath" \
             --role-arn "${STATE_MACHINE_ROLE_ARN}" \
             --type STANDARD
+    fi
+
+    # Stamp the live version so it's queryable (describe / list-tags-for-resource)
+    # when deciding what to roll back to. Definitions overwrite in place, so this
+    # tag is the only record on the resource of which release is deployed.
+    if [[ -n "$VERSION" ]]; then
+        echo "    tagging $sm_name version=$VERSION"
+        aws stepfunctions tag-resource \
+            --resource-arn "$arn" \
+            --tags "key=version,value=$VERSION"
     fi
 }
 

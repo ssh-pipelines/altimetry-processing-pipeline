@@ -8,6 +8,11 @@ set -eo pipefail
 # pipeline_runtime/ dirties the stages that depend on them, not just the dir
 # that changed.
 #
+# State machines aren't Targets (the registry doesn't track them), so they're
+# gated separately: if any state_machines/*.asl.json changed vs the base (or
+# with --all), render + deploy them to dev after the Lambdas. This mirrors
+# release.sh, which always ships both halves together.
+#
 # Usage: scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>]
 
 # Ensure we are in the repo root
@@ -49,16 +54,44 @@ else
     done < <(registry_query dirty --base "$BASE_REF")
 fi
 
-if [ ${#TARGETS[@]} -eq 0 ]; then
-    echo "No targets changed vs $BASE_REF; nothing to build or deploy."
+# State machines live outside the registry: --all forces them, otherwise deploy
+# only when a top-level template changed vs the base. The :(glob) pathspec keeps
+# `*` from crossing into rendered/ (a gitignored build artifact anyway).
+SM_CHANGED=false
+if [ "$FORCE_ALL" = true ]; then
+    SM_CHANGED=true
+elif [ -n "$(git diff --name-only "$BASE_REF"...HEAD -- ':(glob)state_machines/*.asl.json')" ]; then
+    SM_CHANGED=true
+fi
+
+if [ ${#TARGETS[@]} -eq 0 ] && [ "$SM_CHANGED" = false ]; then
+    echo "No targets or state machines changed vs $BASE_REF; nothing to do."
     exit 0
 fi
 
-echo "Targets to build/deploy: ${TARGETS[*]}"
-
 # build_and_push builds the container targets (and skips zip); deploy handles
 # every deployable target, packaging zip targets on the fly.
-"$DEV/build_and_push.sh" "${TARGETS[@]}"
-"$DEV/deploy.sh" "${TARGETS[@]}"
+if [ ${#TARGETS[@]} -gt 0 ]; then
+    echo "Targets to build/deploy: ${TARGETS[*]}"
+    "$DEV/build_and_push.sh" "${TARGETS[@]}"
+    "$DEV/deploy.sh" "${TARGETS[@]}"
+else
+    echo "No Lambda targets changed vs $BASE_REF."
+fi
 
-echo "Pipeline complete for: ${TARGETS[*]}"
+# Render + deploy state machines after the Lambdas (so new orchestration points
+# at code that already exists). DRY_RUN maps to deploy.sh's own --dry-run flag.
+if [ "$SM_CHANGED" = true ]; then
+    echo "State machine definitions changed; rendering + deploying (stage=dev)."
+    SM="$DEV/../state_machines"
+    "$SM/render.sh" --stage dev
+    if [ -n "$DRY_RUN" ]; then
+        "$SM/deploy.sh" --stage dev --version "$GIT_SHA" --dry-run
+    else
+        "$SM/deploy.sh" --stage dev --version "$GIT_SHA"
+    fi
+else
+    echo "No state machine changes vs $BASE_REF; skipping state machine deploy."
+fi
+
+echo "Pipeline complete."

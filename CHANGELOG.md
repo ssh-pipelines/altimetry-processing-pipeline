@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `scripts/state_machines/rollback.sh --version <X.Y.Z> --stage <s>` re-deploys a
+  released version's state machine definitions by shallow-cloning that git tag,
+  rendering it, and deploying with current tooling. Step Functions overwrites
+  definitions in place (no per-version artifact like Lambda images in ECR), so
+  the tag is the version-keyed source of truth. The working tree is untouched.
+- State-machine deploys can stamp a `version` resource tag (`deploy.sh --version`)
+  so the live release is queryable when deciding what to roll back to. The
+  release pipeline stamps the release version; the dev pipeline stamps the git sha.
+
+### Changed
+- The build/deploy pipelines now render and deploy the Step Functions state
+  machine definitions (`state_machines/*.asl.json`) alongside the Lambdas, after
+  the Lambda deploy. `scripts/prod/release.sh` always ships them; the dev
+  `scripts/dev/pipeline.sh` deploys them when an ASL template changed vs the base
+  (or with `--all`). Previously this was a separate manual step, so an ASL change
+  could ship without the orchestration that drives it (or vice versa).
+
+### Fixed
+- Production releases no longer fail trying to deploy a nonexistent
+  `prod-podaac_auth`. The Target registry now supports stage-agnostic singletons
+  via `function` (explicit Lambda name) and `deploy_stages` (which stages deploy
+  it): the shared `podaac_cred_update` credential refresher is deployed under its
+  real name, from prod only.
+
 ## [2.2.0] - 2026-06-24
 
 ### Added
@@ -34,11 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `run_summary`. (#34)
 
 ### Fixed
-- Production releases no longer fail trying to deploy a nonexistent
-  `prod-podaac_auth`. The Target registry now supports stage-agnostic singletons
-  via `function` (explicit Lambda name) and `deploy_stages` (which stages deploy
-  it): the shared `podaac_cred_update` credential refresher is deployed under its
-  real name, from prod only.
 - `set_sg_jobs` no longer crashes with `min() iterable argument is empty` on no-new-files
   runs; an empty manifest now yields an empty `sg_jobs.json`. (#34)
 - Deploy scripts no longer block on the AWS CLI v2 pager after each

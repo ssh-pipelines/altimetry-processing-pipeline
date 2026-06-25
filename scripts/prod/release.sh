@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-# Production release: build + push + deploy every target at an explicit version.
-# The full set of targets comes from the Target registry (utilities/targets.py).
+# Production release: build + push + deploy every target at an explicit version,
+# then render + deploy the Step Functions state machine definitions. The full
+# set of Lambda targets comes from the Target registry (utilities/targets.py);
+# the state machines come from state_machines/*.asl.json. Bundling both here is
+# deliberate — an ASL change can't ship without the Lambda changes it
+# orchestrates (or vice versa), which is exactly how they drift otherwise.
 #
 # Usage: scripts/prod/release.sh --version <RELEASE_VERSION> [--no-cleanup] [--dry-run]
 
@@ -66,6 +70,21 @@ export REGISTRY=$("$UTIL/ecr_login.sh")
 # -----------------------------
 "$PROD/build_and_push.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
 "$PROD/deploy.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
+
+# -----------------------------
+# Render + deploy the state machine definitions (after the Lambdas, so the new
+# orchestration points at code that already exists). These scripts are stage-
+# (not version-) based: they render from the working tree, which the prod gate
+# in build_and_push.sh has already pinned to the v$RELEASE_VERSION tag. DRY_RUN
+# maps to the state-machine deploy's own --dry-run flag.
+# -----------------------------
+SM="$PROD/../state_machines"
+"$SM/render.sh" --stage prod
+if [ -n "$DRY_RUN" ]; then
+    "$SM/deploy.sh" --stage prod --version "$RELEASE_VERSION" --dry-run
+else
+    "$SM/deploy.sh" --stage prod --version "$RELEASE_VERSION"
+fi
 
 # -----------------------------
 # Optional cleanup

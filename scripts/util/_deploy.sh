@@ -58,6 +58,11 @@ deploy_targets() {
         if [ -z "$DRY_RUN" ]; then
           aws --profile "$AWS_PROFILE" lambda update-function-code \
             --function-name "$fn" --image-uri "$uri"
+          # update-function-code is async: wait for the new image to settle so a
+          # failed update (bad image, missing perms) fails the deploy here rather
+          # than surfacing later. Mirrors the zip branch.
+          aws --profile "$AWS_PROFILE" lambda wait function-updated-v2 \
+            --function-name "$fn"
           echo "Deployed $fn <- $uri"
         else
           echo "[DRY-RUN] Would deploy $fn <- $uri"

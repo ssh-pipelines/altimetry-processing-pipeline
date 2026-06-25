@@ -72,6 +72,15 @@ export REGISTRY=$("$UTIL/ecr_login.sh")
 "$PROD/deploy.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
 
 # -----------------------------
+# Verify every Lambda landed (live image == this version, settled Active) before
+# touching the state machines, so a silent/partial Lambda deploy fails loudly
+# here. Skipped in dry-run.
+# -----------------------------
+if [ -z "$DRY_RUN" ]; then
+    "$PROD/verify.sh" "$RELEASE_VERSION" "${ALL_TARGETS[@]}"
+fi
+
+# -----------------------------
 # Render + deploy the state machine definitions (after the Lambdas, so the new
 # orchestration points at code that already exists). These scripts are stage-
 # (not version-) based: they render from the working tree, which the prod gate

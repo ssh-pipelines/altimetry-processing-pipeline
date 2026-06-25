@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Post-deploy verification: `scripts/prod/verify.sh <version>` asserts every
+  deployable target's live Lambda settled (State=Active, LastUpdateStatus=
+  Successful) and runs the shipped image (`<repo>:<version>`). `release.sh` runs
+  it after the Lambda deploy; it's also runnable standalone to audit prod (e.g.
+  to confirm a half-applied release was reconciled). State-machine deploys now
+  verify the live definition matches what was rendered (canonical JSON compare).
+- `scripts/smoke.sh --source <S> --start <d> --end <d> [--stage]` — a
+  non-mutating end-to-end smoke test that runs an already-processed window with
+  no force_update (fast-exits to run_summary, writes no product data) and asserts
+  the run summary reconciles clean. A pre-check refuses windows with real work.
 - `scripts/state_machines/rollback.sh --version <X.Y.Z> --stage <s>` re-deploys a
   released version's state machine definitions by shallow-cloning that git tag,
   rendering it, and deploying with current tooling. Step Functions overwrites
@@ -24,8 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/dev/pipeline.sh` deploys them when an ASL template changed vs the base
   (or with `--all`). Previously this was a separate manual step, so an ASL change
   could ship without the orchestration that drives it (or vice versa).
+- `scripts/dev/pipeline.sh --smoke` runs the non-mutating smoke test after a dev
+  deploy, with source/window from the environment (`SMOKE_SOURCE` / `SMOKE_START`
+  / `SMOKE_END`). Opt-in, so routine dev pushes don't start an execution.
 
 ### Fixed
+- Container Lambda deploys now wait for the code update to settle
+  (`lambda wait function-updated-v2`) instead of fire-and-forget, so a failed
+  image update fails the deploy at the deploy step. Previously only zip Lambdas
+  waited.
 - Production releases no longer fail trying to deploy a nonexistent
   `prod-podaac_auth`. The Target registry now supports stage-agnostic singletons
   via `function` (explicit Lambda name) and `deploy_stages` (which stages deploy

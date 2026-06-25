@@ -13,7 +13,12 @@ set -eo pipefail
 # with --all), render + deploy them to dev after the Lambdas. This mirrors
 # release.sh, which always ships both halves together.
 #
-# Usage: scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>]
+# With --smoke, run the non-mutating end-to-end smoke test after deploying.
+# Source/window come from the environment (SMOKE_SOURCE / SMOKE_START / SMOKE_END,
+# optional SMOKE_BUCKET) so you don't retype them; set them in .env. It's opt-in
+# so a routine dev push doesn't start an execution unless you ask.
+#
+# Usage: scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>] [--smoke]
 
 # Ensure we are in the repo root
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -28,11 +33,13 @@ source "$UTIL/registry.sh"
 
 FORCE_ALL=false
 BASE_REF="main"
+SMOKE=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --all)     FORCE_ALL=true; shift ;;
         --dry-run) export DRY_RUN=true; shift ;;
         --base)    BASE_REF="$2"; shift 2 ;;
+        --smoke)   SMOKE=true; shift ;;
         *)         echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -92,6 +99,22 @@ if [ "$SM_CHANGED" = true ]; then
     fi
 else
     echo "No state machine changes vs $BASE_REF; skipping state machine deploy."
+fi
+
+# Optional post-deploy smoke (--smoke): non-mutating end-to-end check against an
+# already-processed window. Params come from the environment; smoke.sh's own
+# pre-check refuses windows with real work, and falls back to BUCKET_NAME when
+# SMOKE_BUCKET is unset.
+if [ "$SMOKE" = true ] && [ -z "$DRY_RUN" ]; then
+    : "${SMOKE_SOURCE:?--smoke needs SMOKE_SOURCE set (e.g. in .env)}"
+    : "${SMOKE_START:?--smoke needs SMOKE_START (YYYY-MM-DD)}"
+    : "${SMOKE_END:?--smoke needs SMOKE_END (YYYY-MM-DD)}"
+    smoke_args=(--stage dev --source "$SMOKE_SOURCE" --start "$SMOKE_START" --end "$SMOKE_END")
+    [ -n "${SMOKE_BUCKET:-}" ] && smoke_args+=(--bucket "$SMOKE_BUCKET")
+    echo "Running post-deploy smoke (source=$SMOKE_SOURCE, $SMOKE_START..$SMOKE_END)."
+    "$DEV/../smoke.sh" "${smoke_args[@]}"
+elif [ "$SMOKE" = true ]; then
+    echo "Skipping smoke (--dry-run)."
 fi
 
 echo "Pipeline complete."

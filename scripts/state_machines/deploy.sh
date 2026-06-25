@@ -102,6 +102,23 @@ deploy_file() {
             --resource-arn "$arn" \
             --tags "key=version,value=$VERSION"
     fi
+
+    # Verify the live definition matches what we just rendered — catches a
+    # silently rejected or partial update. Canonical JSON compare (key order /
+    # whitespace insensitive) via python3.
+    local live_tmp
+    live_tmp="$(mktemp)"
+    aws stepfunctions describe-state-machine --state-machine-arn "$arn" \
+        --query definition --output text > "$live_tmp"
+    if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))==json.load(open(sys.argv[2])) else 1)' \
+            "$live_tmp" "$filepath"; then
+        echo "    ✓ $sm_name definition verified"
+        rm -f "$live_tmp"
+    else
+        rm -f "$live_tmp"
+        echo "    ✗ $sm_name: live definition != rendered $filename" >&2
+        return 1
+    fi
 }
 
 echo "Deploying state machines (stage=$STAGE, region=$AWS_REGION)"

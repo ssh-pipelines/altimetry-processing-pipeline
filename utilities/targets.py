@@ -33,7 +33,7 @@ class Packaging(str, Enum):
 # on at build time (each stage Dockerfile does `COPY utilities/` + `pip install .`).
 # If the shared package or build metadata moves (e.g. the planned
 # utilities/ -> src/shared/), update this one constant.
-_SHARED_BUILD_PATHS = ("utilities", "setup.py")
+_SHARED_BUILD_PATHS = ("utilities", "pyproject.toml")
 
 _RUNTIME_NAME = "pipeline_runtime"
 _MANIFEST_NAME = "targets.yaml"
@@ -82,10 +82,10 @@ def _find_repo_root() -> Path:
     or the cwd (the scripts enforce running from the repo root)."""
     for start in (Path(__file__).resolve(), Path.cwd().resolve()):
         for d in (start, *start.parents):
-            if (d / "setup.py").is_file() and (d / "pipeline").is_dir():
+            if (d / "pyproject.toml").is_file() and (d / "pipeline").is_dir():
                 return d
     raise RuntimeError(
-        "Target registry: could not locate the repo root (need setup.py + pipeline/)."
+        "Target registry: could not locate the repo root (need pyproject.toml + pipeline/)."
     )
 
 
@@ -196,7 +196,7 @@ def dirty(changed_paths: Iterable[str]) -> list[Target]:
 
     Edges (see CONTEXT.md -> Change-impact):
       - own dir changed                     -> any target
-      - utilities/ or setup.py changed      -> every container target except pipeline_runtime
+      - utilities/ or pyproject.toml changed -> every container target except pipeline_runtime
       - pipeline_runtime/ changed           -> every heavy target + pipeline_runtime itself
       - any heavy target in result          -> pipeline_runtime (must exist in ECR at the
                                               target SHA even when its content is unchanged)

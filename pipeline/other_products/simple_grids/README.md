@@ -35,7 +35,6 @@ simple_grids/
 │           ├── new_basin_lake_polygons.shx
 │           └── new_basin_lake_polygons.prj
 ├── Dockerfile
-├── requirements.txt
 ├── .dockerignore
 └── README.md
 ```
@@ -107,10 +106,10 @@ The Map's invoke task unwraps the Lambda result (`Output: {% $states.result.Payl
 
 ## Running tests
 
-From the `simple_grids/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh simple_grids
 ```
 
 `tests/test_simple_grids.py` covers the handler's Job-outcome shape (success and the
@@ -118,7 +117,7 @@ no-daily-files skip). The job is also wired into CI (`.github/workflows/tests.ym
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `simple_grids` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `pyresample` — Gaussian spatial resampling with basin-aware ROI
 - `numpy` / `xarray` / `scipy` / `dask` — numerical computation and lazy dataset merging

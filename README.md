@@ -109,17 +109,41 @@ When adding a new source, add an entry to `utilities/sources.yaml` first, then a
 
 ## Setup
 
-### Installing `utilities`:
-Root level `utilities` module is required to be installed in order to successfully execute containers and unit tests.
+Dependencies are declared in the root `pyproject.toml` (the single source of
+truth) and locked in `uv.lock`. Each stage is a named optional extra; the `dev`
+extra installs the union of them all plus the test/lint tooling. Use
+[uv](https://docs.astral.sh/uv/) to create the dev environment:
 
-From the root directory:
 ```
-python -m pip install .
+uv sync --extra dev
+```
+
+This installs the shared `utilities` package (required to execute containers and
+unit tests) along with every stage's dependencies.
+
+### Running tests:
+
+Tests run one process per stage via `scripts/test.sh` — each stage is rooted at
+its own directory so its code resolves as a top-level import, mirroring the
+Lambda container. See the script header for the rationale.
+
+```
+./scripts/test.sh              # all stages
+./scripts/test.sh oer xover    # only the named stages
+./scripts/test.sh oer -- -k foo -x   # pass args after `--` through to pytest
+```
+
+### Linting:
+
+```
+uv run ruff check .            # config lives in [tool.ruff] in pyproject.toml
 ```
 
 ### Building images:
 
-Images must be built from the root directory context
+Images must be built from the root directory context. Each stage Dockerfile
+exports its extra's locked dependencies with `uv` and installs the shared
+`utilities` package, so no per-stage `requirements.txt` is needed.
 
 ex:
 ```

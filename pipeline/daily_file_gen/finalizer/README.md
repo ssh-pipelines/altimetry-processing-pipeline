@@ -35,7 +35,6 @@ finalizer/
 │   ├── __init__.py                     # Adds finalization/ to sys.path for test imports
 │   └── test_finalizer.py              # Unit tests
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -115,11 +114,10 @@ Defined in `state_machines/finalizer.asl.json`. Uses a Distributed Map (max conc
 
 ## Running tests
 
-From the `finalizer/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh finalizer
 ```
 
 ### Test coverage
@@ -139,7 +137,7 @@ python -m unittest discover -s tests -t . -v
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `finalizer` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `netCDF4` / `h5netcdf` / `h5py` — reading and writing daily file NetCDFs
 - `numpy` / `pandas` — numerical computation and bad-pass DataFrames

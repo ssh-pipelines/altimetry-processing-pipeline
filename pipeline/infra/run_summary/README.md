@@ -56,5 +56,5 @@ presence of a `Dockerfile`, so it registers automatically; `targets.yaml` only d
 
 ## Tests
 
-`python -m unittest discover -s tests` (from this directory's venv). Reconciliation is unit
-tested with stubbed S3; `summarizer`'s pure functions need no AWS.
+Run `./scripts/test.sh run_summary` from the repo root (after `uv sync --extra dev`).
+Reconciliation is unit tested with stubbed S3; `summarizer`'s pure functions need no AWS.

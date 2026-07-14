@@ -16,8 +16,9 @@ and time decoding for the artifacts to round-trip correctly.
 Before this image existed, each stage pinned its own scientific stack
 independently. Drift inevitably crept in (xarray 2023.6 vs 2023.10 vs 2025.4
 across stages, netCDF4 1.6.5 vs 1.7.2, …) — an implicit, unowned contract
-spread across ten `requirements.txt` files. This image is that contract,
-made explicit and singular.
+spread across ten per-stage dependency lists. This image is that contract,
+made explicit and singular: the scientific stack lives in the
+`pipeline_runtime` extra in the root `pyproject.toml`.
 
 ## Who consumes it
 
@@ -59,7 +60,8 @@ the wrapper should fail fast rather than silently produce a broken image.
 
 ## Bumping a version
 
-1. Edit `requirements.txt` in this directory.
+1. Edit the `pipeline_runtime` extra in the root `pyproject.toml`, then
+   re-lock with `uv lock`.
 2. Build and push `pipeline_runtime` at the new version (`dev-<sha>` for
    dev, `<semver>` from an annotated git tag for prod).
 3. Rebuild every consuming stage at the same version, so each one picks

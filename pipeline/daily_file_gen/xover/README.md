@@ -67,7 +67,6 @@ xover/
 │       ├── sample_inputs/              # 12 daily file granules (gzip-compressed)
 │       └── sample_output/              # Reference crossover output (gzip-compressed)
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -110,15 +109,12 @@ The xover state machine is invoked twice in the along-track pipeline — once wi
 ## Development
 
 ```bash
-cd pipeline/daily_file_gen/xover
+# From the repo root: create the dev environment (installs every stage's deps
+# plus the shared utilities package).
+uv sync --extra dev
 
-# Create venv and install dependencies
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run tests (25 total: 13 consistency, 3 empty-input, 3 all-NaN-input, 6 config)
-python -m unittest discover -s tests -t . -v
+# Run this stage's tests (25 total: 13 consistency, 3 empty-input, 3 all-NaN-input, 6 config)
+./scripts/test.sh xover
 ```
 
 ### Test data
@@ -133,7 +129,7 @@ Sample input/output files in `tests/sample_data/` are gzip-compressed to reduce 
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `xover` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `numpy` / `pandas` — numerical computation and data manipulation
 - `xarray` / `netCDF4` / `h5netcdf` / `h5py` — reading and writing NetCDFs

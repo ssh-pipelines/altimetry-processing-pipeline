@@ -48,7 +48,6 @@ indicators/
 │   ├── __init__.py
 │   └── test_indicator.py              # Unit tests
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -101,10 +100,10 @@ Invoked as the final step in the `simple_grid_pipeline` orchestration defined in
 
 ## Running tests
 
-From the `indicators/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh indicators
 ```
 
 ### Test coverage
@@ -117,7 +116,7 @@ python -m unittest discover -s tests -t . -v
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `indicators` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `numpy` / `xarray` / `pandas` — numerical computation, dataset handling, and DataFrames
 - `netCDF4` / `h5py` / `h5netcdf` — reading and writing NetCDF files

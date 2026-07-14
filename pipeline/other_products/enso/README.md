@@ -40,7 +40,6 @@ enso/
 │       ├── new_basin_mask_quartdeg.nc  # Quarter-degree basin mask
 │       └── diff_operator_halfdeg.nc    # Diffusion operator for smoother
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -101,17 +100,17 @@ The Dockerfile runs `cartopy_setup.py` at build time to pre-download coastline, 
 
 ## Running tests
 
-From the `enso/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh enso
 ```
 
 Tests are minimal — an end-to-end stub that loads sample simple grids and exercises the gridder and mapper.
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `enso` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `cartopy` / `matplotlib` / `contourpy` — map visualization and projections
 - `scipy` — sparse matrix operations for diffusion smoothing

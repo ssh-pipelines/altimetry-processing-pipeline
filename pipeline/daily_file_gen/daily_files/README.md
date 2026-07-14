@@ -68,7 +68,6 @@ daily_files/
 │   ├── test_empty_templates.py             # Empty template schema validation
 │   ├── test_smoothing.py                   # Smoothing filter edge cases
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -164,16 +163,15 @@ Defined in `state_machines/daily_file.asl.json`. First invokes a PODAAC credenti
 
 ## Running tests
 
-From the `daily_files/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh daily_files
 ```
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `daily_files` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `xarray` / `netCDF4` / `h5netcdf` / `h5py` — reading and writing NetCDFs
 - `numpy` / `pandas` / `scipy` — numerical computation

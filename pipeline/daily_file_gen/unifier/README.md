@@ -25,7 +25,6 @@ unifier/
 │   ├── __init__.py
 │   └── test_unifier.py             # Unit tests (config loading, handler copy, error cases)
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -98,11 +97,10 @@ The unifier step function runs conditionally — only when the source has `unify
 
 ## Running tests
 
-From the `unifier/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh unifier
 ```
 
 ### Test coverage
@@ -115,7 +113,7 @@ python -m unittest discover -s tests -t . -v
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `unifier` extra in the root `pyproject.toml`):
 
 - `boto3` — S3 copy operations
 - `pyyaml` — source config loading

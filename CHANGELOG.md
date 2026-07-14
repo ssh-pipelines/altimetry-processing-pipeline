@@ -26,8 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - State-machine deploys can stamp a `version` resource tag (`deploy.sh --version`)
   so the live release is queryable when deciding what to roll back to. The
   release pipeline stamps the release version; the dev pipeline stamps the git sha.
+- `scripts/test.sh` runs the test suite one pytest process per stage, each rooted
+  at the stage directory so stage code resolves as top-level imports (mirroring
+  the Lambda container). Accepts stage selectors and pytest passthrough args, and
+  prints a per-stage PASS/FAIL summary. Stage list comes from the Target registry.
+- `ruff` linting: added to the `dev` extra with config in `pyproject.toml`, plus a
+  fast `lint` gate in CI (`astral-sh/ruff-action`, version pinned to `uv.lock`).
 
 ### Changed
+- **Dependencies consolidated into `pyproject.toml`** as the single source of
+  truth, replacing `setup.py` and all 12 per-stage `requirements.txt` files. Each
+  stage is a named optional extra; Dockerfiles install via `uv` (export the locked
+  deps for the stage, then install the shared package with `--no-deps`), preserving
+  the layer-cache split so a shared-package edit doesn't rebuild the scientific
+  stack. `uv.lock` pins the full dependency graph.
+- CI now runs a single job — `uv sync --extra dev` + `scripts/test.sh` — replacing
+  the per-module matrix that read the now-deleted `requirements.txt` / `setup.py`.
 - The build/deploy pipelines now render and deploy the Step Functions state
   machine definitions (`state_machines/*.asl.json`) alongside the Lambdas, after
   the Lambda deploy. `scripts/prod/release.sh` always ships them; the dev
@@ -39,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   / `SMOKE_END`). Opt-in, so routine dev pushes don't start an execution.
 
 ### Fixed
+- Dependency drift the split `requirements.txt` / extras sources had hidden:
+  `requests` was used by `daily_files` but undeclared (resolved only transitively),
+  and `simple_grids` pinned `requests==2.25.1` — unused, and in conflict with
+  `python-cmr`'s `requests>=2.26.0`. Declared the former, dropped the latter.
+- The Target registry (`utilities/targets.py`) now locates the repo root and its
+  shared-build-path edge via `pyproject.toml` instead of the deleted `setup.py`.
+- Removed vestigial stage-root `__init__.py` files (`daily_files`, `pipeline_init`)
+  that shadowed the inner packages and broke test collection.
 - Container Lambda deploys now wait for the code update to settle
   (`lambda wait function-updated-v2`) instead of fire-and-forget, so a failed
   image update fails the deploy at the deploy step. Previously only zip Lambdas

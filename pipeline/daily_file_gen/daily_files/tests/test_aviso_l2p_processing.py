@@ -6,14 +6,13 @@ from datetime import datetime
 
 import numpy as np
 import xarray as xr
-from scipy.interpolate import RegularGridInterpolator
-
 from daily_files.config.dataset_schema import validate_dataset
 from daily_files.config.source_config import get_source_config
 from daily_files.daily_file_job import save_ds
 from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing import dtu21
 from daily_files.processing.aviso_l2p_daily_file import AvisoL2PDailyFile
+from scipy.interpolate import RegularGridInterpolator
 
 
 def _make_aviso_l2p_ingested_data(n=500, date=datetime(2025, 1, 7)):

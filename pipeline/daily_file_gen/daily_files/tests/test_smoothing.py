@@ -1,5 +1,6 @@
-from datetime import datetime
 import unittest
+from datetime import datetime
+
 import numpy as np
 import xarray as xr
 from daily_files.processing.smoothing import smooth, ssha_smoothing

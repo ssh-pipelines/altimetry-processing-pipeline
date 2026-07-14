@@ -28,7 +28,6 @@ from utilities.source_profile import (
     Product,
     SourceCommon,
     clear_caches,
-    get_source_profile,
 )
 
 

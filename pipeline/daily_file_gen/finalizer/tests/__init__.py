@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Ensure the utilities package (installed via pyproject.toml in Docker) is importable
 # during local development by adding the repo root to sys.path.

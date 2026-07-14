@@ -1,10 +1,9 @@
 import json
 import unittest
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, mock_open, patch
+from datetime import datetime
+from unittest.mock import mock_open, patch
 
 import numpy as np
-
 from bad_passes.bad_pass_flag import XoverProcessor
 
 

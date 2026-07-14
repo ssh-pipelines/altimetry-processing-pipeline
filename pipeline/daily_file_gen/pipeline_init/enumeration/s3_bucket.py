@@ -5,8 +5,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import boto3
-
 from config.source_config import PipelineInitSourceConfig
+
 from enumeration.base import GranuleRef
 
 

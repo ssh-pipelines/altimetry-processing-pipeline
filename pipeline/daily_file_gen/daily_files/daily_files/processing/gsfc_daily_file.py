@@ -1,11 +1,13 @@
 import logging
 import re
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from daily_files.processing.daily_file import DailyFile
+
 from daily_files.config.source_config import SourceConfig
 from daily_files.ingestion.ingest import IngestedData
+from daily_files.processing.daily_file import DailyFile
 
 
 class GSFCDailyFile(DailyFile):
@@ -126,8 +128,9 @@ class GSFCDailyFile(DailyFile):
             ("time"),
             nasa_flag.data,
             {
-                "flag_derivation": f"nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes an along-track "
-                f"median check, saved in the medain_filter_flag variable & the following source_flag values are set "
+                "flag_derivation": "nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & "
+                "data passes an along-track median check, saved in the medain_filter_flag variable & the "
+                "following source_flag values are set "
                 f"to 0: {', '.join([all_flag_meanings[i] for i in [1, 2, 3, 5]])}"
             },
         )

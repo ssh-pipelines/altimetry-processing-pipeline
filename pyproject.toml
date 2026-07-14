@@ -71,6 +71,7 @@ simple_grids = [
 ]
 dev = [
     "pytest",
+    "ruff",
     "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,unifier,xover,enso,indicators,simple_grids,run_summary]",
 ]
 

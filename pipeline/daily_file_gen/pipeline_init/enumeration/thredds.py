@@ -20,12 +20,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 import requests
-
 from config.source_config import PipelineInitSourceConfig
-from utilities.aviso_auth import build_aviso_session
-from enumeration.base import GranuleRef
-from utilities.source_profile import CollectionConfig
 
+from enumeration.base import GranuleRef
+from utilities.aviso_auth import build_aviso_session
+from utilities.source_profile import CollectionConfig
 
 TDS_BASE = "https://tds-odatis.aviso.altimetry.fr/thredds/"
 
@@ -231,7 +230,7 @@ class ThreddsEnumerator:
         for coll in sorted(self.source_config.collections, key=lambda c: c.priority):
             if not coll.thredds_collection or not coll.thredds_version:
                 logging.warning(
-                    f"Skipping collection — missing thredds_collection/thredds_version"
+                    "Skipping collection — missing thredds_collection/thredds_version"
                 )
                 continue
 

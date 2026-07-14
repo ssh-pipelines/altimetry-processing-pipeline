@@ -4,7 +4,6 @@ from utilities.source_profile import (
     load_source_config,
 )
 
-
 # Pipeline_init has no stage-specific fields after the layout refactor —
 # all paths and filenames are derived from `utilities.pipeline_layout`.
 # The alias is kept so existing type annotations continue to read naturally.

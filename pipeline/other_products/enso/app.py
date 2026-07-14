@@ -1,6 +1,8 @@
-from datetime import datetime
 import json
+from datetime import datetime
+
 from enso_jobs import enso_processing
+
 from utilities.errors import PipelineError
 from utilities.job_outcome import JobOutcome, Output
 

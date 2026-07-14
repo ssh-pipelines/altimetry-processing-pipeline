@@ -1,10 +1,10 @@
-from datetime import datetime
 import json
 import logging
+from datetime import datetime
 
 import boto3
-
 from indicators.compute_indicators import IndicatorProcessor
+
 from utilities.errors import PipelineError
 from utilities.pipeline_layout import s3_uri, simple_grid_key
 from utilities.source_profile import get_source_profile

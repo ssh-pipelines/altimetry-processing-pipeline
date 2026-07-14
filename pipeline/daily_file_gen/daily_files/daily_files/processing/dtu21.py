@@ -16,7 +16,6 @@ import numpy as np
 import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 
-
 _DTU21_PATH = Path(__file__).parent.parent / "ref_files" / "mss" / "DTU21_mss_global.nc"
 
 _interpolator: RegularGridInterpolator | None = None

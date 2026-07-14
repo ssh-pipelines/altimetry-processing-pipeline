@@ -16,7 +16,8 @@ _SOURCE_FLAG_CONFIG: dict[str, dict] = {
         "nasa_flag_derivation": (
             "nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes an along-track "
             "median check, saved in the medain_filter_flag variable & the following source_flag values are set "
-            "to 0: Radiometer_Observation_is_Suspect, Attitude_Out_of_Range, Sigma0_Ku_Band_Out_of_Range, Sea_Ice_Detected"
+            "to 0: Radiometer_Observation_is_Suspect, Attitude_Out_of_Range, Sigma0_Ku_Band_Out_of_Range, "
+            "Sea_Ice_Detected"
         ),
         "source_flag_attrs": {
             "standard_name": "quality_flag",
@@ -45,9 +46,11 @@ _SOURCE_FLAG_CONFIG: dict[str, dict] = {
     "S6DailyFile": {
         "src_flag_dim": 4,
         "nasa_flag_derivation": (
-            "nasa_flag is set to 0 for data that should be retained, and 1 for data that should be removed. nasa_flag is 0 if: "
-            "basin_flag is set to any valid, non-fill value & data passes an along-track median check, saved in the medain_filter_flag variable & the "
-            "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag_nr, range_ocean_nr_qual, rad_water_vapor_qual, and derived standard deviation"
+            "nasa_flag is set to 0 for data that should be retained, and 1 for data that should be "
+            "removed. nasa_flag is 0 if: basin_flag is set to any valid, non-fill value & data passes "
+            "an along-track median check, saved in the medain_filter_flag variable & the following "
+            "source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag_nr, "
+            "range_ocean_nr_qual, rad_water_vapor_qual, and derived standard deviation"
         ),
         "source_flag_attrs": {
             "standard_name": "quality_flag",

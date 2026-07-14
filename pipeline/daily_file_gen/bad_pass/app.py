@@ -1,8 +1,9 @@
-from datetime import datetime
 import json
 import logging
+from datetime import datetime
 
 from bad_passes.bad_pass_flag import XoverProcessor
+
 from utilities.errors import PipelineError
 
 

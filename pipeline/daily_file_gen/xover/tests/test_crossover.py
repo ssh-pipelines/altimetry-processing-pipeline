@@ -18,7 +18,6 @@ import numpy as np
 import xarray as xr
 from crossover.parallel_crossovers import Crossover, CrossoverData
 
-
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 
 

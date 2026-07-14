@@ -1,10 +1,10 @@
 import argparse
-import boto3
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
+import boto3
 import yaml
 
 _SOURCES_YAML = Path(__file__).parent.parent.parent / "utilities" / "sources.yaml"

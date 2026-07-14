@@ -1,8 +1,9 @@
-import json
-import boto3
 import base64
-import requests
+import json
 from datetime import datetime, timedelta, timezone
+
+import boto3
+import requests
 from botocore.exceptions import ClientError
 
 session = boto3.Session()
@@ -62,7 +63,9 @@ def lambda_handler(event, context):
     try:
         pda_secret = get_secret('podaac_direct_s3_auth')
         if 'expiration' in pda_secret:
-            expiration = datetime.strptime(pda_secret['expiration'][:19], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            expiration = datetime.strptime(
+                pda_secret['expiration'][:19], '%Y-%m-%d %H:%M:%S'
+            ).replace(tzinfo=timezone.utc)
             if expiration >= datetime.now(timezone.utc) + timedelta(minutes=30):
                 return {'message' : 'Credentials valid for at least 30 minutes. Skipping update.'}
     except Exception as e:
@@ -71,18 +74,18 @@ def lambda_handler(event, context):
         edl_secret = get_secret('EDL_auth')
     except Exception as e:
         raise RuntimeError(f'Unable to obtain EDL auth from secrets manager: {e}')
-        
+
     ed_user = edl_secret.get('user')
     ed_pass = edl_secret.get('password')
-    
+
     try:
         creds = refresh_creds(ed_user, ed_pass)
     except Exception as e:
         raise RuntimeError(f'Unable to get refreshed PODAAC creds: {e}')
-        
+
     try:
         update_secret(creds)
     except Exception as e:
         raise RuntimeError(f'Unable to post updated creds to secrets manager {e}')
-    
+
     return {'message' : 'PODAAC creds updated in secrets manager'}

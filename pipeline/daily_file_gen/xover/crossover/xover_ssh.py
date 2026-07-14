@@ -6,10 +6,10 @@ and return time and ssh at crossover location for both passes as well.
 23 Dec 2023
 """
 
-from typing import Tuple, Union
-import numpy as np
 from datetime import datetime
+from typing import Tuple, Union
 
+import numpy as np
 
 FloatPairList = Union[Tuple[float], Tuple[float, float]]
 XoverResult = Tuple[FloatPairList, FloatPairList, FloatPairList]

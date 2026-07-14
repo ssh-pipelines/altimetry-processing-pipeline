@@ -9,7 +9,6 @@ from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.dtu21 import get_dtu21_interpolator
 
-
 _SSHA_BIAS_COMMENT = (
     "No AVISO inter-mission bias has been applied to ssha; the per-record "
     "`inter_mission_bias` array is retained on the dataset as an auxiliary "

@@ -336,14 +336,14 @@ Enter the result in:
     # Discover available grids
     if using_s3:
         import boto3
-        
+
         session = boto3.Session(profile_name=args.profile)
         s3 = session.client("s3")
         print(f"Listing grids in s3://{args.bucket}/simple_grids/ ...")
         source_grids = list_s3_grids(s3, args.bucket, args.source)
         ref_grids = list_s3_grids(s3, args.bucket, args.reference)
     else:
-        print(f"Scanning local directories ...")
+        print("Scanning local directories ...")
         source_grids = list_local_grids(args.source_dir)
         ref_grids = list_local_grids(args.reference_dir)
 
@@ -397,9 +397,9 @@ Enter the result in:
     area_weights = load_area_weights(lats)
     offset = area_weighted_mean(mean_diff, area_weights, lats)
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Offset ({args.reference} - {args.source}): {offset:+.4f} m  ({offset * 100:+.2f} cm)")
-    print(f"\nAdd to pipeline/daily_file_gen/finalizer/finalization/config/sources.yaml:")
+    print("\nAdd to pipeline/daily_file_gen/finalizer/finalization/config/sources.yaml:")
     print(f"  {args.source}:")
     print(f"    offset: {offset:.4f}")
 

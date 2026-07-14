@@ -1,11 +1,11 @@
 import json
 import logging
-from typing import Tuple
-import numpy as np
-from crossover.parallel_crossovers import Crossover
-from crossover.config.source_config import get_source_config
-from utilities.errors import PipelineError
 
+import numpy as np
+from crossover.config.source_config import get_source_config
+from crossover.parallel_crossovers import Crossover
+
+from utilities.errors import PipelineError
 
 _CROSSOVER_PROCESSORS = {
     "self": Crossover,

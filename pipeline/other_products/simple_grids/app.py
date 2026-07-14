@@ -1,6 +1,8 @@
 import json
 import logging
+
 from simple_gridder.gridder import start_job
+
 from utilities.errors import PipelineError
 from utilities.job_outcome import JobOutcome, Output
 

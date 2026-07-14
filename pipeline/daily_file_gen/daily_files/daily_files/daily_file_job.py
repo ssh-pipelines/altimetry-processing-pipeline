@@ -1,34 +1,32 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
-import logging
 from typing import Type
+
 import numpy as np
 import xarray as xr
 
-from utilities.aws_utils import aws_manager
-from utilities.pipeline_layout import daily_file_key, daily_file_filename, s3_uri
-from utilities.provenance import append_to_xr
-
-from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.config.dataset_schema import assert_valid_dataset
-from utilities.aviso_auth import build_aviso_session
+from daily_files.config.source_config import SourceConfig, get_source_config
 from daily_files.fetching.downloader import (
     Downloader,
     HttpDownloader,
     S3Downloader,
     get_podaac_s3_credentials,
 )
-
 from daily_files.ingestion.aviso_l2p_ingest import AvisoL2PIngestor
-from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.gsfc_ingest import GSFCIngestor
+from daily_files.ingestion.ingest import IngestedData, Ingestor
 from daily_files.ingestion.s6_ingest import S6Ingestor
-
 from daily_files.processing.aviso_l2p_daily_file import AvisoL2PDailyFile
 from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.empty_template import build_empty_dataset
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
 from daily_files.processing.s6_daily_file import S6DailyFile
+from utilities.aviso_auth import build_aviso_session
+from utilities.aws_utils import aws_manager
+from utilities.pipeline_layout import daily_file_filename, daily_file_key, s3_uri
+from utilities.provenance import append_to_xr
 
 
 @dataclass(frozen=True)

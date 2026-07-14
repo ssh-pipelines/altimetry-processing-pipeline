@@ -25,6 +25,7 @@ class TestEnsoHandlerOutcome(unittest.TestCase):
     @patch("app.enso_processing.start_job")
     def test_processing_error_propagates(self, mock_start_job):
         from app import handler
+
         from utilities.errors import PipelineError
 
         mock_start_job.side_effect = RuntimeError("boom")

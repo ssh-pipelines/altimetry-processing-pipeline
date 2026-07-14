@@ -6,6 +6,7 @@ be estimated and reduced, written by J. Willis
 """
 
 from typing import Tuple
+
 import numpy as np
 
 OERFIT_RESULT = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]

@@ -106,7 +106,7 @@ class TestCMREnumeratorSingleCollection(unittest.TestCase):
 class TestCMREnumeratorEmpty(unittest.TestCase):
     def test_empty_concept_ids_raises(self):
         from dataclasses import replace
-        from utilities.source_profile import CollectionConfig
+
 
         cfg = get_source_config("GSFC")
         # build a copy with empty concept_ids

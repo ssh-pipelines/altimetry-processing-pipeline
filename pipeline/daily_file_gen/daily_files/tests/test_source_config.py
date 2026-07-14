@@ -1,10 +1,11 @@
 import unittest
+
 from daily_files.config.source_config import (
-    get_source_config,
-    get_available_sources,
-    SourceConfig,
     CollectionConfig,
     SmoothingConfig,
+    SourceConfig,
+    get_available_sources,
+    get_source_config,
 )
 
 

@@ -1,6 +1,5 @@
 import unittest
 from datetime import date, datetime, timezone
-from unittest.mock import patch
 
 from enumeration.thredds import _Granule, _granule_dates, _parse_filename
 

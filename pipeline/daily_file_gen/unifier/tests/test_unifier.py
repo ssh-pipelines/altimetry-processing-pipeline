@@ -2,10 +2,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from config.source_config import (
-    get_source_config,
     get_available_sources,
+    get_source_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests — source config loading

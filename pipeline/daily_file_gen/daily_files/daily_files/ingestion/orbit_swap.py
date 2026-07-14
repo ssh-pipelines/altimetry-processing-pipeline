@@ -4,7 +4,6 @@ import subprocess
 
 import numpy as np
 
-
 ORBIT_SWAP_EXECUTABLE = os.environ.get(
     "ORBIT_SWAP_EXECUTABLE", "/var/task/bin/interpPosGoaToNetCDFtimes.e"
 )

@@ -13,7 +13,6 @@ import logging
 import os
 
 import boto3
-
 import summarizer
 
 logger = logging.getLogger()

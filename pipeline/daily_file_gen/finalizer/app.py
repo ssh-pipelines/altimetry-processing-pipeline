@@ -1,8 +1,10 @@
-from datetime import datetime
 import json
 import logging
-from finalization.finalizer import Finalizer
+from datetime import datetime
+
 from finalization.config.source_config import get_available_sources, get_source_config
+from finalization.finalizer import Finalizer
+
 from utilities.errors import PipelineError
 from utilities.job_outcome import JobOutcome, Output
 from utilities.provenance import processing_complete

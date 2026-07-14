@@ -5,7 +5,6 @@ from io import BytesIO
 
 import numpy as np
 import xarray as xr
-
 from daily_files.ingestion.aviso_l2p_ingest import AvisoL2PIngestor
 from daily_files.ingestion.ingest import IngestedData
 

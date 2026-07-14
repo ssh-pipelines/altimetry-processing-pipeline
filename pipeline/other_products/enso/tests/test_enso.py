@@ -1,9 +1,10 @@
 import logging
 import os
 import unittest
-import xarray as xr
 from datetime import datetime
 from glob import glob
+
+import xarray as xr
 from enso_jobs.ensogridder import ENSOGridder
 from enso_jobs.ensomapper import ENSOMapper
 

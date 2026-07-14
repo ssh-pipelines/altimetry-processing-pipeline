@@ -1,12 +1,12 @@
-from abc import ABC, abstractmethod
 import logging
 import os
-import xarray as xr
-import numpy as np
-import geopandas as gpd
-import shapely
-
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+
+import geopandas as gpd
+import numpy as np
+import shapely
+import xarray as xr
 
 from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
@@ -128,7 +128,8 @@ def get_var_attrs(target_mss: str) -> dict:
         },
         "dac": {
             "long_name": "dynamic atmospheric correction",
-            "comment": "Additive correction applied to ssha to remove atmospheric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
+            "comment": "Additive correction applied to ssha to remove atmospheric effects.  "
+            "Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
             "units": "m",
             "coordinates": "latitude longitude",
             "coverage_content_type": "auxiliaryInformation",
@@ -137,7 +138,8 @@ def get_var_attrs(target_mss: str) -> dict:
         },
         "inv_bar_cor": {
             "long_name": "inverse barometric correction",
-            "comment": "Additive correction applied to ssha to remove inverse barometric effects.  Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
+            "comment": "Additive correction applied to ssha to remove inverse barometric effects.  "
+            "Subtract this field from ssha or ssha_smoothed to un-apply this correction.",
             "units": "m",
             "coordinates": "latitude longitude",
             "coverage_content_type": "auxiliaryInformation",
@@ -153,7 +155,8 @@ def get_var_attrs(target_mss: str) -> dict:
         "basin_names_table": {
             "long_name": "Table mapping basin ID numbers to basin names",
             "description": "Values are comma separated string of the form feature id,feature name",
-            "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
+            "note": "Some basins without widely known basin names are named with their basin number "
+            "as Feature ID: XX, where XX is the basin number from basin_flag",
             "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
             "coverage_content_type": "auxiliaryInformation",
         },

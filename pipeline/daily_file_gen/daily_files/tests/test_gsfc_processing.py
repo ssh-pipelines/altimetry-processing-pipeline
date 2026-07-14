@@ -1,15 +1,16 @@
 import logging
 import unittest
-from unittest import mock
-import xarray as xr
-import numpy as np
 from datetime import datetime
+from unittest import mock
+
+import numpy as np
+import xarray as xr
+from daily_files.config.dataset_schema import validate_dataset
 from daily_files.config.source_config import get_source_config
+from daily_files.daily_file_job import save_ds
 from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.gsfc_daily_file import GSFCDailyFile
-from daily_files.daily_file_job import save_ds
-from daily_files.config.dataset_schema import validate_dataset
 
 
 def _make_gsfc_ingested_data(n=500, date=datetime(1995, 6, 7)):
@@ -149,7 +150,8 @@ class TestGSFCProcessing(unittest.TestCase):
 
     def test_save_ds(self):
         """Verify the dataset can be serialized to NetCDF without error."""
-        import tempfile, os
+        import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "test_gsfc.nc")

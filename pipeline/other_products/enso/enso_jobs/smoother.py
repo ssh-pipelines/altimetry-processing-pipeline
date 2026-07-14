@@ -6,8 +6,8 @@ Created on Tue Apr 16 2024
 @author: jwillis
 """
 
-import numpy as np
 import netCDF4 as nc
+import numpy as np
 import xarray as xr
 from scipy.sparse import csr_matrix, lil_matrix
 

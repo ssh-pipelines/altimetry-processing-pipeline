@@ -10,6 +10,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Fast lint gate. Uses the official ruff action pinned to the same version as
+  # uv.lock (keep in sync) so CI and local `uv run ruff` never diverge; config
+  # is read from [tool.ruff] in pyproject.toml. No venv needed.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.15.21"
+
   tests:
     runs-on: ubuntu-latest
     steps:

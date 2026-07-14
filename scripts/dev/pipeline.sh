@@ -4,7 +4,7 @@ set -eo pipefail
 # Dev pipeline: build + push + deploy only the targets that changed vs main
 # (or all of them with --all). The set of targets and the change-impact
 # analysis both come from the Target registry (utilities/targets.py), which
-# knows the real dependency edges — a change to utilities/, setup.py, or
+# knows the real dependency edges — a change to utilities/, pyproject.toml, or
 # pipeline_runtime/ dirties the stages that depend on them, not just the dir
 # that changed.
 #

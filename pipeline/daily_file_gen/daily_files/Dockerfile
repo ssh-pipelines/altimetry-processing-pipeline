@@ -33,9 +33,15 @@ RUN mkdir /tmp/orbit_libs && \
 
 FROM ${BASE_IMAGE}
 
-COPY pipeline/daily_file_gen/daily_files/requirements.txt .
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 
-RUN pip install --upgrade pip \
+# Stage deps from the `daily_files` extra in the repo-root pyproject.toml,
+# resolved via uv.lock. Exported + installed in a cached layer that only busts
+# on pyproject.toml / uv.lock changes (not on stage or shared-package edits).
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-emit-project --no-hashes --extra daily_files \
+        -o requirements.txt \
+    && pip install --upgrade pip \
     && pip install -r requirements.txt
 
 # Copy large files from the intermediate stage
@@ -49,9 +55,7 @@ COPY --from=c_builder /tmp/orbit_libs/ ${LAMBDA_TASK_ROOT}/libs/
 WORKDIR ${LAMBDA_TASK_ROOT}
 
 COPY utilities/ utilities/
-COPY setup.py setup.py
-
-RUN python -m pip install .
+RUN pip install --no-deps .
 
 # Copy other files from the local directory
 COPY pipeline/daily_file_gen/daily_files/daily_files daily_files/

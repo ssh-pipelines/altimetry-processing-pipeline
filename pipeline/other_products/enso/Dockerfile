@@ -8,10 +8,15 @@ ENV CARTOPY_OFFLINE=true
 ENV CARTOPY_DATA_DIR=$CARTOPY_DATA_DIR
 ENV MPLCONFIGDIR=/tmp/matplotlib
 
-# Copy and install requirements
-COPY $ROOT_DIR/requirements.txt .
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 
-RUN pip install --upgrade pip \ 
+# Stage deps from the `enso` extra in the repo-root pyproject.toml, resolved
+# via uv.lock. Exported + installed in a cached layer that only busts on
+# pyproject.toml / uv.lock changes (not on stage or shared-package edits).
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-emit-project --no-hashes --extra enso \
+        -o requirements.txt \
+    && pip install --upgrade pip \
     && pip install -r requirements.txt
 
 # Create cartopy data directory and set permissions
@@ -23,10 +28,10 @@ COPY $ROOT_DIR/cartopy_setup.py .
 # Run the setup_cartopy.py script
 RUN python cartopy_setup.py
 
+# Shared package. Its deps are already satisfied above, so --no-deps keeps this
+# a tiny layer that rebuilds only when utilities/ changes.
 COPY utilities/ utilities/
-COPY setup.py setup.py
-
-RUN python -m pip install .
+RUN pip install --no-deps .
 
 COPY $ROOT_DIR/. ${LAMBDA_TASK_ROOT}
 

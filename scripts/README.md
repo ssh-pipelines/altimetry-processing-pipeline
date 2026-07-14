@@ -76,7 +76,7 @@ scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>] [--smoke]
    Uses `load_env.sh` and `ecr_login.sh`.
 
 2. **Detect which targets changed**
-   Asks the Target registry: `registry_query dirty --base main`. Change-impact is dependency-aware — a change to `utilities/`, root `setup.py`, or `pipeline_runtime/` dirties the stages that depend on them, not just the directory that changed. (`--all` lists the full catalog instead.)
+   Asks the Target registry: `registry_query dirty --base main`. Change-impact is dependency-aware — a change to `utilities/`, root `pyproject.toml`, or `pipeline_runtime/` dirties the stages that depend on them, not just the directory that changed. (`--all` lists the full catalog instead.)
 
 3. **Detect state-machine changes**
    State machines aren't Targets, so they're gated separately: a deploy happens when a top-level `state_machines/*.asl.json` changed vs the base (or with `--all`).

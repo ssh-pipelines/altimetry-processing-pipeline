@@ -1,7 +1,7 @@
 import sys
 import os
 
-# Ensure the utilities package (installed via setup.py in Docker) is importable
+# Ensure the utilities package (installed via pyproject.toml in Docker) is importable
 # during local development by adding the repo root to sys.path.
 _repo_root = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")

@@ -26,6 +26,7 @@ pipeline_runtime = [
 ]
 bad_pass = []
 daily_files = [
+    "requests",
     "geopandas==1.1.3",
     "shapely",
     "python-cmr==0.9.0",

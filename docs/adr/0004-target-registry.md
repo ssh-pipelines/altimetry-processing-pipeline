@@ -27,7 +27,7 @@ Introduce a **Target registry** (`utilities/targets.py`, `utilities/targets.yaml
 - **Existence** and **packaging kind** (`container` vs `zip`) are **derived from the filesystem**: a Dockerfile ⇒ `container`; an `app.py` under `pipeline/infra/` with no Dockerfile ⇒ `zip`.
 - The two facts that can't be reliably derived — **`heavy`** (brittle to grep for; see below) and **`deployable`** (a fact about what exists in AWS) — are **declared** in `targets.yaml`. The manifest is **path-less** so it survives the planned `pipeline/`→`src/` reorganization untouched.
 - `targets()` **raises if the manifest and filesystem disagree**, so every caller (not just the test) is protected from drift.
-- The registry exposes the catalog (with `ecr_repo` / `function_name` helpers) and a pure **change-impact** function (`dirty(changed_paths)`) encoding the real dependency edges: a container stage is dirty if its own dir, shared `utilities/` + `setup.py`, or (if heavy) `pipeline_runtime/` changed; a zip target is dirty only if its own dir changed.
+- The registry exposes the catalog (with `ecr_repo` / `function_name` helpers) and a pure **change-impact** function (`dirty(changed_paths)`) encoding the real dependency edges: a container stage is dirty if its own dir, shared `utilities/` + `pyproject.toml`, or (if heavy) `pipeline_runtime/` changed; a zip target is dirty only if its own dir changed.
 
 The build/deploy phases become filters over one catalog, with a **packaging seam**: build/push handles `container` targets; deploy iterates `deployable` targets and branches on packaging (`--image-uri` vs zip + `--zip-file`). This is where the infra Lambdas enter the loop.
 

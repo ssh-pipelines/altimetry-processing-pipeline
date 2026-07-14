@@ -1166,6 +1166,7 @@ daily-files = [
     { name = "geopandas" },
     { name = "pyproj" },
     { name = "python-cmr" },
+    { name = "requests" },
     { name = "shapely" },
 ]
 dev = [
@@ -1184,6 +1185,7 @@ dev = [
     { name = "pyresample" },
     { name = "pytest" },
     { name = "python-cmr" },
+    { name = "requests" },
     { name = "scipy" },
     { name = "shapely" },
     { name = "xarray" },
@@ -1265,6 +1267,7 @@ requires-dist = [
     { name = "python-cmr", marker = "extra == 'daily-files'", specifier = "==0.9.0" },
     { name = "python-cmr", marker = "extra == 'pipeline-init'", specifier = "==0.9.0" },
     { name = "pyyaml" },
+    { name = "requests", marker = "extra == 'daily-files'" },
     { name = "s3fs" },
     { name = "scipy", marker = "extra == 'pipeline-runtime'", specifier = "==1.15.3" },
     { name = "shapely", marker = "extra == 'daily-files'" },

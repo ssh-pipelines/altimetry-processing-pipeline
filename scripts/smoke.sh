@@ -112,8 +112,20 @@ echo "  execution SUCCEEDED"
 # ── Locate and assert the run summary ───────────────────────────────────
 output="$(aws stepfunctions describe-execution --execution-arn "$exec_arn" \
     --query output --output text)"
-src="$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("source",""))')"
-run_id="$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("run_id",""))')"
+# The terminal state is a lambda:invoke task, so the execution output is the raw
+# invoke envelope — run_summary's real return (source/run_id) is nested under
+# .Payload. Fall back to the top level in case the ASL is ever changed to return
+# the payload directly.
+read_field() {
+    printf '%s' "$output" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+if isinstance(d, dict):
+    d = d.get("Payload", d)
+print(d.get(sys.argv[1], "") if isinstance(d, dict) else "")' "$1"
+}
+src="$(read_field source)"
+run_id="$(read_field run_id)"
 if [ -z "$src" ] || [ -z "$run_id" ]; then
     echo "  ✗ execution output had no source/run_id: $output" >&2; exit 1
 fi

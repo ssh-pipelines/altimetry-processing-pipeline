@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-07-15
+
 ### Added
 - Post-deploy verification: `scripts/prod/verify.sh <version>` asserts every
   deployable target's live Lambda settled (State=Active, LastUpdateStatus=
@@ -70,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via `function` (explicit Lambda name) and `deploy_stages` (which stages deploy
   it): the shared `podaac_cred_update` credential refresher is deployed under its
   real name, from prod only.
+- enso image failed to build: `pillow` (transitive via `matplotlib`) resolved to
+  12.x, which ships no glibc-2.26 wheel, so it fell back to a source build with no
+  compiler in the image. Pinned `pillow==11.3.0` (last release with a
+  manylinux_2_17 wheel) and re-locked.
 
 ## [2.2.0] - 2026-06-24
 
@@ -110,7 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Releases before 2.2.0 predate this changelog; see the git tags for their contents:
 [v2.1.0], [v2.0.0], [v1.1.0].
 
-[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.1.0...v2.2.0
 [v2.1.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/releases/tag/v2.1.0
 [v2.0.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/releases/tag/v2.0.0

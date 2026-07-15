@@ -1,14 +1,13 @@
-from collections import defaultdict
-from datetime import date, datetime, timedelta
 import logging
 import re
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from typing import Iterable
 
 from cmr import GranuleQuery
-
 from config.source_config import PipelineInitSourceConfig
-from enumeration.base import GranuleRef
 
+from enumeration.base import GranuleRef
 
 _CYCLE_PASS_RE = re.compile(r"_(\d{3})_(\d{3})_")
 

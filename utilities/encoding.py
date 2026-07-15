@@ -2,8 +2,8 @@
 Script to consist of encoding code for saving netcdfs across full pipeline
 """
 
-import xarray as xr
 import numpy as np
+import xarray as xr
 
 
 def daily_file_encoding(ds: xr.Dataset) -> dict:

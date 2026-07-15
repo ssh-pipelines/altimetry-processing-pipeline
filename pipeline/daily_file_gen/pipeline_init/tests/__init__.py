@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Ensure the utilities package and pipeline_init module are importable
 # during local development by adding the repo root and module dir to sys.path.

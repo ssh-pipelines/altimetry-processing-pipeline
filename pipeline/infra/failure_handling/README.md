@@ -36,7 +36,8 @@ Set by each parent-SM `Catch`'s `Output` expression:
 
 ## Tests
 
+From the repo root (after `uv sync --extra dev`):
+
 ```bash
-cd pipeline/infra/failure_handling
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh failure_handling
 ```

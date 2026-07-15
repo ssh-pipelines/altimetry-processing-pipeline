@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import unittest
 
 os.environ.setdefault("SNS_TOPIC_ARN", "arn:aws:sns:us-west-2:123456789012:test-topic")

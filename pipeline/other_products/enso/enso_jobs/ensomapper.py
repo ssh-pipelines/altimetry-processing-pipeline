@@ -1,12 +1,12 @@
-import xarray as xr
-from matplotlib import pyplot as plt
-from matplotlib import colors
-import matplotlib.ticker as mticker
+from datetime import date, datetime, timedelta
 
-from datetime import datetime, date, timedelta
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import matplotlib.ticker as mticker
+import xarray as xr
+from cartopy.mpl.gridliner import LATITUDE_FORMATTER, LONGITUDE_FORMATTER
+from matplotlib import colors
+from matplotlib import pyplot as plt
 
 
 class ENSOMapper:

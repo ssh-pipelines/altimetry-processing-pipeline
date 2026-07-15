@@ -1,20 +1,20 @@
 import logging
 import os
-from os.path import basename, join
-from typing import List
+import shutil
 import warnings
 from datetime import datetime, timedelta
-import shutil
+from os.path import basename, join
+from typing import List
 
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import xarray as xr
-import netCDF4 as nc
+from indicators.pattern_data import Pattern
+from indicators.utils import dec_to_dt, dt_to_dec, generate_mp, generate_txt
 
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import indicators_key, indicators_prefix, s3_uri
-from indicators.pattern_data import Pattern
-from indicators.utils import generate_txt, generate_mp, dt_to_dec, dec_to_dt
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)

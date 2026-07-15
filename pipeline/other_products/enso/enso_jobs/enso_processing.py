@@ -1,7 +1,8 @@
 import logging
 import os
-import xarray as xr
 from datetime import datetime
+
+import xarray as xr
 
 from enso_jobs.ensogridder import ENSOGridder
 from enso_jobs.ensomapper import ENSOMapper

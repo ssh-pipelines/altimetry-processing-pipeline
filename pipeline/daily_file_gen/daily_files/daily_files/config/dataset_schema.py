@@ -7,7 +7,6 @@ attributes that every output dataset must contain.
 
 import xarray as xr
 
-
 # Global attrs that are allowed to be empty strings (e.g. when no source data is available)
 ALLOW_EMPTY_GLOBAL_ATTRS = {
     "source",

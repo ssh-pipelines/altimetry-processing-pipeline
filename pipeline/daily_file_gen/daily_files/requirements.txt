@@ -1,5 +1,0 @@
-requests
-geopandas==1.1.3
-shapely
-python-cmr==0.9.0
-pyproj==3.7.1

@@ -1,8 +1,8 @@
+import gzip
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-import gzip
 from io import BytesIO
-import logging
 from typing import Callable
 
 import requests

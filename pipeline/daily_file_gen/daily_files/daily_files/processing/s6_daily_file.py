@@ -1,12 +1,13 @@
 import logging
-import numpy as np
-import pandas as pd
 from collections import namedtuple
 from datetime import datetime
 
-from daily_files.processing.daily_file import DailyFile
+import numpy as np
+import pandas as pd
+
 from daily_files.config.source_config import SourceConfig
 from daily_files.ingestion.ingest import IngestedData
+from daily_files.processing.daily_file import DailyFile
 
 _Point = namedtuple("_Point", ["x", "y"])
 
@@ -150,9 +151,12 @@ class S6DailyFile(DailyFile):
             nasa_flag,
             {
                 "flag_derivation": (
-                    "nasa_flag is set to 0 for data that should be retained, and 1 for data that should be removed. nasa_flag is 0 if: "
-                    "basin_flag is set to any valid, non-fill value & data passes an along-track median check, saved in the medain_filter_flag variable & the "
-                    "following source_flag values are set to 0: surface_classification_flag (0 or 2), rain_flag_nr, range_ocean_nr_qual, rad_water_vapor_qual, and derived standard deviation"
+                    "nasa_flag is set to 0 for data that should be retained, and 1 for data that "
+                    "should be removed. nasa_flag is 0 if: basin_flag is set to any valid, non-fill "
+                    "value & data passes an along-track median check, saved in the medain_filter_flag "
+                    "variable & the following source_flag values are set to 0: "
+                    "surface_classification_flag (0 or 2), rain_flag_nr, range_ocean_nr_qual, "
+                    "rad_water_vapor_qual, and derived standard deviation"
                 )
             },
         )
@@ -188,7 +192,8 @@ class S6DailyFile(DailyFile):
             {
                 "standard_name": "quality_flag",
                 "long_name": "median filter flag",
-                "comment": "flag set to 0 for good data, 1 for data that fail a 5 standard deviation filter relative to a 15-point along-track median. See documentation for details.",
+                "comment": "flag set to 0 for good data, 1 for data that fail a 5 standard deviation "
+                "filter relative to a 15-point along-track median. See documentation for details.",
                 "flag_values": np.array([0, 1], dtype=np.int8),
                 "flag_meanings": "good bad",
             },

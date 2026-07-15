@@ -1,7 +1,7 @@
-from enumeration.base import GranuleRef, Enumerator
+from enumeration.base import Enumerator, GranuleRef
 from enumeration.cmr import CMREnumerator
-from enumeration.thredds import ThreddsEnumerator
 from enumeration.s3_bucket import S3BucketEnumerator
+from enumeration.thredds import ThreddsEnumerator
 
 __all__ = [
     "GranuleRef",

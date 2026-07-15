@@ -2,9 +2,8 @@ import unittest
 from unittest import mock
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
-
 from daily_files.processing import dtu21
+from scipy.interpolate import RegularGridInterpolator
 
 
 def _synthetic_interp(lat_min=-90.0, lat_max=90.0,

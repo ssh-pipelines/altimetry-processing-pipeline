@@ -1,2 +1,0 @@
-pyresample==1.34.1
-pyproj==3.7.1

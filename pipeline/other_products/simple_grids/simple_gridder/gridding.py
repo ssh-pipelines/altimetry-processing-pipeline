@@ -1,12 +1,13 @@
+import logging
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import TextIOWrapper
-import logging
 from typing import Iterable, Optional, Tuple
-import warnings
-import xarray as xr
+
 import geopandas as gpd
 import numpy as np
+import xarray as xr
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
@@ -232,7 +233,8 @@ class Gridder:
         ds["basin_names_table"].attrs = {
             "long_name": "Table mapping basin ID numbers to basin names",
             "description": "Values are comma separated string of the form feature id,feature name",
-            "note": "Some basins without widely known basin names are named with their basin number as Feature ID: XX, where XX is the basin number from basin_flag",
+            "note": "Some basins without widely known basin names are named with their basin number "
+            "as Feature ID: XX, where XX is the basin number from basin_flag",
             "reference": "Adapted from Natural Earth. Free vector and raster map data @ naturalearthdata.com",
             "coverage_content_type": "auxiliaryInformation",
         }
@@ -271,7 +273,11 @@ class Gridder:
             "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
         )
         ds.attrs["summary"] = (
-            "This data set contains satellite based measurements of sea surface height, computed relative to the mean sea surface specified in mean_sea_surface. Data have been collected from multiple satellites, and processed to maximize compatibility and minimize bias between satellites. They are intended for use in studies and applications requiring climate-quality observations without additional adjustments or filtering."
+            "This data set contains satellite based measurements of sea surface height, computed "
+            "relative to the mean sea surface specified in mean_sea_surface. Data have been collected "
+            "from multiple satellites, and processed to maximize compatibility and minimize bias "
+            "between satellites. They are intended for use in studies and applications requiring "
+            "climate-quality observations without additional adjustments or filtering."
         )
         ds.attrs["acknowledgement"] = "This data is provided by NASAs PO.DAAC."
         ds.attrs["license"] = "https://creativecommons.org/licenses/by/4.0/"
@@ -303,7 +309,9 @@ class Gridder:
         ds.attrs["standard_name_vocabulary"] = "CF Standard Name Table v86"
         ds.attrs["mean_sea_surface"] = "DTU21"
         ds.attrs["gridding_method"] = (
-            f"Gridded using pyresample resample_gauss with roi={self.ROI}, sigma={self.SIGMA}, neighbours={self.NEIGHBOURS}, respecting basin boundaries as defined by the basin mask ID numbers and their connections."
+            f"Gridded using pyresample resample_gauss with roi={self.ROI}, sigma={self.SIGMA}, "
+            f"neighbours={self.NEIGHBOURS}, respecting basin boundaries as defined by the basin mask "
+            "ID numbers and their connections."
         )
         ds.attrs["time_coverage_start"] = self.start_date.isoformat(timespec="seconds")
         ds.attrs["time_coverage_end"] = (self.end_date + timedelta(days=1)).isoformat(timespec="seconds")

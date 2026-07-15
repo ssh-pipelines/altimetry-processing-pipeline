@@ -1,6 +1,7 @@
 import os
-import matplotlib.pyplot as plt
+
 import cartopy
+import matplotlib.pyplot as plt
 
 '''
 Initializes cartopy by pre-downloading features such that downloads aren't attempted during runtime

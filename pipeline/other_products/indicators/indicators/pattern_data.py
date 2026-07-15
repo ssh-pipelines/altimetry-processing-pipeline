@@ -1,6 +1,7 @@
 import warnings
-import xarray as xr
+
 import numpy as np
+import xarray as xr
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)

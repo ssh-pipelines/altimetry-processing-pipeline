@@ -1,9 +1,10 @@
 import logging
-import xarray as xr
-import numpy as np
-from datetime import datetime
-from netCDF4 import default_fillvals
 import warnings
+from datetime import datetime
+
+import numpy as np
+import xarray as xr
+from netCDF4 import default_fillvals
 
 from enso_jobs.smoother import new_smoother
 from utilities.pipeline_layout import enso_filename

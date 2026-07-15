@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "utilities"
+version = "0.1.0"
+requires-python = ">=3.11, <3.14"
+dependencies = ["s3fs", "boto3", "pyyaml"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["utilities*"]
+
+[tool.setuptools.package-data]
+utilities = ["products.yaml", "sources/*.yaml", "targets.yaml"]
+
+[project.optional-dependencies]
+pipeline_runtime = [
+    "numpy==2.2.6",
+    "xarray==2025.4.0",
+    "netCDF4==1.7.2",
+    "h5netcdf==1.6.1",
+    "h5py==3.13.0",
+    "scipy==1.15.3",
+]
+bad_pass = []
+daily_files = [
+    "requests",
+    "geopandas==1.1.3",
+    "shapely",
+    "python-cmr==0.9.0",
+    "pyproj==3.7.1",
+]
+finalizer = [
+    "pandas==3.0.2",
+    "dask==2025.5.1",
+]
+oer = [
+    "dask==2025.5.1",
+]
+xover = [
+    "pandas==3.0.2",
+    "dask==2025.5.1",
+]
+pipeline_init = [
+    "boto3==1.28.84",
+    "python-cmr==0.9.0",
+]
+unifier = [
+    "boto3==1.28.84",
+]
+run_summary = [
+    "boto3==1.28.84",
+]
+enso = [
+    "cartopy==0.24.1",
+    "matplotlib==3.10.3",
+    "contourpy==1.3.2",
+    "pyproj==3.7.1",
+    # pillow (transitive via matplotlib) 12.x only ships manylinux_2_27/2_28
+    # wheels; the Lambda base image is glibc 2.26, so newer pillow falls back to
+    # a source build (no compiler in the image). 11.3.0 is the last release with
+    # a manylinux_2_17 wheel that installs on 2.26.
+    "pillow==11.3.0",
+]
+indicators = [
+    "pyresample==1.34.1",
+    "pyproj==3.7.1",
+]
+simple_grids = [
+    "pyresample==1.34.1",
+    "geopandas==1.1.3",
+    "pyproj==3.7.1",
+    "dask==2025.5.1",
+]
+dev = [
+    "pytest",
+    "ruff",
+    "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,unifier,xover,enso,indicators,simple_grids,run_summary]",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+# Each stage deploys as an isolated Lambda and its tests import stage code as
+# top-level names (mirroring the container's PYTHONPATH). Same-named packages
+# across stages (`app`, `config`, `tests`) collide under a single root-level
+# `pytest`, so tests are run one process per stage — use `scripts/test.sh`,
+# which roots pytest at each stage dir. There is intentionally no `testpaths`.
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

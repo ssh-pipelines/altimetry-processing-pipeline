@@ -1,8 +1,9 @@
 import unittest
+
 from crossover.config.source_config import (
-    get_source_config,
-    get_available_sources,
     SourceConfig,
+    get_available_sources,
+    get_source_config,
 )
 
 

@@ -6,7 +6,6 @@ import requests
 
 from utilities.aws_utils import aws_manager
 
-
 _AVISO_HOST = "aviso.altimetry.fr"
 _SECRET_NAME = "AVISO_auth"
 

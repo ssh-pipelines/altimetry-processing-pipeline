@@ -4,7 +4,6 @@ from io import BytesIO
 from unittest import mock
 
 import requests
-
 from daily_files.fetching.downloader import HttpDownloader
 
 

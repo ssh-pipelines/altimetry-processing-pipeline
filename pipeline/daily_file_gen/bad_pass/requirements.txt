@@ -1,2 +1,0 @@
-# bad_pass has no stage-specific extras — the shared scientific stack from
-# pipeline_runtime covers everything this Lambda imports.

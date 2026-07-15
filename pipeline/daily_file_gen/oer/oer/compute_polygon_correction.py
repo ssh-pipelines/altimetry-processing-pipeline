@@ -1,7 +1,8 @@
-import numpy as np
-from datetime import datetime, timezone
-import xarray as xr
 import logging
+from datetime import datetime, timezone
+
+import numpy as np
+import xarray as xr
 from scipy.interpolate import PPoly
 
 from oer.oerfit import oerfit

@@ -20,13 +20,11 @@ from glob import glob
 
 import numpy as np
 import xarray as xr
-
 from oer.compute_polygon_correction import (
+    apply_correction,
     create_polygon,
     evaluate_correction,
-    apply_correction,
 )
-
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 

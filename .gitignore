@@ -1,5 +1,6 @@
 __pycache__
 .ruff_cache
+.pytest_cache
 *.DS_Store
 *.ipynb_checkpoints
 __pycache__
@@ -11,3 +12,4 @@ build
 state_machines/rendered/
 *.o
 *.e
+.claude

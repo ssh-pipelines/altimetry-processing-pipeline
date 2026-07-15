@@ -1,15 +1,14 @@
-from datetime import datetime
 import json
 import logging
+from datetime import datetime
 
 import boto3
+from config.source_config import get_available_sources, get_source_config
 
 from utilities.errors import PipelineError
 from utilities.job_outcome import JobOutcome, Output
 from utilities.pipeline_layout import daily_file_key
 from utilities.source_profile import get_source_profile
-
-from config.source_config import get_available_sources, get_source_config
 
 
 def handler(event, context):

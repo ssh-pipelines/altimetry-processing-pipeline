@@ -1,21 +1,20 @@
-from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
 import json
 import logging
 import re
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 
 import boto3
-
 from config.source_config import PipelineInitSourceConfig
 from enumeration import build_enumerator
 from enumeration.base import GranuleRef
+
 from utilities.pipeline_layout import (
     daily_file_filename,
     daily_file_prefix,
     jobs_manifest_key,
     run_params_key,
 )
-
 
 _s3 = boto3.client("s3")
 

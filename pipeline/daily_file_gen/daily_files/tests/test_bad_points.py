@@ -1,9 +1,10 @@
 import dataclasses
 import unittest
-from unittest import mock
-import xarray as xr
-import numpy as np
 from datetime import datetime
+from unittest import mock
+
+import numpy as np
+import xarray as xr
 from daily_files.config.source_config import get_source_config
 from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.daily_file import DailyFile

@@ -1,21 +1,22 @@
 import json
 import unittest
-from unittest.mock import patch, MagicMock
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
 import xarray as xr
 from daily_files.config.source_config import get_source_config
-from datetime import datetime
-
 from daily_files.daily_file_job import (
+    SOURCE_REGISTRY,
+    AcquiredData,
     DailyFileJob,
     SourceNotSupported,
     SourcePipeline,
-    SOURCE_REGISTRY,
-    AcquiredData,
     start_job,
 )
-from utilities.pipeline_layout import daily_file_filename
 from daily_files.fetching.downloader import S3Downloader
 from daily_files.ingestion.ingest import IngestedData
+
+from utilities.pipeline_layout import daily_file_filename
 
 
 class TestSourceRegistry(unittest.TestCase):

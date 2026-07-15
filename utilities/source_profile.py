@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from datetime import date as date_type
-from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Type, TypeVar
 
 import yaml
-
 
 SOURCES_DIR = Path(__file__).parent / "sources"
 PRODUCTS_PATH = Path(__file__).parent / "products.yaml"

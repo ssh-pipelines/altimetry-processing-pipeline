@@ -18,7 +18,6 @@ from typing import Literal
 
 from utilities.source_profile import SourceCommon, get_product
 
-
 DailyFileVersion = Literal["p1", "p2", "p3"]
 CrossoverVersion = Literal["p1", "p2"]
 EnsoMapKind = Literal["ortho", "plate"]

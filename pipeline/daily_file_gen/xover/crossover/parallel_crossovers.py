@@ -1,21 +1,21 @@
+import logging
+import os
 from dataclasses import asdict, dataclass, fields
+from datetime import UTC, datetime
 from io import TextIOWrapper
 from typing import Iterable, Tuple
+
 import numpy as np
 import xarray as xr
-import os
-import logging
-from datetime import datetime, UTC
-
-from crossover.xover_ssh import xover_ssh
 from crossover.config.source_config import get_source_config
+from crossover.xover_ssh import xover_ssh
+
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import (
     crossover_key,
     daily_file_key,
     s3_uri,
 )
-
 
 EPOCH: np.datetime64 = np.datetime64("1990-01-01T00:00:00.000000")
 ZERO_DIFF: np.timedelta64 = np.timedelta64(0, "ns")
@@ -241,7 +241,8 @@ class Crossover:
             coords={"time1": ("time1", self.crossover_data.time1)},
             attrs={
                 "title": f"{self.source} self-crossovers {self.day}",
-                "window_length": f"{(self.window_end - self.window_start).astype('int32')} days (nominal: {self.config.window_size} days + {self.config.window_padding} days padding)",
+                "window_length": f"{(self.window_end - self.window_start).astype('int32')} days "
+                f"(nominal: {self.config.window_size} days + {self.config.window_padding} days padding)",
                 "created_on": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
                 "input_product_generation_steps": self.df_version[-1],
                 "satellite_names": self.source,
@@ -295,9 +296,8 @@ class Crossover:
         3. Initialize arrays
         4. Big processing loop to find xovers
         5. Save and upload netcdf
-        
-        
-        What's missing: handling daily files with no data or entire windows with no data. 
+
+        What's missing: handling daily files with no data or entire windows with no data.
         Need to make empty crossover.
         """
         # Initialize empty data class

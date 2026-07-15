@@ -25,7 +25,6 @@ pipeline_init/
 │   ├── sources.yaml                # Per-source config (satellite, S3 prefix, CMR collections)
 │   └── source_config.py            # Dataclasses + YAML loader (lazy-cached)
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -120,16 +119,15 @@ Init pipeline (this Lambda)
 
 ## Running tests
 
-From the `pipeline_init/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover
+./scripts/test.sh pipeline_init
 ```
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `pipeline_init` extra in the root `pyproject.toml`):
 
 - `python-cmr` — querying NASA CMR for granule metadata
 - `boto3` / `s3fs` — S3 listing and manifest upload

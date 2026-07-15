@@ -31,7 +31,6 @@ oer/
 │       ├── sample_inputs/              # 13 crossover files + 1 daily file (gzip-compressed)
 │       └── sample_output/              # Reference polygon, correction, and daily file (gzip-compressed)
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -80,11 +79,10 @@ Defined in `state_machines/oer.asl.json`. Uses a Distributed Map (max concurrenc
 
 ## Running tests
 
-From the `oer/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh oer
 ```
 
 ### Test data
@@ -114,7 +112,7 @@ Tolerances:
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (see the `oer` and `pipeline_runtime` extras in the root `pyproject.toml`):
 
 - `xarray` / `netcdf4` / `h5netcdf` / `h5py` — reading and writing NetCDF files
 - `numpy` / `scipy` — numerical computation and spline evaluation (`PPoly`)

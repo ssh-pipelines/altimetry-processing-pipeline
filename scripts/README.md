@@ -39,7 +39,7 @@ Requires a `.env` file at the repo root containing `AWS_REGION`, `AWS_ACCOUNT_ID
 - `STATE_MACHINE_ROLE_ARN` — execution role ARN, used only when **creating** a state machine that doesn't exist yet (updates don't need it).
 - `BUCKET_NAME` and `SMOKE_SOURCE` / `SMOKE_START` / `SMOKE_END` / `SMOKE_BUCKET` — defaults for the smoke test (see **Smoke test**).
 
-The registry runs via `python3 -m utilities.targets`; the `utilities` package must be importable (`pip install .` from the repo root). If `python3` on PATH lacks it, set `REGISTRY_PY` (or `PYTHON`) to a venv interpreter. `python3` (stdlib only) is also used to verify state-machine definitions and to assert the smoke run's summary.
+The registry runs via `python3 -m utilities.targets`; the `utilities` package must be importable (`uv sync` from the repo root, or `pip install .`). If `python3` on PATH lacks it, set `REGISTRY_PY` (or `PYTHON`) to a venv interpreter (e.g. `.venv/bin/python`). `python3` (stdlib only) is also used to verify state-machine definitions and to assert the smoke run's summary.
 
 Scripts are enforced to be run from the root of the repo.
 
@@ -76,7 +76,7 @@ scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>] [--smoke]
    Uses `load_env.sh` and `ecr_login.sh`.
 
 2. **Detect which targets changed**
-   Asks the Target registry: `registry_query dirty --base main`. Change-impact is dependency-aware — a change to `utilities/`, root `setup.py`, or `pipeline_runtime/` dirties the stages that depend on them, not just the directory that changed. (`--all` lists the full catalog instead.)
+   Asks the Target registry: `registry_query dirty --base main`. Change-impact is dependency-aware — a change to `utilities/`, root `pyproject.toml`, or `pipeline_runtime/` dirties the stages that depend on them, not just the directory that changed. (`--all` lists the full catalog instead.)
 
 3. **Detect state-machine changes**
    State machines aren't Targets, so they're gated separately: a deploy happens when a top-level `state_machines/*.asl.json` changed vs the base (or with `--all`).

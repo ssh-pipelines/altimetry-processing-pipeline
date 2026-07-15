@@ -4,7 +4,6 @@ from utilities.source_profile import (
     load_source_config,
 )
 
-
 # Unifier has no stage-specific fields after the layout refactor —
 # src/dst keys are derived from `utilities.pipeline_layout`.
 UnifierSourceConfig = SourceCommon

@@ -8,7 +8,6 @@ from utilities.source_profile import (
     load_source_config,
 )
 
-
 _MSS_FIELDS = ("source_mss", "target_mss", "mss_diff_file")
 
 

@@ -26,7 +26,6 @@ bad_pass/
 ├── tests/
 │   └── test_bad_pass_flag.py     # Unit tests
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -67,16 +66,15 @@ Defined in `state_machines/bad_pass.asl.json`. Uses a Distributed Map (max concu
 
 ## Running tests
 
-From the `bad_pass/` directory:
+From the repo root (after `uv sync --extra dev`):
 
 ```bash
-source .venv/bin/activate  # or use the devcontainer
-python -m unittest discover -s tests -t . -v
+./scripts/test.sh bad_pass
 ```
 
 ## Dependencies
 
-Key libraries (see `requirements.txt`):
+Key libraries (bad_pass has no stage-specific extra; its scientific stack comes from the `pipeline_runtime` extra in the root `pyproject.toml`):
 
 - `netCDF4` / `h5netcdf` / `h5py` — reading crossover netCDF files
 - `numpy` — numerical computation

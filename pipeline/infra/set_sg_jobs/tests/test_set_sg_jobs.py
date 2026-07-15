@@ -8,7 +8,6 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 
 import app  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fake S3 client (minimal: get_object + put_object)
 # ---------------------------------------------------------------------------

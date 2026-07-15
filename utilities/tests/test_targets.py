@@ -4,7 +4,6 @@ from pathlib import Path
 from utilities import targets as reg
 from utilities.targets import Packaging
 
-
 # Expected catalog, kept here as an independent assertion of intent (the module
 # derives this from the filesystem; this pins what we expect to find).
 HEAVY = {"bad_pass", "daily_files", "finalizer", "oer", "xover", "enso", "indicators", "simple_grids"}
@@ -129,8 +128,8 @@ class TestChangeImpact(unittest.TestCase):
             ALL_CONTAINER,
         )
 
-    def test_setup_py_dirties_all_containers(self):
-        self.assertEqual(self._names(["setup.py"]), ALL_CONTAINER)
+    def test_pyproject_dirties_all_containers(self):
+        self.assertEqual(self._names(["pyproject.toml"]), ALL_CONTAINER)
 
     def test_runtime_change_dirties_heavy_and_runtime_itself(self):
         rt = reg.get("pipeline_runtime").path

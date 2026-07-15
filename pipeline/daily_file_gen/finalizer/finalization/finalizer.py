@@ -4,9 +4,10 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import netCDF4 as nc
+from finalization.config.source_config import get_source_config
 
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import (
@@ -16,7 +17,6 @@ from utilities.pipeline_layout import (
     s3_uri,
 )
 from utilities.provenance import append_to_nc, read_from_nc
-from finalization.config.source_config import get_source_config
 
 
 @dataclass
@@ -52,15 +52,15 @@ class Finalizer:
         s3_key = s3_uri(bucket, bad_pass_key(self.source, self.processing_date))
         if not aws_manager.fs.exists(s3_key):
             return pd.DataFrame(columns=["cycle", "pass"])
-        
+
         logging.info(f"Bad pass file found at {s3_key}")
         with aws_manager.fs.open(s3_key, "r") as f:
             data = json.loads(f.read())
-            
+
         bad_passes = data.get("bad_passes", [])
         if not bad_passes:
             return pd.DataFrame(columns=["cycle", "pass"])
-        
+
         df = pd.DataFrame(bad_passes)
         df = df.rename(columns={"pass_num": "pass"})
         return df
@@ -99,11 +99,13 @@ class Finalizer:
         pf = self.config.pass_flag
         ds.flagged_passes = "N/A"
         ds.pass_flag_notes = (
-            "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are too large relative to self crossovers, "
-            "computed using data from a 20-day window.  To be flagged, there must be at least pass_flag_mean_num crossover points for a pass "
-            "and the absolute value of its mean crossover difference is larger than pass_flag_mean_threshold (meters), or when it has at least pass_flag_rms_num "
-            "crossover points with RMS larger than pass_flag_rms_threshold (meters). Passes that have been flagged are stored in the flagged_passes attribute "
-            "as comma separated cycle/pass"
+            "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are "
+            "too large relative to self crossovers, computed using data from a 20-day window.  To be "
+            "flagged, there must be at least pass_flag_mean_num crossover points for a pass and the "
+            "absolute value of its mean crossover difference is larger than pass_flag_mean_threshold "
+            "(meters), or when it has at least pass_flag_rms_num crossover points with RMS larger than "
+            "pass_flag_rms_threshold (meters). Passes that have been flagged are stored in the "
+            "flagged_passes attribute as comma separated cycle/pass"
         )
         ds.pass_flag_mean_num = pf.mean_num
         ds.pass_flag_rms_num = pf.rms_num

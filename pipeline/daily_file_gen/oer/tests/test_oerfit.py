@@ -9,7 +9,6 @@ a small synthetic dataset.
 import unittest
 
 import numpy as np
-
 from oer.oerfit import oerfit
 
 

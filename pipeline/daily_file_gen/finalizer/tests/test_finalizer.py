@@ -10,14 +10,13 @@ from unittest.mock import MagicMock, patch
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
-
+from finalization.config.source_config import (
+    get_available_sources,
+    get_source_config,
+)
 from finalization.finalizer import (
     Finalizer,
     apply_bad_pass,
-)
-from finalization.config.source_config import (
-    get_source_config,
-    get_available_sources,
 )
 
 # Test constant matching the S6 config value

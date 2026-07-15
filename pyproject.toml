@@ -58,6 +58,11 @@ enso = [
     "matplotlib==3.10.3",
     "contourpy==1.3.2",
     "pyproj==3.7.1",
+    # pillow (transitive via matplotlib) 12.x only ships manylinux_2_27/2_28
+    # wheels; the Lambda base image is glibc 2.26, so newer pillow falls back to
+    # a source build (no compiler in the image). 11.3.0 is the last release with
+    # a manylinux_2_17 wheel that installs on 2.26.
+    "pillow==11.3.0",
 ]
 indicators = [
     "pyresample==1.34.1",

@@ -1,6 +1,10 @@
 __pycache__
 .ruff_cache
 .pytest_cache
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
 *.DS_Store
 *.ipynb_checkpoints
 __pycache__

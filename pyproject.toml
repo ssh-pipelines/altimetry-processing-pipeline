@@ -101,3 +101,23 @@ python_functions = ["test_*"]
 dev = [
     "pytest-cov>=7.1.0",
 ]
+
+[tool.coverage.run]
+# Coverage is collected per stage by `scripts/test.sh --cov`: each stage runs
+# under `coverage run` from its own directory (mirroring the Lambda import
+# contract), writing a repo-root `.coverage.<stage>` data file. The per-stage
+# `--source=.` (passed by the script) scopes measurement to that stage's code;
+# `source_pkgs` additionally credits the shared, editable `utilities` package at
+# its real repo path so a utility exercised by any stage's tests is counted once
+# the data files are combined. Data files store absolute paths (relative_files is
+# left off) so combine renders them at unique repo-relative paths — stages share
+# module names (`app`, `config`) but not paths, so there is no collision and no
+# [tool.coverage.paths] mapping is needed.
+source_pkgs = ["utilities"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+skip_empty = true

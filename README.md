@@ -1,5 +1,8 @@
 # ALTIMETRY PROCESSING PIPELINE
 
+[![tests](https://github.com/ssh-pipelines/altimetry-processing-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/ssh-pipelines/altimetry-processing-pipeline/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/ssh-pipelines/altimetry-processing-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/ssh-pipelines/altimetry-processing-pipeline)
+
 Monorepo for the independent stages of the altimetry processing pipeline used to generate NASA SSH products. 
 
 Pipeline consists of:

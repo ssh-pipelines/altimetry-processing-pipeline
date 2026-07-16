@@ -50,5 +50,25 @@ jobs:
       # stage code resolves as top-level imports (mirroring the Lambda
       # container). Prints a per-stage PASS/FAIL summary and exits non-zero if
       # any stage fails. See the script header for the full rationale.
+      # --cov writes a per-stage .coverage.<stage> data file at the repo root.
       - name: Run tests
-        run: ./scripts/test.sh
+        run: ./scripts/test.sh --cov
+
+      # Merge the per-stage data files into one report. The files record unique
+      # repo-relative paths, so they combine without a [paths] mapping; the
+      # shared utilities/ package is credited across all stages that exercise it.
+      - name: Combine coverage
+        if: ${{ !cancelled() }}
+        run: |
+          uv run coverage combine
+          uv run coverage report
+          uv run coverage xml -o coverage.xml
+
+      # Tokenless upload works for public repos. Non-fatal so a Codecov outage
+      # never fails the build.
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false

@@ -96,3 +96,8 @@ select = ["E", "F", "I", "W"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]

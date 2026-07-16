@@ -64,11 +64,16 @@ jobs:
           uv run coverage report
           uv run coverage xml -o coverage.xml
 
-      # Tokenless upload works for public repos. Non-fatal so a Codecov outage
-      # never fails the build.
+      # Uses the repo upload token (CODECOV_TOKEN secret). Tokenless uploads on
+      # this org-owned repo were accepted into storage but never processed
+      # (commit stuck at state=None, badge "unknown"); the token authorizes
+      # processing. Non-fatal so a Codecov outage never fails the build;
+      # `verbose` surfaces upload detail in the job log for debugging.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: false
+          verbose: true

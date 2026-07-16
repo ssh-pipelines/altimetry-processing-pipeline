@@ -9,10 +9,12 @@ EmptyInputTestCase verifies correct behavior when no input data is provided.
 import gzip
 import logging
 import os
+import re
 import shutil
 import tempfile
 import unittest
 from glob import glob
+from unittest import mock
 
 import numpy as np
 import xarray as xr
@@ -217,6 +219,116 @@ class ConsistencyTestCase(unittest.TestCase):
             next_day,
             f"time1 max {time1_max} is on or after next day {next_day}",
         )
+
+
+class RunEndToEndTestCase(unittest.TestCase):
+    """Drive the full self path through Crossover.run() as a single entrypoint.
+
+    The ConsistencyTestCase calls extract/search/create by hand, bypassing run(),
+    stream_files, save_to_netcdf, and upload_xover. This test mocks aws_manager at
+    the S3 boundary so run() executes end-to-end, then compares the NetCDF that run()
+    saved-and-uploaded against the same known-good reference. It pins the orchestration
+    wiring (step order, filter_and_sort, df_version threading) that the composed-processor
+    refactor will move.
+    """
+
+    FLOAT_TOLERANCE = 1e-10
+    TIME_TOLERANCE_NS = 200
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmpdir = tempfile.mkdtemp()
+        tmp_inputs = os.path.join(cls.tmpdir, "inputs")
+        tmp_output = os.path.join(cls.tmpdir, "output")
+        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_inputs"), tmp_inputs)
+        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_output"), tmp_output)
+
+        # Map the 8-digit date token in a requested daily-file key to its local sample.
+        cls.by_date = {}
+        for path in glob(os.path.join(tmp_inputs, "*.nc")):
+            m = re.search(r"(\d{8})", os.path.basename(path))
+            if m:
+                cls.by_date[m.group(1)] = path
+
+        cls.day = np.datetime64("2025-01-01")
+        cls.source = "S6"
+        cls.df_version = "p1"
+
+        def fake_key_exists(key):
+            m = re.search(r"(\d{8})", key)
+            return bool(m) and m.group(1) in cls.by_date
+
+        def fake_stream_obj(key):
+            return cls.by_date[re.search(r"(\d{8})", key).group(1)]
+
+        cls.uploaded = []
+
+        processor = Crossover(cls.day, cls.source, cls.df_version)
+        with mock.patch(
+            "crossover.parallel_crossovers.aws_manager"
+        ) as mgr:
+            mgr.key_exists.side_effect = fake_key_exists
+            mgr.stream_obj.side_effect = fake_stream_obj
+            mgr.upload_obj.side_effect = lambda src, dest: cls.uploaded.append(src)
+            processor.run(bucket="test-bucket")
+
+        cls.local_path = cls.uploaded[0]
+        cls.computed_ds = xr.open_dataset(cls.local_path, engine="h5netcdf")
+        cls.reference_ds = xr.open_dataset(
+            os.path.join(tmp_output, "xovers_S6-2025-01-01.nc"),
+            engine="h5netcdf",
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        for ds_attr in ("computed_ds", "reference_ds"):
+            if hasattr(cls, ds_attr):
+                getattr(cls, ds_attr).close()
+        if getattr(cls, "local_path", None) and os.path.exists(cls.local_path):
+            os.remove(cls.local_path)
+        if hasattr(cls, "tmpdir"):
+            shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def test_uploaded_exactly_once(self):
+        self.assertEqual(len(self.uploaded), 1)
+
+    def test_run_output_matches_reference_length(self):
+        self.assertEqual(
+            len(self.computed_ds["time1"]), len(self.reference_ds["time1"])
+        )
+
+    def test_run_output_matches_reference_fields(self):
+        for field, atol in (
+            ("lon", self.FLOAT_TOLERANCE),
+            ("lat", self.FLOAT_TOLERANCE),
+            ("ssh1", self.FLOAT_TOLERANCE),
+            ("ssh2", self.FLOAT_TOLERANCE),
+        ):
+            np.testing.assert_allclose(
+                self.computed_ds[field].values,
+                self.reference_ds[field].values,
+                rtol=0,
+                atol=atol,
+                err_msg=f"{field} from run() diverges from reference",
+            )
+        for field in ("cycle1", "cycle2", "pass1", "pass2"):
+            np.testing.assert_array_equal(
+                self.computed_ds[field].values,
+                self.reference_ds[field].values,
+                err_msg=f"{field} from run() diverges from reference",
+            )
+        for field in ("time1", "time2"):
+            diff = np.abs(
+                self.computed_ds[field].values.astype("int64")
+                - self.reference_ds[field].values.astype("int64")
+            )
+            self.assertLessEqual(diff.max(), self.TIME_TOLERANCE_NS)
+
+    def test_run_output_sorted_and_within_day(self):
+        time1 = self.computed_ds["time1"].values
+        self.assertTrue(np.all(np.diff(time1.astype("int64")) >= 0))
+        self.assertGreaterEqual(time1.min(), self.day)
+        self.assertLess(time1.max(), self.day + np.timedelta64(1, "D"))
 
 
 class EmptyInputTestCase(unittest.TestCase):

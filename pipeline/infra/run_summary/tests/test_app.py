@@ -6,14 +6,17 @@ an otherwise-successful run. These tests mock the summarizer and the
 module-level S3/SNS clients; summarizer's own logic is covered in
 test_run_summary.py.
 
-SNS_TOPIC_ARN must exist in the environment before app is imported (it is read
-at module load), so it is set here before the import.
+app reads SNS_TOPIC_ARN and constructs boto3 clients at module load, so the
+env (topic ARN + region) must be set before the import — CI has no ambient AWS
+region. Mirrors the convention in test_failure_handling.py / test_set_sg_jobs.py.
 """
 import os
 import unittest
 from unittest.mock import patch
 
-os.environ.setdefault("SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:000000000000:test-topic")
+os.environ.setdefault("SNS_TOPIC_ARN", "arn:aws:sns:us-west-2:123456789012:test-topic")
+os.environ.setdefault("AWS_REGION", "us-west-2")
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 
 from app import handler  # noqa: E402
 

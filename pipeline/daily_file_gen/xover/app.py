@@ -3,24 +3,20 @@ import logging
 
 import numpy as np
 from crossover.config.source_config import get_source_config
-from crossover.parallel_crossovers import Crossover
+from crossover.processor import SPECS, CrossoverProcessor
 
 from utilities.errors import PipelineError
 
-_CROSSOVER_PROCESSORS = {
-    "self": Crossover,
-}
 
-
-def get_processor(day: np.datetime64, source: str, df_version: str) -> Crossover:
+def get_processor(day: np.datetime64, source: str, df_version: str) -> CrossoverProcessor:
     config = get_source_config(source)
     crossover_type = config.crossover_type
-    if crossover_type not in _CROSSOVER_PROCESSORS:
+    if crossover_type not in SPECS:
         raise ValueError(
             f"No processor for crossover_type '{crossover_type}' "
-            f"(source '{source}'). Available types: {list(_CROSSOVER_PROCESSORS.keys())}"
+            f"(source '{source}'). Available types: {list(SPECS.keys())}"
         )
-    return _CROSSOVER_PROCESSORS[crossover_type](day, source, df_version)
+    return CrossoverProcessor(day, source, df_version, SPECS[crossover_type])
 
 
 def handler(event, context):

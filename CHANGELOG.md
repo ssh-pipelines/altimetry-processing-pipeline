@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Handler tests for the `oer`, `bad_pass`, `daily_files`, `indicators`, and
+  `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`
+  covering param validation, dispatch, and the `PipelineError` envelope
+  (`run_summary` additionally pins its ADR-0005 never-raise guarantee). 
+
 ## [2.3.0] - 2026-07-15
 
 ### Added

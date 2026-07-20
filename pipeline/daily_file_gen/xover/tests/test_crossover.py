@@ -384,6 +384,7 @@ class EmptyInputTestCase(unittest.TestCase):
         self.assertIn("GSFC self-crossovers", self.ds.attrs["title"])
         self.assertEqual(self.ds.attrs["input_product_generation_steps"], "1")
         self.assertEqual(self.ds.attrs["satellite_names"], "GSFC")
+        self.assertEqual(self.ds.attrs["crossover_type"], "self")
 
 
 class AllNaNInputTestCase(unittest.TestCase):

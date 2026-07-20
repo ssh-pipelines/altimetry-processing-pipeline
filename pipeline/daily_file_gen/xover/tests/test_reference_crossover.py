@@ -169,6 +169,9 @@ class ReferenceRealDataTestCase(unittest.TestCase):
         self.assertIn("NASA-SSH", self.ds.attrs["satellite_names"])
         self.assertEqual(self.ds.attrs["reference_version"], "p3")
 
+    def test_crossover_type_attr(self):
+        self.assertEqual(self.ds.attrs["crossover_type"], "reference")
+
 
 if __name__ == "__main__":
     unittest.main()

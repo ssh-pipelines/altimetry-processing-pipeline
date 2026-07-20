@@ -24,7 +24,20 @@ from crossover.processor import SPECS, CrossoverProcessor
 from crossover.results import build_self_dataset, filter_and_sort, pack_records
 from crossover.search import SelfCrossover, find_self_crossovers
 
-SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
+# Golden dataset (gitignored; pulled on demand, not committed). Inputs are the
+# S6 self-crossover daily files; output is the known-good crossover NetCDF the
+# ConsistencyTestCase compares against bit-for-bit.
+# Repo root: pipeline/daily_file_gen/xover/tests/ -> up 5.
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+SAMPLE_DATA_DIR = os.path.join(REPO_ROOT, "test_data", "golden", "self_crossover")
+INPUTS_DIR = os.path.join(SAMPLE_DATA_DIR, "input")
+OUTPUT_DIR = os.path.join(SAMPLE_DATA_DIR, "output")
+
+
+def _sample_data_present() -> bool:
+    return os.path.isdir(INPUTS_DIR) and bool(
+        [f for f in os.listdir(INPUTS_DIR) if f.endswith(".nc.gz")]
+    )
 
 
 def _decompress_gz_files(src_dir, dest_dir):
@@ -66,6 +79,11 @@ logging.basicConfig(
 )
 
 
+@unittest.skipUnless(
+    _sample_data_present(),
+    "golden self-crossover dataset not present (test_data/golden/self_crossover/; "
+    "gitignored, pulled on demand)",
+)
 class ConsistencyTestCase(unittest.TestCase):
     """Test crossover output against reference data."""
 
@@ -81,8 +99,8 @@ class ConsistencyTestCase(unittest.TestCase):
         cls.tmpdir = tempfile.mkdtemp()
         tmp_inputs = os.path.join(cls.tmpdir, "inputs")
         tmp_output = os.path.join(cls.tmpdir, "output")
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_inputs"), tmp_inputs)
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_output"), tmp_output)
+        _decompress_gz_files(INPUTS_DIR, tmp_inputs)
+        _decompress_gz_files(OUTPUT_DIR, tmp_output)
 
         cls.day = np.datetime64("2025-01-01")
         cls.source = "S6"
@@ -240,6 +258,11 @@ class ConsistencyTestCase(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(
+    _sample_data_present(),
+    "golden self-crossover dataset not present (test_data/golden/self_crossover/; "
+    "gitignored, pulled on demand)",
+)
 class RunEndToEndTestCase(unittest.TestCase):
     """Drive the full self path through Crossover.run() as a single entrypoint.
 
@@ -259,8 +282,8 @@ class RunEndToEndTestCase(unittest.TestCase):
         cls.tmpdir = tempfile.mkdtemp()
         tmp_inputs = os.path.join(cls.tmpdir, "inputs")
         tmp_output = os.path.join(cls.tmpdir, "output")
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_inputs"), tmp_inputs)
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_output"), tmp_output)
+        _decompress_gz_files(INPUTS_DIR, tmp_inputs)
+        _decompress_gz_files(OUTPUT_DIR, tmp_output)
 
         # Map the 8-digit date token in a requested daily-file key to its local sample.
         cls.by_date = {}

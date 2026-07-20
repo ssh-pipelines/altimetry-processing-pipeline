@@ -2,10 +2,10 @@
 
 Drives the full reference path through ``CrossoverProcessor.run()`` against real
 S3B (high-latitude) + NASA-SSH (reference mission) granules, mocking aws_manager
-at the S3 boundary so no network/bucket is needed. The sample granules are large
-and live at the repo root as developer artifacts (not committed); this test
-``skipUnless`` they are present, so CI without them is green and a developer with
-them gets a real end-to-end check.
+at the S3 boundary so no network/bucket is needed. The granules are large and
+live in the gitignored golden dataset (``test_data/golden/reference_crossover/``,
+pulled on demand, not committed); this test ``skipUnless`` they are present, so
+CI without them is green and a developer with them gets a real end-to-end check.
 
 Unlike the self ConsistencyTestCase there is no frozen reference NetCDF here —
 the assertions instead pin the *invariants* of a correct reference run
@@ -26,7 +26,12 @@ from crossover.processor import SPECS, CrossoverProcessor
 REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
 )
-REF_GRANULE_DIR = os.path.join(REPO_ROOT, "sample_ref_mission_granules")
+# Golden dataset (gitignored; pulled on demand, not committed — too large to
+# vendor because the reference mission's ~9.9-day repeat forces an ~11-day
+# minimum window to bracket any crossing). See test_data/golden/.
+GOLDEN_DIR = os.path.join(REPO_ROOT, "test_data", "golden", "reference_crossover", "input")
+REF_GRANULE_DIR = os.path.join(GOLDEN_DIR, "Reference_Mission")
+_HL_DIR = os.path.join(GOLDEN_DIR, "S3B")
 
 DAY = np.datetime64("2025-02-07")
 SOURCE = "S3B"
@@ -34,9 +39,9 @@ DF_VERSION = "p1"
 
 # Local high-lat granules (D-1..D+1 overhang for the seed day).
 _HL_FILES = {
-    "20250206": os.path.join(REPO_ROOT, "S3B_alt_hilat_at_v1_1_20250206.nc"),
-    "20250207": os.path.join(REPO_ROOT, "S3B_alt_hilat_at_v1_1_20250207.nc"),
-    "20250208": os.path.join(REPO_ROOT, "S3B_alt_hilat_at_v1_1_20250208.nc"),
+    "20250206": os.path.join(_HL_DIR, "S3B_alt_hilat_at_v1_1_20250206.nc"),
+    "20250207": os.path.join(_HL_DIR, "S3B_alt_hilat_at_v1_1_20250207.nc"),
+    "20250208": os.path.join(_HL_DIR, "S3B_alt_hilat_at_v1_1_20250208.nc"),
 }
 
 
@@ -50,7 +55,8 @@ def _sample_data_present() -> bool:
 
 @unittest.skipUnless(
     _sample_data_present(),
-    "reference sample granules not present at repo root (developer-only artifacts)",
+    "golden reference dataset not present (test_data/golden/reference_crossover/; "
+    "gitignored, pulled on demand)",
 )
 class ReferenceRealDataTestCase(unittest.TestCase):
     """End-to-end reference run on real S3B x NASA-SSH granules."""

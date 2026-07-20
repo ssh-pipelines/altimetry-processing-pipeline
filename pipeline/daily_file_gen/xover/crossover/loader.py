@@ -12,11 +12,11 @@ from typing import Iterable
 
 import numpy as np
 import xarray as xr
-from crossover.config.source_config import SourceConfig
 from crossover.track_window import TrackWindow
 
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import daily_file_key, s3_uri
+from utilities.source_profile import SourceCommon
 
 # Variables the crossover compute never reads — dropped at decode time.
 DROP_VARIABLES = [
@@ -30,7 +30,7 @@ DROP_VARIABLES = [
 
 
 def stream_files(
-    config: SourceConfig,
+    profile: SourceCommon,
     window_start: np.datetime64,
     window_end: np.datetime64,
     df_version: str,
@@ -38,6 +38,8 @@ def stream_files(
 ) -> list:
     """Return open streams for every existing daily file in the inclusive window.
 
+    ``profile`` is any source-identity profile (a ``SourceConfig`` for the
+    high-lat/self source, or a bare ``SourceCommon`` for the reference mission).
     Missing daily files are logged and skipped (an incomplete window still
     produces a valid, possibly-empty crossover file).
     """
@@ -45,7 +47,7 @@ def stream_files(
     date = window_start
     while date <= window_end:
         date_dt = date.astype("datetime64[D]").astype(object)
-        key = s3_uri(bucket, daily_file_key(config, date_dt, df_version))
+        key = s3_uri(bucket, daily_file_key(profile, date_dt, df_version))
 
         if aws_manager.key_exists(key):
             streams.append(aws_manager.stream_obj(key))

@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 from app import get_processor
-from crossover.processor import SPECS, CrossoverProcessor, SelfSpec
+from crossover.processor import SPECS, CrossoverProcessor, ReferenceSpec, SelfSpec
 
 
 class GetProcessorTestCase(unittest.TestCase):
@@ -25,6 +25,21 @@ class GetProcessorTestCase(unittest.TestCase):
             proc = get_processor(self.DAY, source, self.DF_VERSION)
             self.assertIsInstance(proc, CrossoverProcessor)
             self.assertIs(proc.spec, SPECS["self"])
+
+    def test_reference_source_returns_reference_spec(self):
+        proc = get_processor(self.DAY, "S3B", self.DF_VERSION)
+        self.assertIsInstance(proc, CrossoverProcessor)
+        self.assertIsInstance(proc.spec, ReferenceSpec)
+        self.assertIs(proc.spec, SPECS["reference"])
+        self.assertEqual(proc.source, "S3B")
+
+    def test_reference_processor_has_centered_window(self):
+        # Reference windows are centered on the day (±), unlike the self path's
+        # forward-only window, and carry the reference mission's profile.
+        proc = get_processor(self.DAY, "S3B", self.DF_VERSION)
+        self.assertLess(proc.window_start, self.DAY)
+        self.assertGreater(proc.window_end, self.DAY)
+        self.assertEqual(proc.reference_profile.source, "NASA-SSH")
 
     def test_unknown_source_raises(self):
         with self.assertRaises(ValueError):

@@ -8,10 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
+  against the finalized NASA-SSH P3 reference mission instead of themselves, selected
+  by `crossover_type: reference` in a source's `xover` config. Each high-lat pass is
+  crossed against every reference pass in a centered time window; matching crossings
+  are grouped by reference pass number and the reference SSH is linearly interpolated
+  in time (through the tightest before/after bracket) to the high-lat crossover time.
+  Output carries a distinct schema (high-lat side + interpolated reference `ssh2` +
+  the explicit before/after bracket) and a `crossover_type` global attribute. Existing
+  `self` crossovers (S6/GSFC) are unchanged. See ADR-0006. Adds an `xover` config to
+  `S3B.yaml` (`reference_source: NASA-SSH`, `reference_version: p3`, centered window).
 - Handler tests for the `oer`, `bad_pass`, `daily_files`, `indicators`, and
   `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`
   covering param validation, dispatch, and the `PipelineError` envelope
   (`run_summary` additionally pins its ADR-0005 never-raise guarantee). 
+
+### Changed
+- The `xover` `Crossover` god-object is decomposed into composable modules —
+  `TrackWindow`/`Track` (pure, in-memory windowed tracks), a thin S3/NetCDF loader, a
+  pure crossover search, a schema-driven results accumulator, and a
+  `CrossoverProcessor` + `CrossoverSpec` registry that dispatches on `crossover_type`.
+  Self-crossover output is preserved bit-for-bit (consistency test stays green).
 
 ## [2.3.0] - 2026-07-15
 

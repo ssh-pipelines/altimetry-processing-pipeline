@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`
   covering param validation, dispatch, and the `PipelineError` envelope
   (`run_summary` additionally pins its ADR-0005 never-raise guarantee). 
+- Retry/backoff on the shared AVISO session (`utilities.aviso_auth`): an
+  `HTTPAdapter` with exponential backoff + jitter (5 attempts, `backoff_max=60`)
+  retries transient connect/read errors and 429/5xx responses. AVISO's THREDDS
+  server intermittently drops connections; mounting at the adapter level means
+  both the granule downloader and the catalog enumerator recover via the shared
+  session. `raise_on_status=False` leaves the final status to callers.
 
 ### Changed
 - The `xover` `Crossover` god-object is decomposed into composable modules —
@@ -29,6 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pure crossover search, a schema-driven results accumulator, and a
   `CrossoverProcessor` + `CrossoverSpec` registry that dispatches on `crossover_type`.
   Self-crossover output is preserved bit-for-bit (consistency test stays green).
+- `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
+- The `daily_file` Distributed Map now sets `ToleratedFailurePercentage: 5`, so a
+  small fraction of failing items no longer aborts the whole map run.
+
+### Fixed
+- Reference-crossover jobs intermittently reported "No daily file … skipping" for
+  every date in a reference window even though the files existed, so only a subset
+  of jobs found their reference along-track files. The module-level `aws_manager`
+  singleton is reused across warm-Lambda invocations, and `s3fs` caches parent
+  directory listings forever by default; a `key_exists()` check that 404s before an
+  upstream file lands poisoned the listing and reported "not found" for that whole
+  directory for the life of the container. Disabled the listing cache
+  (`use_listings_cache=False`) so every existence check issues a fresh per-key
+  `head_object`.
 
 ## [2.3.0] - 2026-07-15
 

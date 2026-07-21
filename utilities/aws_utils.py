@@ -17,11 +17,19 @@ class AWSManager:
         self._secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
         self._session_token = os.environ.get("AWS_SESSION_TOKEN")
 
+        # Disable the directory-listing cache. The module-level aws_manager is a
+        # singleton reused across warm-Lambda invocations; s3fs caches parent
+        # listings forever by default (listings_expiry_time=None), so a
+        # key_exists() check that 404s before an upstream file lands poisons the
+        # listing and reports "not found" for that whole directory for the life
+        # of the container. key_exists relies on per-key head_object anyway, so
+        # dropping the cache costs nothing.
         self.fs = s3fs.S3FileSystem(
             anon=False,
             key=self._access_key,
             secret=self._secret_key,
             token=self._session_token,
+            use_listings_cache=False,
         )
 
         self._session = boto3.Session(

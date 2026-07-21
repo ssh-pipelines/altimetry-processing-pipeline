@@ -3,6 +3,8 @@ import netrc
 import os
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from utilities.aws_utils import aws_manager
 
@@ -10,6 +12,29 @@ _AVISO_HOST = "aviso.altimetry.fr"
 _SECRET_NAME = "AVISO_auth"
 
 _cached_session: requests.Session | None = None
+
+
+def _build_retry_adapter() -> HTTPAdapter:
+    """HTTPAdapter that retries transient connect/read errors and 5xx/429 responses
+    with exponential backoff + jitter.
+
+    AVISO's THREDDS server intermittently drops connections (ConnectTimeout) and
+    returns transient 5xx. Retrying at the adapter level means both the granule
+    downloader and the catalog enumerator inherit recovery via the shared session.
+    raise_on_status=False so callers' own resp.raise_for_status() governs the
+    final (non-retryable) status.
+    """
+    retry = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        backoff_factor=1.0,
+        backoff_max=60,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+        raise_on_status=False,
+    )
+    return HTTPAdapter(max_retries=retry)
 
 
 def _resolve_credentials() -> tuple[str | None, str | None]:
@@ -50,5 +75,10 @@ def build_aviso_session() -> requests.Session:
         logging.warning("No AVISO credentials resolved — requests will likely fail.")
 
     session.headers.update({"Accept-Encoding": "gzip, deflate"})
+
+    adapter = _build_retry_adapter()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
     _cached_session = session
     return session

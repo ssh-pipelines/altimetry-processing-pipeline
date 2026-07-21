@@ -2,7 +2,7 @@ common:
   product_type: high_latitude
   discovery_type: thredds
   unify: false
-  start_date: "2018-04-25"
+  start_date: "2018-11-24"
   collections:
     - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz
       thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz

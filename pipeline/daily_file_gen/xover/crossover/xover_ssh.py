@@ -14,6 +14,12 @@ import numpy as np
 FloatPairList = Union[Tuple[float], Tuple[float, float]]
 XoverResult = Tuple[FloatPairList, FloatPairList, FloatPairList]
 
+def _ordered_interp(xq, xa, xb, fp):
+    # np.interp needs increasing xp; keep each value paired with its longitude
+    if xb < xa:
+        return np.interp(xq, [xb, xa], fp[::-1], left=np.nan, right=np.nan)
+    return np.interp(xq, [xa, xb], fp, left=np.nan, right=np.nan)
+
 
 def xover_ssh(
     cds1: np.ndarray,
@@ -430,11 +436,11 @@ def xover_ssh(
         y = ma * (x - x1) + y1
         xcds = [x, y]
         # compute ssh & day values for pass 1
-        sp1 = np.interp(x, [x1, x2], ps1, left=np.nan, right=np.nan)
-        sd1 = np.interp(x, [x1, x2], pd1, left=np.nan, right=np.nan)
+        sp1 = _ordered_interp(x, x1, x2, ps1)
+        sd1 = _ordered_interp(x, x1, x2, pd1)
         # compute ssh & day values for pass 2
-        sp2 = np.interp(x, [x3, x4], ps2, left=np.nan, right=np.nan)
-        sd2 = np.interp(x, [x3, x4], pd2, left=np.nan, right=np.nan)
+        sp2 = _ordered_interp(x, x3, x4, ps2)
+        sd2 = _ordered_interp(x, x3, x4, pd2)
 
     # save day and ssh from both passes into return variables
     xday = [sd1, sd2]

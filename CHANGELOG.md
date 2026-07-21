@@ -8,10 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
+  against the finalized NASA-SSH P3 reference mission instead of themselves, selected
+  by `crossover_type: reference` in a source's `xover` config. Each high-lat pass is
+  crossed against every reference pass in a centered time window; matching crossings
+  are grouped by reference pass number and the reference SSH is linearly interpolated
+  in time (through the tightest before/after bracket) to the high-lat crossover time.
+  Output carries a distinct schema (high-lat side + interpolated reference `ssh2` +
+  the explicit before/after bracket) and a `crossover_type` global attribute. Existing
+  `self` crossovers (S6/GSFC) are unchanged. See ADR-0006. Adds an `xover` config to
+  `S3B.yaml` (`reference_source: NASA-SSH`, `reference_version: p3`, centered window).
 - Handler tests for the `oer`, `bad_pass`, `daily_files`, `indicators`, and
   `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`
   covering param validation, dispatch, and the `PipelineError` envelope
   (`run_summary` additionally pins its ADR-0005 never-raise guarantee). 
+- Retry/backoff on the shared AVISO session (`utilities.aviso_auth`): an
+  `HTTPAdapter` with exponential backoff + jitter (5 attempts, `backoff_max=60`)
+  retries transient connect/read errors and 429/5xx responses. AVISO's THREDDS
+  server intermittently drops connections; mounting at the adapter level means
+  both the granule downloader and the catalog enumerator recover via the shared
+  session. `raise_on_status=False` leaves the final status to callers.
+
+### Changed
+- The `xover` `Crossover` god-object is decomposed into composable modules —
+  `TrackWindow`/`Track` (pure, in-memory windowed tracks), a thin S3/NetCDF loader, a
+  pure crossover search, a schema-driven results accumulator, and a
+  `CrossoverProcessor` + `CrossoverSpec` registry that dispatches on `crossover_type`.
+  Self-crossover output is preserved bit-for-bit (consistency test stays green).
+- `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
+- The `daily_file` Distributed Map now sets `ToleratedFailurePercentage: 5`, so a
+  small fraction of failing items no longer aborts the whole map run.
+
+### Fixed
+- Reference-crossover jobs intermittently reported "No daily file … skipping" for
+  every date in a reference window even though the files existed, so only a subset
+  of jobs found their reference along-track files. The module-level `aws_manager`
+  singleton is reused across warm-Lambda invocations, and `s3fs` caches parent
+  directory listings forever by default; a `key_exists()` check that 404s before an
+  upstream file lands poisoned the listing and reported "not found" for that whole
+  directory for the life of the container. Disabled the listing cache
+  (`use_listings_cache=False`) so every existence check issues a fresh per-key
+  `head_object`.
 
 ## [2.3.0] - 2026-07-15
 

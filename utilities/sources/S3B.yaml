@@ -2,7 +2,7 @@ common:
   product_type: high_latitude
   discovery_type: thredds
   unify: false
-  start_date: "2018-04-25"
+  start_date: "2018-11-24"
   collections:
     - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz
       thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz
@@ -18,3 +18,16 @@ daily_files:
   smoothing:
     speed: 5.745
     sigma: 15
+
+xover:
+  crossover_type: reference
+  reference_source: NASA-SSH
+  reference_version: p3
+  cycle_length: 9.9156
+  # window_size/window_padding are interpreted as a CENTERED window for
+  # reference crossovers (±): the reference mission repeats its ground track
+  # every ~9.9 days, so ~12 days captures a before/after bracket for most
+  # crossings. A wider window (~20) brackets every crossing; calibrate later.
+  window_size: 12
+  window_padding: 2
+  max_pass_number: 9999

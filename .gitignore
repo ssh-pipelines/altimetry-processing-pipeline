@@ -17,3 +17,4 @@ state_machines/rendered/
 *.o
 *.e
 .claude
+test_data

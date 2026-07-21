@@ -14,6 +14,25 @@ class SourceConfig(SourceCommon):
     window_size: int
     window_padding: int
     max_pass_number: int
+    # Only used by crossover_type == "reference": the reference mission a
+    # high_latitude source is crossed against, and the (always finalized) daily
+    # file version to load for it (see ADR-0006). Optional on the shared config,
+    # required + validated below when the type is "reference".
+    reference_source: str | None = None
+    reference_version: str | None = None
+
+    def __post_init__(self):
+        if self.crossover_type == "reference":
+            missing = [
+                name
+                for name in ("reference_source", "reference_version")
+                if getattr(self, name) is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"crossover_type 'reference' (source '{self.source}') requires "
+                    f"{missing} in its xover config."
+                )
 
 
 def get_source_config(source: str) -> SourceConfig:

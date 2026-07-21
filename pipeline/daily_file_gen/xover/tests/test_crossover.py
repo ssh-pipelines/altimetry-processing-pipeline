@@ -9,16 +9,35 @@ EmptyInputTestCase verifies correct behavior when no input data is provided.
 import gzip
 import logging
 import os
+import re
 import shutil
 import tempfile
 import unittest
 from glob import glob
+from unittest import mock
 
 import numpy as np
 import xarray as xr
-from crossover.parallel_crossovers import Crossover, CrossoverData
+from crossover.config.source_config import get_source_config
+from crossover.loader import load_track_window
+from crossover.processor import SPECS, CrossoverProcessor
+from crossover.results import build_self_dataset, filter_and_sort, pack_records
+from crossover.search import SelfCrossover, find_self_crossovers
 
-SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
+# Golden dataset (gitignored; pulled on demand, not committed). Inputs are the
+# S6 self-crossover daily files; output is the known-good crossover NetCDF the
+# ConsistencyTestCase compares against bit-for-bit.
+# Repo root: pipeline/daily_file_gen/xover/tests/ -> up 5.
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+SAMPLE_DATA_DIR = os.path.join(REPO_ROOT, "test_data", "golden", "self_crossover")
+INPUTS_DIR = os.path.join(SAMPLE_DATA_DIR, "input")
+OUTPUT_DIR = os.path.join(SAMPLE_DATA_DIR, "output")
+
+
+def _sample_data_present() -> bool:
+    return os.path.isdir(INPUTS_DIR) and bool(
+        [f for f in os.listdir(INPUTS_DIR) if f.endswith(".nc.gz")]
+    )
 
 
 def _decompress_gz_files(src_dir, dest_dir):
@@ -32,6 +51,26 @@ def _decompress_gz_files(src_dir, dest_dir):
                 shutil.copyfileobj(f_in, f_out)
 
 
+def _self_dataset_from_streams(streams, day, source, df_version):
+    """Drive the composed self path (load -> search -> accumulate -> build)
+    from a list of local .nc streams, returning the crossover Dataset.
+
+    Exercises the same seams CrossoverProcessor.run() uses, minus S3 I/O, so the
+    consistency assertions run against the refactored modules."""
+    config = get_source_config(source)
+    next_day = day + np.timedelta64(1, "D")
+    window_start = day
+    window_end = day + np.timedelta64(config.window_size + config.window_padding, "D")
+
+    window = load_track_window(streams)
+    records = list(find_self_crossovers(window, config, day))
+    columns = pack_records(records, SelfCrossover)
+    columns = filter_and_sort(columns, next_day)
+    return build_self_dataset(
+        columns, source, day, df_version, window_start, window_end, config
+    )
+
+
 logging.root.handlers = []
 logging.basicConfig(
     level="INFO",
@@ -40,6 +79,11 @@ logging.basicConfig(
 )
 
 
+@unittest.skipUnless(
+    _sample_data_present(),
+    "golden self-crossover dataset not present (test_data/golden/self_crossover/; "
+    "gitignored, pulled on demand)",
+)
 class ConsistencyTestCase(unittest.TestCase):
     """Test crossover output against reference data."""
 
@@ -55,22 +99,17 @@ class ConsistencyTestCase(unittest.TestCase):
         cls.tmpdir = tempfile.mkdtemp()
         tmp_inputs = os.path.join(cls.tmpdir, "inputs")
         tmp_output = os.path.join(cls.tmpdir, "output")
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_inputs"), tmp_inputs)
-        _decompress_gz_files(os.path.join(SAMPLE_DATA_DIR, "sample_output"), tmp_output)
+        _decompress_gz_files(INPUTS_DIR, tmp_inputs)
+        _decompress_gz_files(OUTPUT_DIR, tmp_output)
 
         cls.day = np.datetime64("2025-01-01")
         cls.source = "S6"
         cls.df_version = "p1"
 
-        cls.processor = Crossover(cls.day, cls.source, cls.df_version)
-        cls.processor.crossover_data = CrossoverData.init()
-        cls.processor.streams = sorted(glob(os.path.join(tmp_inputs, "*.nc")))
-
-        if len(cls.processor.streams) > 0:
-            cls.processor.extract_and_set_data()
-            cls.processor.search_day_for_crossovers()
-
-        cls.computed_ds = cls.processor.create_dataset()
+        streams = sorted(glob(os.path.join(tmp_inputs, "*.nc")))
+        cls.computed_ds = _self_dataset_from_streams(
+            streams, cls.day, cls.source, cls.df_version
+        )
 
         cls.reference_ds = xr.open_dataset(
             os.path.join(tmp_output, "xovers_S6-2025-01-01.nc"),
@@ -219,6 +258,125 @@ class ConsistencyTestCase(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(
+    _sample_data_present(),
+    "golden self-crossover dataset not present (test_data/golden/self_crossover/; "
+    "gitignored, pulled on demand)",
+)
+class RunEndToEndTestCase(unittest.TestCase):
+    """Drive the full self path through Crossover.run() as a single entrypoint.
+
+    The ConsistencyTestCase calls extract/search/create by hand, bypassing run(),
+    stream_files, save_to_netcdf, and upload_xover. This test mocks aws_manager at
+    the S3 boundary so run() executes end-to-end, then compares the NetCDF that run()
+    saved-and-uploaded against the same known-good reference. It pins the orchestration
+    wiring (step order, filter_and_sort, df_version threading) that the composed-processor
+    refactor will move.
+    """
+
+    FLOAT_TOLERANCE = 1e-10
+    TIME_TOLERANCE_NS = 200
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmpdir = tempfile.mkdtemp()
+        tmp_inputs = os.path.join(cls.tmpdir, "inputs")
+        tmp_output = os.path.join(cls.tmpdir, "output")
+        _decompress_gz_files(INPUTS_DIR, tmp_inputs)
+        _decompress_gz_files(OUTPUT_DIR, tmp_output)
+
+        # Map the 8-digit date token in a requested daily-file key to its local sample.
+        cls.by_date = {}
+        for path in glob(os.path.join(tmp_inputs, "*.nc")):
+            m = re.search(r"(\d{8})", os.path.basename(path))
+            if m:
+                cls.by_date[m.group(1)] = path
+
+        cls.day = np.datetime64("2025-01-01")
+        cls.source = "S6"
+        cls.df_version = "p1"
+
+        def fake_key_exists(key):
+            m = re.search(r"(\d{8})", key)
+            return bool(m) and m.group(1) in cls.by_date
+
+        def fake_stream_obj(key):
+            return cls.by_date[re.search(r"(\d{8})", key).group(1)]
+
+        cls.uploaded = []
+
+        processor = CrossoverProcessor(
+            cls.day, cls.source, cls.df_version, SPECS["self"]
+        )
+        # aws_manager is imported into loader (stream/key_exists) and processor
+        # (upload); patch both so run() executes end-to-end without S3.
+        with mock.patch("crossover.loader.aws_manager") as loader_mgr, mock.patch(
+            "crossover.processor.aws_manager"
+        ) as proc_mgr:
+            loader_mgr.key_exists.side_effect = fake_key_exists
+            loader_mgr.stream_obj.side_effect = fake_stream_obj
+            proc_mgr.upload_obj.side_effect = lambda src, dest: cls.uploaded.append(src)
+            processor.run(bucket="test-bucket")
+
+        cls.local_path = cls.uploaded[0]
+        cls.computed_ds = xr.open_dataset(cls.local_path, engine="h5netcdf")
+        cls.reference_ds = xr.open_dataset(
+            os.path.join(tmp_output, "xovers_S6-2025-01-01.nc"),
+            engine="h5netcdf",
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        for ds_attr in ("computed_ds", "reference_ds"):
+            if hasattr(cls, ds_attr):
+                getattr(cls, ds_attr).close()
+        if getattr(cls, "local_path", None) and os.path.exists(cls.local_path):
+            os.remove(cls.local_path)
+        if hasattr(cls, "tmpdir"):
+            shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def test_uploaded_exactly_once(self):
+        self.assertEqual(len(self.uploaded), 1)
+
+    def test_run_output_matches_reference_length(self):
+        self.assertEqual(
+            len(self.computed_ds["time1"]), len(self.reference_ds["time1"])
+        )
+
+    def test_run_output_matches_reference_fields(self):
+        for field, atol in (
+            ("lon", self.FLOAT_TOLERANCE),
+            ("lat", self.FLOAT_TOLERANCE),
+            ("ssh1", self.FLOAT_TOLERANCE),
+            ("ssh2", self.FLOAT_TOLERANCE),
+        ):
+            np.testing.assert_allclose(
+                self.computed_ds[field].values,
+                self.reference_ds[field].values,
+                rtol=0,
+                atol=atol,
+                err_msg=f"{field} from run() diverges from reference",
+            )
+        for field in ("cycle1", "cycle2", "pass1", "pass2"):
+            np.testing.assert_array_equal(
+                self.computed_ds[field].values,
+                self.reference_ds[field].values,
+                err_msg=f"{field} from run() diverges from reference",
+            )
+        for field in ("time1", "time2"):
+            diff = np.abs(
+                self.computed_ds[field].values.astype("int64")
+                - self.reference_ds[field].values.astype("int64")
+            )
+            self.assertLessEqual(diff.max(), self.TIME_TOLERANCE_NS)
+
+    def test_run_output_sorted_and_within_day(self):
+        time1 = self.computed_ds["time1"].values
+        self.assertTrue(np.all(np.diff(time1.astype("int64")) >= 0))
+        self.assertGreaterEqual(time1.min(), self.day)
+        self.assertLess(time1.max(), self.day + np.timedelta64(1, "D"))
+
+
 class EmptyInputTestCase(unittest.TestCase):
     """Test crossover output when no input streams are provided."""
 
@@ -228,10 +386,7 @@ class EmptyInputTestCase(unittest.TestCase):
         cls.source = "GSFC"
         cls.df_version = "p1"
 
-        cls.processor = Crossover(cls.day, cls.source, cls.df_version)
-        cls.processor.crossover_data = CrossoverData.init()
-        cls.processor.streams = []
-        cls.ds = cls.processor.create_dataset()
+        cls.ds = _self_dataset_from_streams([], cls.day, cls.source, cls.df_version)
 
     def test_valid_length(self):
         self.assertEqual(len(self.ds.time1), 0)
@@ -252,6 +407,7 @@ class EmptyInputTestCase(unittest.TestCase):
         self.assertIn("GSFC self-crossovers", self.ds.attrs["title"])
         self.assertEqual(self.ds.attrs["input_product_generation_steps"], "1")
         self.assertEqual(self.ds.attrs["satellite_names"], "GSFC")
+        self.assertEqual(self.ds.attrs["crossover_type"], "self")
 
 
 class AllNaNInputTestCase(unittest.TestCase):
@@ -280,13 +436,9 @@ class AllNaNInputTestCase(unittest.TestCase):
         nan_ds.to_netcdf(cls.nan_file, engine="h5netcdf")
         nan_ds.close()
 
-        cls.processor = Crossover(cls.day, cls.source, cls.df_version)
-        cls.processor.crossover_data = CrossoverData.init()
-        cls.processor.streams = [cls.nan_file]
-
-        cls.processor.extract_and_set_data()
-        cls.processor.search_day_for_crossovers()
-        cls.ds = cls.processor.create_dataset()
+        cls.ds = _self_dataset_from_streams(
+            [cls.nan_file], cls.day, cls.source, cls.df_version
+        )
 
     @classmethod
     def tearDownClass(cls) -> None:

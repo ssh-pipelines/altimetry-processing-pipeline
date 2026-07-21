@@ -79,36 +79,58 @@ For a detailed reference of every S3 object written by each stage (success and f
 
 ## Source Configuration
 
-Source-specific settings are split across two layers:
+Each source has one profile file, `utilities/sources/{source}.yaml`, holding a
+shared `common:` block plus one section per pipeline stage. A stage's config
+loader (`load_source_config`) merges `common` with that stage's section and
+constructs the stage's config dataclass, so each stage sees only the fields it
+declares.
 
-### Global registry: `utilities/sources.yaml`
+### Shared block: `common:`
 
-Shared metadata used by multiple pipeline stages. Fields:
+Source-identity metadata used by multiple stages:
 
-- `product_type` — `reference` or `hilat`; determines filename conventions
+- `product_type` — `reference` or `high_latitude`; determines the daily-file
+  filename family (`alt_ref_at_*` vs `alt_hilat_at_*`) and which downstream
+  stages apply
+- `discovery_type` — how pipeline_init finds upstream granules (`cmr`, `thredds`, …)
 - `unify` — whether the source participates in NASA-SSH unification
 - `start_date` — first date with available data
 - `end_date` (optional) — last date with available data; omit for ongoing collections
+- `collections` — the upstream collection descriptors discovery reads
 
-Example:
+### Stage sections
+
+Each stage that a source participates in gets its own section (`pipeline_init:`,
+`daily_files:`, `finalizer:`, `xover:`, …) carrying only that stage's settings.
+
+The `xover:` section selects the **crossover type** (see CONTEXT.md):
+
+- `crossover_type: self` — a `reference` product-type source (S6, S6B, GSFC)
+  crossed against its own passes over a forward window. Fields: `cycle_length`,
+  `window_size`, `window_padding`, `max_pass_number`.
+- `crossover_type: reference` — a `high_latitude` source (S3B) crossed against
+  the finalized NASA-SSH **P3** reference mission over a window *centered* on the
+  processing day. Adds `reference_source` and `reference_version` (see ADR-0006).
+
+Example (`utilities/sources/S3B.yaml`, abbreviated):
 ```yaml
-sources:
-  GSFC:
-    product_type: reference
-    unify: true
-    start_date: "1992-10-25"
-    end_date: "2024-01-20"
-  S6:
-    product_type: reference
-    unify: true
-    start_date: "2024-01-21"
+common:
+  product_type: high_latitude
+  discovery_type: thredds
+  start_date: "2018-04-25"
+
+xover:
+  crossover_type: reference
+  reference_source: NASA-SSH
+  reference_version: p3
+  cycle_length: 9.9156
+  window_size: 12      # interpreted as a ±centered window for reference crossovers
+  window_padding: 2
+  max_pass_number: 9999
 ```
 
-### Stage-local configs: `<stage>/config/sources.yaml`
-
-Stage-specific settings that only apply to a single Lambda. For example, `pipeline_init/config/sources.yaml` contains CMR collection IDs, S3 prefixes, and filename patterns that are only relevant to the init stage. Each stage's config loader merges its local fields with the global registry.
-
-When adding a new source, add an entry to `utilities/sources.yaml` first, then add stage-specific entries to each stage's local config as needed.
+When adding a new source, create `utilities/sources/{source}.yaml` with a
+`common` block and a section for each stage it participates in.
 
 ## Setup
 

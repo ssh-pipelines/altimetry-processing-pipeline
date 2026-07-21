@@ -78,6 +78,7 @@
         }
       },
       "MaxConcurrency": 500,
+      "ToleratedFailurePercentage": 5,
       "Label": "DailyFile",
       "End": true
     }

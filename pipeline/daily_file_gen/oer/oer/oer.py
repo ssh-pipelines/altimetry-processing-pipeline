@@ -11,6 +11,7 @@ from oer.compute_polygon_correction import (
     create_polygon,
     evaluate_correction,
 )
+from oer.config.source_config import get_source_config
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import (
     crossover_key,
@@ -21,7 +22,6 @@ from utilities.pipeline_layout import (
     s3_uri,
 )
 from utilities.provenance import append_to_xr
-from utilities.source_profile import get_source_profile
 
 _DTYPE_OVERRIDES = {
     "source_flag": {"dtype": "int8", "_FillValue": np.iinfo(np.int8).max},
@@ -36,6 +36,16 @@ _DTYPE_OVERRIDES = {
     "oer": {"dtype": "float64", "_FillValue": np.finfo(np.float64).max},
 }
 
+# product_type ↔ crossover_type ↔ OER path (documented 1:1; see
+# PLAN_reference_crossovers.md "Staged CONTEXT.md additions"). A reference
+# mission (product_type=reference) crosses against itself → "self" OER; a
+# high_latitude source crosses against the finalized reference mission →
+# "reference" OER.
+_CROSSOVER_TYPE_BY_PRODUCT_TYPE = {
+    "reference": "self",
+    "high_latitude": "reference",
+}
+
 
 class OerCorrection:
     """
@@ -48,11 +58,13 @@ class OerCorrection:
         self.source: str = source
         self.date: datetime = date
         self.bucket: str = bucket
-        self.profile = get_source_profile(source)
+        self.config = get_source_config(source)
+        self.profile = self.config  # OerConfig is a SourceCommon; keep the profile alias
+        self.crossover_type: str = _CROSSOVER_TYPE_BY_PRODUCT_TYPE[self.config.product_type]
         self.daily_file_filename = daily_file_filename(self.profile, date)
-        self.window_len: int = 10  # set window, since xover files "look forward" in time
+        self.window_len: int = 10  # set window, since self xover files "look forward" in time
         self.window_pad: int = 1  # padding to avoid edge effects at window end
-        logging.info(f"Starting job for {self.source} {self.date}")
+        logging.info(f"Starting {self.crossover_type} job for {self.source} {self.date}")
 
     def save_ds(self, ds: xr.Dataset, local_filename: str, encoding: dict | None = None) -> str:
         """Save a dataset as netCDF to the temporary working directory."""
@@ -102,16 +114,34 @@ class OerCorrection:
         aws_manager.upload_obj(out_path, s3_uri(self.bucket, key))
 
     def make_polygon(self) -> xr.Dataset:
-        """Fetch crossovers, fit the spline polygon, and upload to S3."""
-        window_start = max(
-            self.date - timedelta(self.window_len) - timedelta(self.window_pad),
-            datetime(1992, 9, 25),
-        )
-        window_end = self.date + timedelta(self.window_pad)
+        """Fetch crossovers, fit the spline polygon, and upload to S3.
+
+        The self path uses a backward-looking window (self xover files are keyed
+        by the earlier pass and "look forward" in time). The reference path uses
+        a small *centered* window: reference xover files are keyed by the high-lat
+        crossover time (``time1 ∈ [D, D+1)``) and are self-contained per day, so a
+        few neighbor days on either side cover the 2-hour polygon margin.
+        """
+        if self.crossover_type == "reference":
+            n = self.config.reference_window_size
+            window_start = max(self.date - timedelta(n), datetime(1992, 9, 25))
+            window_end = self.date + timedelta(n)
+        else:
+            window_start = max(
+                self.date - timedelta(self.window_len) - timedelta(self.window_pad),
+                datetime(1992, 9, 25),
+            )
+            window_end = self.date + timedelta(self.window_pad)
 
         xover_ds = self.fetch_xovers(window_start, window_end)
 
-        polygon_ds = create_polygon(xover_ds, self.date, self.source)
+        polygon_ds = create_polygon(
+            xover_ds,
+            self.date,
+            self.source,
+            crossover_type=self.crossover_type,
+            ground_speed=self.config.ground_speed,
+        )
         xover_ds.close()
 
         self._save_and_upload(polygon_ds, oer_polygon_key(self.source, self.date))

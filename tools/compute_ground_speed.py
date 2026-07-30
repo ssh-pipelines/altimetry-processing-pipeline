@@ -34,13 +34,7 @@ Result:
 Caveats:
   - This is the satellite's along-track ground speed — a SINGLE canonical value
     (`common.ground_speed`) read by BOTH oerfit knot placement and the
-    daily-file smoothing filter. (The legacy split between OER's hardcoded 5.7
-    and `daily_files.smoothing.speed` 5.745 was two constants for the same
-    quantity; unified 2026-07-30.)
-  - S6's canonical value is 5.7529 km/s. Changing it from the legacy
-    5.7/5.745 shifts S6 output, so the bit-for-bit oracles are relaxed or
-    regenerated rather than pinned. Running this tool against S6 recovers
-    ~5.7529 as a sanity check.
+    daily-file smoothing filter.
 
 Prerequisites:
     pip install boto3 xarray numpy netcdf4 h5netcdf

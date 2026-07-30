@@ -106,7 +106,7 @@ class TestSourceConfig(unittest.TestCase):
                         source="TEST",
                         product_type="high_latitude",
                         start_date=__import__("datetime").date(2020, 1, 1),
-                        smoothing=SmoothingConfig(speed=5.0, sigma=10.0),
+                        smoothing=SmoothingConfig(sigma=10.0),
                         **{offending: "DTU21"},
                     )
                 self.assertIn(offending, str(ctx.exception))
@@ -127,7 +127,7 @@ class TestSourceConfig(unittest.TestCase):
                         source="TEST",
                         product_type="reference",
                         start_date=_dt.date(2020, 1, 1),
-                        smoothing=SmoothingConfig(speed=5.0, sigma=10.0),
+                        smoothing=SmoothingConfig(sigma=10.0),
                         **kwargs,
                     )
                 self.assertIn(missing, str(ctx.exception))

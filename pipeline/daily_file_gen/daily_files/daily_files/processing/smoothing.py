@@ -14,7 +14,7 @@ def create_filter(source: str) -> np.ndarray:
     Filter parameters are loaded from the source configuration.
     """
     source_config = get_source_config(source)
-    speed = source_config.smoothing.speed
+    speed = source_config.ground_speed
     sigma = source_config.smoothing.sigma
 
     # Apply the Gaussian-like filter

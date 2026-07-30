@@ -4,6 +4,7 @@ common:
   unify: true
   start_date: "1992-10-25"
   end_date: "2025-12-31"
+  ground_speed: 5.7582   # km/s, median 1 Hz ground speed over 1915 long passes
   collections:
     - shortname: MERGED_TP_J1_OSTM_OST_CYCLES_V61
       concept_id: C2901523432-POCLOUD  # TBD
@@ -19,7 +20,6 @@ daily_files:
   target_mss: DTU21
   mss_diff_file: DTU15_minus_DTU21.nc
   smoothing:
-    speed: 5.745
     sigma: 15
   bad_points:
     2025-07-17:

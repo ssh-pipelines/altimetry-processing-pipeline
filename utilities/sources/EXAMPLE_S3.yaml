@@ -3,6 +3,7 @@ common:
   discovery_type: s3_bucket
   unify: false
   start_date: "2020-01-01"
+  ground_speed: 5.7582   # km/s, median 1 Hz ground speed
   source_bucket: "example-source-bucket"
   source_prefix_pattern: "data/{source}/{year}"
   source_filename_pattern: "{source}_{date}.nc"
@@ -20,5 +21,4 @@ daily_files:
   target_mss: DTU21
   mss_diff_file: DTU15_minus_DTU21.nc
   smoothing:
-    speed: 5.745
     sigma: 15

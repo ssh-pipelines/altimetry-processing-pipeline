@@ -7,11 +7,11 @@ common:
   ground_speed: 5.7582   # km/s, median 1 Hz ground speed over 1915 long passes
   collections:
     - shortname: MERGED_TP_J1_OSTM_OST_CYCLES_V61
-      concept_id: C2901523432-POCLOUD  # TBD
+      concept_id: C4153591276-POCLOUD
       priority: 1
       source_label: "Integrated Multi-Mission Ocean Altimeter Data for Climate Research Version 6.1"
       source_url: "https://podaac.jpl.nasa.gov/dataset/MERGED_TP_J1_OSTM_OST_CYCLES_V61"
-      reference: "https://doi.org/10.5067/ALTUG-TJ161"
+      reference: "https://doi.org/10.5067/ALTCY-TJA61"
 
 pipeline_init: {}
 

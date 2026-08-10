@@ -3,6 +3,7 @@ common:
   discovery_type: thredds
   unify: false
   start_date: "2018-11-24"
+  end_date: "2026-04-10"
   ground_speed: 6.6943   # km/s, median 1 Hz ground speed over 179 long passes (tools/compute_ground_speed.py)
   collections:
     - shortname: dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz

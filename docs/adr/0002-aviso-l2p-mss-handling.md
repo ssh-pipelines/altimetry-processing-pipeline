@@ -11,7 +11,7 @@ For AVISO L2P sources (S3B and the planned successors S3A, SARAL/AltiKa, HY-2B),
 
 ## Decision
 
-Skip the swap pattern for AVISO L2P. Bundle a single global DTU21 MSS grid under `pipeline/daily_file_gen/daily_files/daily_files/ref_files/mss/DTU21_mss_global.nc` (LFS-tracked; encoded as `int32` with `scale_factor=0.001` for 1 mm precision, chunked + zlib level 9; lands at **229.5 MB** down from 933 MB raw, bit-exact round-trip).
+Skip the swap pattern for AVISO L2P. Bundle DTU's official **WGS84** global DTU21 MSS grid under `pipeline/daily_file_gen/daily_files/daily_files/ref_files/mss/DTU21MSS_1min_WGS84.nc` (LFS-tracked; DTU-native `int32` + `scale_factor=0.0001` encoding, ~295 MB). The grid **must be on the WGS84 ellipsoid** to match AVISO L2P's `mean_sea_surface`; an earlier bundle on the TOPEX/Poseidon datum (`DTU21_mss_global.nc`) injected a ~0.71 m offset into S3B `ssha` — see [docs/findings/2026-08-06-s3b-mss-swap-ellipsoid-offset.md](../findings/2026-08-06-s3b-mss-swap-ellipsoid-offset.md). The MSS variable is `mean_sea_surf_sol2` on a `[lat, lon]` grid.
 
 At processing time, `AvisoL2PDailyFile` bilinearly interpolates DTU21 at each L2P granule's `(lat, lon)` via `scipy.interpolate.RegularGridInterpolator(method="linear")` and treats the result as the AvisoL2P equivalent of S6's `mean_sea_surface_sol2`:
 
@@ -25,12 +25,12 @@ The interpolator is constructed once per Lambda container in a module-level cach
 
 **Positive:**
 - Adding a new AVISO L2P source (SARAL, HY-2B, ...) requires no MSS configuration — just a `utilities/sources/{NAME}.yaml` entry.
-- We never need to know AVISO's source MSS — the math cancels regardless.
+- We never need to know AVISO's source MSS — the math cancels regardless, **provided the bundled grid is on the same (WGS84) ellipsoid as the L2P `mean_sea_surface`**. The cancellation is datum-sensitive: a mismatched ellipsoid leaves its full datum offset (~0.71 m for T/P vs WGS84) in `ssha`.
 - Identical `AvisoL2PDailyFile` behavior across all current and future L2P sources.
 
 **Negative:**
-- daily_files Lambda image grows by ~230 MB. Acceptable: well under the Lambda 10 GB image limit; ECR pull is cached at the worker level.
-- daily_files Lambda memory must accommodate the unpacked grid in RAM. xarray decodes the int32+scale_factor encoding to float64 by default (`mss[10800, 21600]` ≈ 1.87 GB); the dtu21 loader explicitly casts to float32 (~933 MB) to halve resident memory. With working overhead, `MemorySize` ≥ 3072 MB is recommended.
+- daily_files Lambda image grows by ~295 MB. Acceptable: well under the Lambda 10 GB image limit; ECR pull is cached at the worker level.
+- daily_files Lambda memory must accommodate the unpacked grid in RAM. xarray decodes the int32+scale_factor encoding to float64 by default (`mean_sea_surf_sol2[10800, 21600]` ≈ 1.87 GB); the dtu21 loader explicitly casts to float32 (~933 MB) to halve resident memory. The companion `mean_sea_surf_sol2_acc` accuracy grid is not read. With working overhead, `MemorySize` ≥ 3072 MB is recommended.
 - Pattern divergence from reference-mission processors. Documented here so future readers don't try to "fix" the inconsistency.
 
 ## Alternatives considered

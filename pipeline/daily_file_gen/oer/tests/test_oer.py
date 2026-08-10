@@ -477,6 +477,28 @@ class ReferenceCrossoverPolygonTestCase(unittest.TestCase):
         self.assertIn("coef", polygon.data_vars)
         self.assertEqual(polygon.attrs["crossover_type"], "reference")
 
+    def test_all_crossovers_filtered_out_emits_zero_polynomial(self):
+        """A day where every dssh exceeds ssh_max_error must not IndexError.
+
+        The reference path carries a systematic S3B-NASA-SSH inter-mission bias
+        that can exceed the 0.3 m ssh_max_error gate, rejecting every point.
+        iilimit (time window) is non-empty but iitoday (post-filter) is empty,
+        which previously crashed at trackid[iitoday[0]]. It must fall back to
+        the zero polynomial instead.
+        """
+        # dssh = ssh1 - ssh2 ~ 0.68 m everywhere: all above the 0.3 m gate, but
+        # times are within the target day so iilimit is non-empty.
+        ssh1 = self.ssh1 + 0.68
+        biased_ds = self._reference_dataset(
+            self.n, self.times, ssh1, self.ssh2, self.cycle1, self.pass1
+        )
+        polygon = create_polygon(
+            biased_ds, self.date, self.source, crossover_type="reference"
+        )
+        self.assertIn("coef", polygon.data_vars)
+        self.assertTrue(np.all(polygon["coef"].values == 0))
+        self.assertEqual(polygon.attrs["crossover_type"], "reference")
+
     def test_reference_pairs_no_sign_flip_single_trackid(self):
         """_reference_pairs: dssh = ssh1 - ssh2, one trackid, no stacking."""
         from oer.compute_polygon_correction import (

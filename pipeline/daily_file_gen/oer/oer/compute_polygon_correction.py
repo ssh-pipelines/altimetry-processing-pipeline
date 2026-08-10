@@ -86,29 +86,40 @@ def create_polygon(
     # in terms of this variable
     phours = (psec - cur_timestamp) / 3600
 
+    def _zero_polynomial() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """All-zero spline: a no-op correction for days with no usable data."""
+        tbrk = np.array(range(-3, 28))
+        coef = np.zeros((4, len(tbrk) - 1))
+        rms_sig = np.zeros(len(tbrk) - 1)
+        rms_res = np.zeros(len(tbrk) - 1)
+        nint = np.zeros(len(tbrk) - 1)
+        return coef, tbrk, rms_sig, rms_res, nint
+
     # pick times for spline fit: first find all passes with data
     # within 2 hour window before & after the current day.
     iilimit = np.where(
         (psec >= cur_timestamp - pgon_t_margin) & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
     )[0]
 
-    # case of no data in this day, make a polynomial that's all zeros
-    if len(iilimit) == 0:
-        logging.warning(f"No data for {source} {date}")
-        tbrk = np.array(range(-3, 28))
-        coef = np.zeros((4, len(tbrk) - 1))
-        rms_sig = np.zeros(len(tbrk) - 1)
-        rms_res = np.zeros(len(tbrk) - 1)
-        nint = np.zeros(len(tbrk) - 1)
-    else:
-        # make list of passes in this time window & find min/max times for them
+    # make list of passes in this time window & find min/max times for them.
+    # find list of data in this time window & abs(dssh) < ssh_max_error.
+    if len(iilimit) > 0:
         cplist, iitrack = np.unique(trackid[iilimit], return_index=True)
         mintime = min(phours[trackid == np.min(cplist)])
         maxtime = max(phours[trackid == np.max(cplist)])
-
-        # find list of data in this time window & abs(dssh) < ssh_max_error
         iitoday = np.where((phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error))[0]
+    else:
+        iitoday = np.array([], dtype=int)
 
+    # case of no usable data in this day, make a polynomial that's all zeros.
+    # iilimit empty = no crossovers in the day's time window; iitoday empty =
+    # crossovers exist but all were rejected by the ssh_max_error gate (seen on
+    # the reference path, where the systematic S3B-NASA-SSH bias can exceed the
+    # 0.3 m threshold). Both must fall back here to avoid indexing an empty array.
+    if len(iitoday) == 0:
+        logging.warning(f"No usable crossover data for {source} {date}; emitting zero polynomial")
+        coef, tbrk, rms_sig, rms_res, nint = _zero_polynomial()
+    else:
         # sort index by time
         ii = np.argsort(phours[iitoday])
         iitoday = iitoday[ii]

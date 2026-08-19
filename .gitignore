@@ -18,3 +18,4 @@ state_machines/rendered/
 *.e
 .claude
 test_data
+tools/diagnostics/

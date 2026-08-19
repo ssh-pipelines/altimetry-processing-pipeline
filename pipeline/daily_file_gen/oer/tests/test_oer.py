@@ -477,18 +477,15 @@ class ReferenceCrossoverPolygonTestCase(unittest.TestCase):
         self.assertIn("coef", polygon.data_vars)
         self.assertEqual(polygon.attrs["crossover_type"], "reference")
 
-    def test_all_crossovers_filtered_out_emits_zero_polynomial(self):
-        """A day where every dssh exceeds ssh_max_error must not IndexError.
+    def test_reference_path_ignores_ssh_max_error_gate(self):
+        """The reference path must NOT gate on ssh_max_error.
 
-        The reference path carries a systematic S3B-NASA-SSH inter-mission bias
-        that can exceed the 0.3 m ssh_max_error gate, rejecting every point.
-        iilimit (time window) is non-empty but iitoday (post-filter) is empty,
-        which previously crashed at trackid[iitoday[0]]. It must fall back to
-        the zero polynomial instead.
+        Reference crossovers carry a wide, expected spread (and a systematic
+        intermission offset). The 0.3 m gate that protects the self path would
+        wrongly reject them, so it is disabled on the reference path: a day where
+        every |dssh| ~ 0.68 m must still fit a non-zero polygon.
         """
-        # dssh = ssh1 - ssh2 ~ 0.68 m everywhere: all above the 0.3 m gate, but
-        # times are within the target day so iilimit is non-empty.
-        ssh1 = self.ssh1 + 0.68
+        ssh1 = self.ssh1 + 0.68  # |dssh| ~ 0.68 m everywhere, above the old gate
         biased_ds = self._reference_dataset(
             self.n, self.times, ssh1, self.ssh2, self.cycle1, self.pass1
         )
@@ -496,8 +493,44 @@ class ReferenceCrossoverPolygonTestCase(unittest.TestCase):
             biased_ds, self.date, self.source, crossover_type="reference"
         )
         self.assertIn("coef", polygon.data_vars)
-        self.assertTrue(np.all(polygon["coef"].values == 0))
+        self.assertFalse(
+            np.all(polygon["coef"].values == 0),
+            "reference path should fit these crossovers, not gate them out",
+        )
         self.assertEqual(polygon.attrs["crossover_type"], "reference")
+
+    def test_intermission_bias_subtracted_on_reference_path(self):
+        """Subtracting the bias should recenter the reference fit.
+
+        With ssh1 offset by a constant 0.68 m, fitting with
+        ``intermission_bias=0.68`` must yield (to tolerance) the same polygon as
+        fitting the un-offset data with no bias — i.e. the constant is removed
+        before the spline fit. The value is recorded in the polygon attrs.
+        """
+        offset = 0.68
+        ssh1_biased = self.ssh1 + offset
+        biased_ds = self._reference_dataset(
+            self.n, self.times, ssh1_biased, self.ssh2, self.cycle1, self.pass1
+        )
+        debiased = create_polygon(
+            biased_ds, self.date, self.source,
+            crossover_type="reference", intermission_bias=offset,
+        )
+        baseline = create_polygon(
+            self.xover_ds, self.date, self.source, crossover_type="reference",
+        )
+        np.testing.assert_allclose(
+            debiased["coef"].values, baseline["coef"].values, rtol=0, atol=1e-9,
+            err_msg="de-biased fit should match the un-offset baseline fit",
+        )
+        self.assertEqual(debiased.attrs["intermission_bias"], offset)
+
+    def test_intermission_bias_default_zero_and_recorded(self):
+        """Bias defaults to 0.0 and is recorded on the polygon attrs."""
+        polygon = create_polygon(
+            self.xover_ds, self.date, self.source, crossover_type="reference"
+        )
+        self.assertEqual(polygon.attrs["intermission_bias"], 0.0)
 
     def test_reference_pairs_no_sign_flip_single_trackid(self):
         """_reference_pairs: dssh = ssh1 - ssh2, one trackid, no stacking."""
@@ -540,6 +573,60 @@ class ReferenceCrossoverPolygonTestCase(unittest.TestCase):
         self.assertEqual(len(dssh), 2 * n)  # stacked
         np.testing.assert_allclose(dssh[:n], 0.06)
         np.testing.assert_allclose(dssh[n:], -0.06)  # sign-flipped copy
+
+
+class SelfPathGateTestCase(unittest.TestCase):
+    """The self path must keep the 0.3 m ssh_max_error gate and ignore bias."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.date = datetime(2025, 1, 1)
+        cls.source = "S6"
+        n = 20
+        ref_timestamp = datetime(1990, 1, 1).timestamp()
+        day0 = cls.date.timestamp() - ref_timestamp
+        cls.times = np.linspace(day0 + 3600, day0 + 80000, n)
+        cls.n = n
+
+        def _self_ds(ssh1, ssh2):
+            return xr.Dataset(
+                {
+                    "time1": ("time1", cls.times),
+                    "time2": ("time1", cls.times + 100),
+                    "ssh1": ("time1", ssh1),
+                    "ssh2": ("time1", ssh2),
+                    "cycle1": ("time1", np.ones(n)),
+                    "cycle2": ("time1", np.full(n, 2.0)),
+                    "pass1": ("time1", np.full(n, 3.0)),
+                    "pass2": ("time1", np.full(n, 4.0)),
+                }
+            )
+
+        cls._self_ds = staticmethod(_self_ds)
+
+    def test_self_path_gates_large_dssh(self):
+        """Every |dssh| ~ 0.68 m > 0.3 m gate -> zero polynomial on the self path."""
+        ssh1 = np.full(self.n, 0.70)
+        ssh2 = np.full(self.n, 0.02)  # dssh = 0.68 everywhere
+        polygon = create_polygon(
+            self._self_ds(ssh1, ssh2), self.date, self.source, crossover_type="self"
+        )
+        self.assertTrue(np.all(polygon["coef"].values == 0))
+
+    def test_self_path_ignores_intermission_bias(self):
+        """intermission_bias is a no-op on the self path."""
+        ssh1 = np.full(self.n, 0.10)
+        ssh2 = np.full(self.n, 0.04)  # small dssh, survives the gate
+        ds = self._self_ds(ssh1, ssh2)
+        with_bias = create_polygon(
+            ds, self.date, self.source, crossover_type="self", intermission_bias=0.5
+        )
+        without_bias = create_polygon(
+            ds, self.date, self.source, crossover_type="self", intermission_bias=0.0
+        )
+        np.testing.assert_array_equal(
+            with_bias["coef"].values, without_bias["coef"].values
+        )
 
 
 class OerCrossoverTypeDispatchTestCase(unittest.TestCase):

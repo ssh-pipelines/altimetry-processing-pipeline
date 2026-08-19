@@ -56,6 +56,7 @@ class SourceCommon:
     source_filename_pattern: str | None = None
     cycle_index_key: str | None = None
     ground_speed: float = 5.745
+    intermission_bias: float = 0.0
 
 
 T = TypeVar("T", bound=SourceCommon)

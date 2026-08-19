@@ -57,6 +57,7 @@ def create_polygon(
     source: str,
     crossover_type: str = "self",
     ground_speed: float = 5.7,
+    intermission_bias: float = 0.0,
 ) -> xr.Dataset:
     """Fit a cubic-spline orbit-error polygon to crossover differences.
 
@@ -66,6 +67,14 @@ def create_polygon(
     *ground_speed* for knot placement. Returns a dataset containing spline
     coefficients, breakpoints, and per-interval diagnostics.  If no crossover
     data falls within the day window, all coefficients are set to zero.
+
+    On the *reference* path, *intermission_bias* (a per-source constant, in
+    meters) is subtracted from ``dssh`` before fitting so the spline captures
+    pure orbit error rather than the systematic high-lat-vs-reference offset;
+    the absolute offset is applied to ``ssha`` later (finalizer). The bias is
+    ignored on the self path. The ``ssh_max_error`` gate is applied on the self
+    path only — reference crossovers carry a wide, expected spread that should
+    not be gated.
     """
     logging.info(f"Creating {crossover_type} polygon")
 
@@ -78,8 +87,13 @@ def create_polygon(
 
     if crossover_type == "reference":
         dssh, psec, trackid = _reference_pairs(xover_ds, ref_timestamp)
+        # De-bias so the spline fits orbit error, not the constant intermission
+        # offset between the high-lat source and the reference mission.
+        dssh = dssh - intermission_bias
+        apply_error_gate = False
     else:
         dssh, psec, trackid = _self_pairs(xover_ds, ref_timestamp)
+        apply_error_gate = True
 
     # need to make a time variable in units of hours, refernced
     # to current date at time 00:00:00.  Polygon will be expressed
@@ -102,20 +116,25 @@ def create_polygon(
     )[0]
 
     # make list of passes in this time window & find min/max times for them.
-    # find list of data in this time window & abs(dssh) < ssh_max_error.
+    # find list of data in this time window (self path also gates on
+    # abs(dssh) < ssh_max_error; the reference path does not — see below).
     if len(iilimit) > 0:
         cplist, iitrack = np.unique(trackid[iilimit], return_index=True)
         mintime = min(phours[trackid == np.min(cplist)])
         maxtime = max(phours[trackid == np.max(cplist)])
-        iitoday = np.where((phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error))[0]
+        in_window = (phours >= mintime) & (phours <= maxtime)
+        if apply_error_gate:
+            in_window = in_window & (np.abs(dssh) < ssh_max_error)
+        iitoday = np.where(in_window)[0]
     else:
         iitoday = np.array([], dtype=int)
 
     # case of no usable data in this day, make a polynomial that's all zeros.
     # iilimit empty = no crossovers in the day's time window; iitoday empty =
-    # crossovers exist but all were rejected by the ssh_max_error gate (seen on
-    # the reference path, where the systematic S3B-NASA-SSH bias can exceed the
-    # 0.3 m threshold). Both must fall back here to avoid indexing an empty array.
+    # crossovers exist but all were rejected by the ssh_max_error gate (self
+    # path only — the reference path skips the gate because its de-biased
+    # spread is wide and expected). Both must fall back here to avoid indexing
+    # an empty array.
     if len(iitoday) == 0:
         logging.warning(f"No usable crossover data for {source} {date}; emitting zero polynomial")
         coef, tbrk, rms_sig, rms_res, nint = _zero_polynomial()
@@ -191,6 +210,7 @@ def create_polygon(
             "title": f"{source} Spline coefficents for Orbit Error Reduction",
             "subtitle": f"created for {source} {date}",
             "crossover_type": crossover_type,
+            "intermission_bias": intermission_bias,
         },
     )
     return ds

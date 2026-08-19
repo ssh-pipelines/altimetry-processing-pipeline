@@ -17,6 +17,12 @@ class OerConfig(SourceCommon):
     (``reference`` → self OER, ``high_latitude`` → reference OER), so there is no
     ``crossover_type`` field here either.
 
+    ``intermission_bias`` is likewise inherited from ``SourceCommon`` (a single
+    canonical per-source constant). On the reference OER path it is subtracted
+    from the crossover differences before the spline fit so the spline captures
+    pure orbit error; the same constant is applied to ``ssha`` downstream in the
+    finalizer. It defaults to ``0.0`` and is a no-op on the self path.
+
     ``reference_window_size`` is the half-width (in days) of the *centered*
     crossover-fetch window used only by the reference path; the self path keeps
     its historical backward-looking window (see ``OerCorrection.make_polygon``).

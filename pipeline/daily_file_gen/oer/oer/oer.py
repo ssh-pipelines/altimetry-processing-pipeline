@@ -141,6 +141,7 @@ class OerCorrection:
             self.source,
             crossover_type=self.crossover_type,
             ground_speed=self.config.ground_speed,
+            intermission_bias=self.config.intermission_bias,
         )
         xover_ds.close()
 

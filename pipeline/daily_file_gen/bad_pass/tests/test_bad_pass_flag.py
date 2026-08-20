@@ -1,8 +1,11 @@
 import json
+import os
+import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import mock_open, patch
 
+import netCDF4 as nc
 import numpy as np
 from bad_passes.bad_pass_flag import XoverProcessor
 
@@ -16,12 +19,25 @@ class TestXoverProcessorInit(unittest.TestCase):
 
         self.assertEqual(proc.source, "GSFC")
         self.assertEqual(proc.date, date)
+        # GSFC is product_type: reference → self stacking, backward window.
+        self.assertEqual(proc.crossover_type, "self")
         self.assertEqual(proc.windowlen, 10)
         self.assertEqual(proc.windowpad, 1)
         # window_start = date - 10 days - 1 day = Jan 4
         self.assertEqual(proc.window_start, datetime(2024, 1, 4))
         # window_end = date + 1 day = Jan 16
         self.assertEqual(proc.window_end, datetime(2024, 1, 16))
+
+    def test_init_reference_source_centered_window(self):
+        """S3B is product_type: high_latitude → reference path with a centered
+        window (date - n … date + n)."""
+        date = datetime(2024, 1, 15)
+        proc = XoverProcessor("S3B", date)
+
+        self.assertEqual(proc.crossover_type, "reference")
+        n = proc.config.reference_window_size
+        self.assertEqual(proc.window_start, date - timedelta(days=n))
+        self.assertEqual(proc.window_end, date + timedelta(days=n))
 
 
 class TestGetFiles(unittest.TestCase):
@@ -123,6 +139,88 @@ class TestIdentifyBadPasses(unittest.TestCase):
         result = proc.identify_bad_passes(currentdate)
 
         self.assertEqual(len(result), 0)
+
+
+def _create_reference_xover_nc(path, cycle1, pass1, ssh1, ssh2, time1):
+    """Write a minimal *reference*-schema crossover netCDF.
+
+    Reference crossovers carry the high-lat side + interpolated reference only:
+    there is deliberately **no** ``time2``/``cycle2`` here (reading either would
+    raise on the reference path). ``pass2`` and the ``ref_*`` vars exist in real
+    granules; ``pass2`` is included to prove the reference path ignores it.
+    """
+    ds = nc.Dataset(path, "w", format="NETCDF4")
+    ds.createDimension("time1", len(time1))
+    for name, data, dtype in [
+        ("cycle1", cycle1, "f8"),
+        ("pass1", pass1, "f8"),
+        ("ssh1", ssh1, "f8"),
+        ("ssh2", ssh2, "f8"),
+        ("time1", time1, "f8"),
+        ("pass2", pass1, "f8"),
+    ]:
+        var = ds.createVariable(name, dtype, ("time1",))
+        var[:] = np.asarray(data, dtype=float)
+    ds.close()
+
+
+class TestLoadAllDataReference(unittest.TestCase):
+    """Tests for XoverProcessor.load_all_data on the reference (high_latitude) path."""
+
+    def setUp(self):
+        self.tmpfile = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        self.tmpfile.close()
+        self.n = 5
+        # cycle=7, pass=100 for every crossover → single trackid 70100
+        self.cycle1 = np.full(self.n, 7.0)
+        self.pass1 = np.full(self.n, 100.0)
+        self.ssh1 = np.array([0.10, 0.20, 0.30, 0.40, 0.50])
+        self.ssh2 = np.array([0.01, 0.02, 0.03, 0.04, 0.05])
+        self.time1 = np.linspace(0.0, 400.0, self.n)
+        _create_reference_xover_nc(
+            self.tmpfile.name, self.cycle1, self.pass1, self.ssh1, self.ssh2, self.time1
+        )
+
+    def tearDown(self):
+        if os.path.exists(self.tmpfile.name):
+            os.remove(self.tmpfile.name)
+
+    def test_reference_load_no_keyerror_and_unstacked(self):
+        proc = XoverProcessor("S3B", datetime(2024, 1, 15))
+        self.assertEqual(proc.crossover_type, "reference")
+
+        # No KeyError despite the file having no time2/cycle2.
+        proc.load_all_data([self.tmpfile.name])
+
+        # dssh = ssh1 - ssh2, length == n (not 2n), no sign-flipped stacking.
+        self.assertEqual(len(proc.dssh), self.n)
+        np.testing.assert_allclose(proc.dssh, self.ssh1 - self.ssh2)
+
+        # psec = time1 + ref epoch offset, length == n.
+        self.assertEqual(len(proc.psec), self.n)
+        ref_tstamp = XoverProcessor.REF_EPOCH.timestamp()
+        np.testing.assert_allclose(proc.psec, self.time1 + ref_tstamp)
+
+        # A single trackid per crossover keyed by cycle1*10000 + pass1.
+        expected_trackid = 7 * XoverProcessor.TRACKID_CYCLE_FACTOR + 100
+        self.assertEqual(len(proc.trackid), self.n)
+        self.assertTrue(np.all(proc.trackid == expected_trackid))
+
+    def test_reference_empty_file_yields_empty_arrays(self):
+        empty = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        empty.close()
+        try:
+            _create_reference_xover_nc(
+                empty.name, [], [], [], [], np.array([], dtype=float)
+            )
+            proc = XoverProcessor("S3B", datetime(2024, 1, 15))
+            proc.load_all_data([empty.name])
+            self.assertEqual(len(proc.dssh), 0)
+            self.assertEqual(len(proc.psec), 0)
+            self.assertEqual(len(proc.trackid), 0)
+        finally:
+            if os.path.exists(empty.name):
+                os.remove(empty.name)
 
 
 class TestWriteResultsToS3(unittest.TestCase):

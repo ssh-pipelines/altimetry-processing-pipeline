@@ -98,7 +98,7 @@ def list_s3_grids(s3_client, bucket: str, source: str) -> dict[date, str]:
 def list_local_grids(directory: str) -> dict[date, str]:
     """Return {date: local_path} for all half-degree simple grids in a directory."""
     keys: dict[date, str] = {}
-    for path in Path(directory).glob("*.nc"):
+    for path in Path(directory).glob("**/*.nc"):
         d = _parse_grid_date(path.name)
         if d is not None:
             keys[d] = str(path)

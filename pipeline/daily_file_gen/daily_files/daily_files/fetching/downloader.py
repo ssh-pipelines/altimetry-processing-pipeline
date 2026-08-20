@@ -1,5 +1,6 @@
 import gzip
 import logging
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from io import BytesIO
@@ -9,6 +10,12 @@ import requests
 import s3fs
 
 from utilities.aws_utils import aws_manager
+
+# Transient errors worth retrying at the download level. The mounted urllib3
+# adapter already retries connect/read/5xx *before* the response is returned;
+# these cover the streamed body read + gzip.decompress phase, which happens
+# after the 200 and so is invisible to the adapter.
+_RETRYABLE = (requests.exceptions.RequestException, gzip.BadGzipFile, OSError)
 
 
 def get_podaac_s3_credentials() -> dict:
@@ -31,6 +38,17 @@ class Downloader(ABC):
         ...
 
     def download_all(self, uris: list[str]) -> list:
+        """Download every URI, failing closed on the first unrecoverable one.
+
+        This intentionally does NOT skip failed granules and return a partial
+        result: a partial daily file would be written with fewer granules than
+        exist upstream, and planning (plan_jobs) only replans a date when an
+        upstream granule is *newer* than the existing product — so the gap would
+        never heal. Raising instead leaves no p1 for the date, which DOES replan
+        on the next run. Per-granule transient errors are handled by the
+        downloader's own retry (see HttpDownloader.download); only genuinely
+        unrecoverable granules reach here and abort the job.
+        """
         return [self.download(uri) for uri in uris]
 
 
@@ -63,19 +81,48 @@ class HttpDownloader(Downloader):
     pass directly to xr.open_dataset / netCDF4.Dataset(memory=...).
     """
 
-    def __init__(self, session_fn: Callable[[], requests.Session]):
+    def __init__(
+        self,
+        session_fn: Callable[[], requests.Session],
+        max_attempts: int = 5,
+        backoff_base: float = 1.0,
+        backoff_max: float = 30.0,
+    ):
         self.session = session_fn()
+        self.max_attempts = max_attempts
+        self.backoff_base = backoff_base
+        self.backoff_max = backoff_max
+
+    def _fetch(self, uri: str) -> BytesIO:
+        with self.session.get(uri, stream=True, timeout=120) as resp:
+            resp.raise_for_status()
+            raw = resp.raw
+            raw.decode_content = True
+            if uri.endswith(".gz"):
+                return BytesIO(gzip.decompress(raw.read()))
+            return BytesIO(raw.read())
 
     def download(self, uri: str) -> BytesIO:
-        try:
-            logging.debug(f"Downloading {uri}")
-            with self.session.get(uri, stream=True, timeout=120) as resp:
-                resp.raise_for_status()
-                raw = resp.raw
-                raw.decode_content = True
-                if uri.endswith(".gz"):
-                    return BytesIO(gzip.decompress(raw.read()))
-                return BytesIO(raw.read())
-        except Exception as e:
-            logging.exception(f"Error downloading {uri}")
-            raise e
+        """Download a single granule, retrying transient errors with backoff.
+
+        Retries cover the streamed body read + decompress phase (see _RETRYABLE);
+        the mounted adapter handles connect/read/5xx within each attempt. After
+        max_attempts the last error is re-raised so the job fails closed.
+        """
+        logging.debug(f"Downloading {uri}")
+        for attempt in range(self.max_attempts):
+            try:
+                return self._fetch(uri)
+            except _RETRYABLE as e:
+                if attempt + 1 >= self.max_attempts:
+                    logging.exception(
+                        f"Error downloading {uri} after {self.max_attempts} attempts"
+                    )
+                    raise
+                delay = min(self.backoff_base * 2**attempt, self.backoff_max)
+                logging.warning(
+                    f"Transient error downloading {uri} "
+                    f"(attempt {attempt + 1}/{self.max_attempts}): {e}. "
+                    f"Retrying in {delay:.1f}s"
+                )
+                time.sleep(delay)

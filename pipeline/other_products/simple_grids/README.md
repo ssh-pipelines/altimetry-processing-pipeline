@@ -88,10 +88,22 @@ exception with a JSON body containing `status`, `errorType`, `errorMessage`, and
 | Path | Description |
 |------|-------------|
 | `daily_files/p3/{source}/{year}/{prefix}_{YYYYMMDD}.nc` | Input P3 daily files (read, 10-day window) |
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Output half-degree grid (write) |
+| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Output half-degree grid (write, `reference` sources) |
+| `simple_grids/{source}/{year}/{source}_alt_hilat_simple_grid_v1_1_{YYYYMMDD}.nc` | Output half-degree grid (write, `high_latitude` sources) |
 | `simple_grids/quart_deg/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_quart_{YYYYMMDD}.nc` | Output quarter-degree grid (write, when `resolution="quart"`) |
 
-Filename prefix for daily files is determined by the global source registry (`utilities/source_profile.py`).
+Both the daily-file input prefix and the simple-grid output prefix are determined by the global
+source registry (`utilities/source_profile.py` + `utilities/products.yaml`), keyed on the source's
+`product_type`: `reference` sources produce `_alt_ref_simple_grid_` grids, `high_latitude` sources
+(e.g. S3B) produce `_alt_hilat_simple_grid_` grids.
+
+> **Known limitation (high-latitude sources).** The gridding math is source-agnostic, but the
+> output's CF **global attributes** (`title`, `product_short_name`, DOIs, `summary`, `source_url`,
+> etc. in `gridding.py`) are currently hardcoded to the NASA-SSH *reference* product. On a
+> `high_latitude` grid the `ssha`/`counts`/`basin_flag` data are correct, but those descriptive
+> attributes mislabel the product. They must be parametrized per `product_type` before high-lat
+> grids are shipped as a standalone product; they are adequate for internal validation
+> (e.g. `tools/compute_source_offset.py`).
 
 ## Step Function
 

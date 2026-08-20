@@ -8,6 +8,9 @@ products:
   simple_grid_reference:
     version: "v1_1"
     filename_template: "{source}_alt_ref_simple_grid_{version}_{YYYYMMDD}.nc"
+  simple_grid_high_latitude:
+    version: "v1_1"
+    filename_template: "{source}_alt_hilat_simple_grid_{version}_{YYYYMMDD}.nc"
   enso:
     version: "v1_1"
     filename_template: "ENSO_{YYYYMMDD}.nc"

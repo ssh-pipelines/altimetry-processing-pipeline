@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `key_exists()` check that 404'd before an upstream file landed poisoned the listing for
   that whole directory across warm-Lambda invocations. Disabled the listing cache
   (`use_listings_cache=False`) so each check issues a fresh per-key `head_object`.
+- AVISO L2P (S3B) granule downloads now retry transient body-read/decompress errors (up to 5
+  attempts, exponential backoff). A granule still unrecoverable after retries fails the job
+  closed rather than writing a partial daily file, so the date self-heals on the next run. See
+  issue #41.
 
 ## [2.3.0] - 2026-07-15
 

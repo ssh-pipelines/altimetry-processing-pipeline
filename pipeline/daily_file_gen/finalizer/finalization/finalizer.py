@@ -138,6 +138,32 @@ class Finalizer:
 
         ds.absolute_offset_applied = self.config.offset
 
+        # Remove the constant high-lat-vs-reference offset from the absolute SSH
+        # level. OER left this in place (it fits only orbit error); the finalizer
+        # ties ssha to the reference datum. Kept separate from `offset` — the two
+        # are distinct quantities (manual datum tie vs measured crossover median)
+        # and each carries its own provenance attribute. No-op for reference
+        # sources (intermission_bias defaults to 0.0).
+        bias = self.config.intermission_bias
+        if bias != 0.0:
+            try:
+                if "intermission_bias_applied" in ds.ncattrs():
+                    prev_bias = float(ds.intermission_bias_applied)
+                    if prev_bias != 0.0:
+                        ds.variables["ssha"][:] = ds.variables["ssha"][:] + prev_bias
+                        ds.variables["ssha_smoothed"][:] = (
+                            ds.variables["ssha_smoothed"][:] + prev_bias
+                        )
+            except AttributeError as e:
+                logging.exception(f"Error finalizing {filename}: {e}")
+
+            ds.variables["ssha"][:] = ds.variables["ssha"][:] - bias
+            ds.variables["ssha_smoothed"][:] = (
+                ds.variables["ssha_smoothed"][:] - bias
+            )
+
+        ds.intermission_bias_applied = bias
+
         dst_s3_path = self._build_dst_path(bucket)
 
         ds.granule_id = filename
@@ -148,6 +174,7 @@ class Finalizer:
             generation_step=3,
             bad_passes_applied=not self.bad_pass_df.empty,
             absolute_offset_applied=self.config.offset,
+            intermission_bias_applied=bias,
             bad_pass_source=bad_pass_key(self.source, self.processing_date),
         )
         processing_history = read_from_nc(ds)

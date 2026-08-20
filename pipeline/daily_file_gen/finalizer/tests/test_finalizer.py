@@ -21,6 +21,8 @@ from finalization.finalizer import (
 
 # Test constant matching the S6 config value
 S6_OFFSET = 0.0291
+# Test constant matching the S3B common.intermission_bias value
+S3B_BIAS = 0.0209
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +30,7 @@ S6_OFFSET = 0.0291
 # ---------------------------------------------------------------------------
 
 def _create_test_nc(path, n=10, source="GSFC", add_offset_attr=False,
-                    offset_value=0.0):
+                    offset_value=0.0, add_bias_attr=False, bias_value=0.0):
     """Create a minimal netCDF file with the variables the finalizer expects."""
     ds = nc.Dataset(path, "w", format="NETCDF4")
     ds.createDimension("obs", n)
@@ -50,6 +52,8 @@ def _create_test_nc(path, n=10, source="GSFC", add_offset_attr=False,
 
     if add_offset_attr:
         ds.absolute_offset_applied = offset_value
+    if add_bias_attr:
+        ds.intermission_bias_applied = bias_value
 
     ds.close()
 
@@ -81,6 +85,19 @@ class TestSourceConfig(unittest.TestCase):
         self.assertEqual(cfg.product_type, "reference")
         self.assertEqual(cfg.offset, S6_OFFSET)
         self.assertEqual(cfg.start_date, date(2026, 1, 1))
+        # reference source: no intermission bias
+        self.assertEqual(cfg.intermission_bias, 0.0)
+
+    def test_s3b_config_values(self):
+        """S3B previously TypeError'd (no finalizer: section); it now loads and
+        inherits intermission_bias from common."""
+        cfg = get_source_config("S3B")
+        self.assertEqual(cfg.product_type, "high_latitude")
+        self.assertEqual(cfg.offset, 0.0)
+        self.assertEqual(cfg.intermission_bias, S3B_BIAS)
+
+    def test_s3b_in_available_sources(self):
+        self.assertIn("S3B", get_available_sources())
 
     def test_invalid_source_raises(self):
         with self.assertRaises(ValueError):
@@ -256,12 +273,15 @@ class _ProcessTestMixin:
 
     def _setup_process_mocks(self, mock_aws, source="GSFC",
                              bad_passes_payload=None, add_offset_attr=False,
-                             offset_value=0.0):
+                             offset_value=0.0, add_bias_attr=False,
+                             bias_value=0.0):
         self.nc_src = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
         self.nc_src.close()
         _create_test_nc(self.nc_src.name, n=5, source=source,
                         add_offset_attr=add_offset_attr,
-                        offset_value=offset_value)
+                        offset_value=offset_value,
+                        add_bias_attr=add_bias_attr,
+                        bias_value=bias_value)
 
         self.uploaded_copy = self.nc_src.name + ".uploaded"
 
@@ -325,6 +345,8 @@ class TestProcessGSFC(unittest.TestCase, _ProcessTestMixin):
             f.process("bucket")
             ds = nc.Dataset(self.uploaded_copy, "r")
             self.assertEqual(float(ds.absolute_offset_applied), 0.0)
+            # reference source: bias defaults to 0.0, block is a no-op
+            self.assertEqual(float(ds.intermission_bias_applied), 0.0)
             ds.close()
         finally:
             self._cleanup()
@@ -389,6 +411,101 @@ class TestProcessS6(unittest.TestCase, _ProcessTestMixin):
             expected = orig_ssha - old_offset + S6_OFFSET
             np.testing.assert_allclose(
                 ds.variables["ssha"][:], expected, atol=1e-10
+            )
+            ds.close()
+        finally:
+            self._cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Tests — process() S3B path (intermission-bias handling)
+# ---------------------------------------------------------------------------
+
+class TestProcessS3B(unittest.TestCase, _ProcessTestMixin):
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_s3b_applies_intermission_bias(self, mock_aws):
+        proc_date = date(2020, 3, 15)
+        self._setup_process_mocks(mock_aws, source="S3B")
+
+        orig_ds = nc.Dataset(self.nc_src.name, "r")
+        orig_ssha = orig_ds.variables["ssha"][:].copy()
+        orig_smoothed = orig_ds.variables["ssha_smoothed"][:].copy()
+        orig_ds.close()
+
+        try:
+            f = Finalizer(proc_date, "S3B", "bucket")
+            f.process("bucket")
+
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            # bias is subtracted (ties absolute level onto the reference datum)
+            np.testing.assert_allclose(
+                ds.variables["ssha"][:], orig_ssha - S3B_BIAS, atol=1e-10
+            )
+            np.testing.assert_allclose(
+                ds.variables["ssha_smoothed"][:], orig_smoothed - S3B_BIAS,
+                atol=1e-10,
+            )
+            self.assertAlmostEqual(
+                float(ds.intermission_bias_applied), S3B_BIAS
+            )
+            ds.close()
+        finally:
+            self._cleanup()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_s3b_removes_previous_bias_before_applying(self, mock_aws):
+        """A pre-existing intermission_bias_applied is added back before the new
+        bias is subtracted (idempotent re-run)."""
+        proc_date = date(2020, 3, 15)
+        old_bias = 0.015
+        self._setup_process_mocks(
+            mock_aws, source="S3B",
+            add_bias_attr=True, bias_value=old_bias,
+        )
+
+        orig_ds = nc.Dataset(self.nc_src.name, "r")
+        orig_ssha = orig_ds.variables["ssha"][:].copy()
+        orig_ds.close()
+
+        try:
+            f = Finalizer(proc_date, "S3B", "bucket")
+            f.process("bucket")
+
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            expected = orig_ssha + old_bias - S3B_BIAS
+            np.testing.assert_allclose(
+                ds.variables["ssha"][:], expected, atol=1e-10
+            )
+            self.assertAlmostEqual(
+                float(ds.intermission_bias_applied), S3B_BIAS
+            )
+            ds.close()
+        finally:
+            self._cleanup()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_s3b_offset_and_bias_independent(self, mock_aws):
+        """S3B offset=0.0, so only the bias moves ssha; both provenance attrs
+        coexist independently."""
+        proc_date = date(2020, 3, 15)
+        self._setup_process_mocks(mock_aws, source="S3B")
+
+        orig_ds = nc.Dataset(self.nc_src.name, "r")
+        orig_ssha = orig_ds.variables["ssha"][:].copy()
+        orig_ds.close()
+
+        try:
+            f = Finalizer(proc_date, "S3B", "bucket")
+            f.process("bucket")
+
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            np.testing.assert_allclose(
+                ds.variables["ssha"][:], orig_ssha - S3B_BIAS, atol=1e-10
+            )
+            self.assertEqual(float(ds.absolute_offset_applied), 0.0)
+            self.assertAlmostEqual(
+                float(ds.intermission_bias_applied), S3B_BIAS
             )
             ds.close()
         finally:

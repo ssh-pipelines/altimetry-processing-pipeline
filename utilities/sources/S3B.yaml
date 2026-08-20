@@ -21,6 +21,18 @@ daily_files:
   smoothing:
     sigma: 15
 
+finalizer:
+  # offset is a manual datum tie, kept as a separate lever from the measured
+  # intermission_bias (read from common). For S3B the intermission bias is the
+  # absolute tie, so offset is a deliberate no-op; future high-lat sources may
+  # need it. See PLAN_reference_crossovers_bad_pass.md Part B.
+  offset: 0.0
+  pass_flag:
+    mean_num: 15.0
+    rms_num: 25.0
+    mean_threshold: 0.1
+    rms_threshold: 0.27
+
 xover:
   crossover_type: reference
   reference_source: NASA-SSH

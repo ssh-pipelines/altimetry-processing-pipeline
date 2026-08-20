@@ -49,6 +49,15 @@ def _succeeded_file(outcomes):
     return json.dumps([{"Input": {}, "Output": o} for o in outcomes]).encode()
 
 
+def _bad_pass_succeeded_file(results):
+    """A bad_pass ResultWriter SUCCEEDED_*.json body. The bad_pass Map has no
+    `Output: $states.result.Payload` unwrap, so each entry's Output is the raw
+    Lambda invoke envelope wrapping the handler return `{date, source, count}`."""
+    return json.dumps([
+        {"Input": {}, "Output": {"Payload": r, "StatusCode": 200}} for r in results
+    ]).encode()
+
+
 def _outcome(stage, date, kind, key, *, status="success", provenance_complete=None,
              skip_reason=None):
     metadata = {}
@@ -371,6 +380,142 @@ class TestRenderNotification(unittest.TestCase):
         }
         _, body = summarizer.render_notification(summary)
         self.assertIn(f"… ({len(outputs)} total)", body)
+
+
+# ---------------------------------------------------------------------------
+# bad_pass aggregation + rendering
+# ---------------------------------------------------------------------------
+
+class TestSummarizeBadPasses(unittest.TestCase):
+
+    def test_empty_results(self):
+        bp = summarizer.summarize_bad_passes([])
+        self.assertEqual(bp["dates_reported"], 0)
+        self.assertEqual(bp["dates_flagged"], 0)
+        self.assertEqual(bp["total_flagged"], 0)
+        self.assertEqual(bp["by_date"], [])
+
+    def test_aggregates_and_sorts_flagged_dates(self):
+        results = [
+            {"date": "2025-01-03", "source": "S6", "count": 2},
+            {"date": "2025-01-01", "source": "S6", "count": 0},
+            {"date": "2025-01-02", "source": "S6", "count": 5},
+        ]
+        bp = summarizer.summarize_bad_passes(results)
+        # all three dates reported, but only two had flags
+        self.assertEqual(bp["dates_reported"], 3)
+        self.assertEqual(bp["dates_flagged"], 2)
+        self.assertEqual(bp["total_flagged"], 7)
+        self.assertEqual(
+            bp["by_date"],
+            [{"date": "2025-01-02", "count": 5}, {"date": "2025-01-03", "count": 2}],
+        )
+
+    def test_ignores_malformed_entries(self):
+        results = [
+            {"date": "2025-01-02", "source": "S6", "count": 3},
+            {"source": "S6", "count": 4},          # no date
+            {"date": "2025-01-05", "source": "S6"},  # no count
+            "not-a-dict",
+        ]
+        bp = summarizer.summarize_bad_passes(results)
+        self.assertEqual(bp["dates_reported"], 1)
+        self.assertEqual(bp["total_flagged"], 3)
+
+
+class TestGatherBadPasses(unittest.TestCase):
+
+    def test_gather_reads_bad_pass_results(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        prefix = "pipeline_runs/S6/20250528T120000/results/bad_pass/"
+        s3 = FakeS3({
+            prefix + "run/SUCCEEDED_0.json": _bad_pass_succeeded_file([
+                {"date": "2025-01-01", "source": "S6", "count": 2},
+                {"date": "2025-01-02", "source": "S6", "count": 0},
+            ]),
+        })
+        _, _, _, bad_pass_results = summarizer.gather(s3, "b", jobs_key)
+        # the raw Lambda envelope is unwrapped back to the handler return
+        counts = {r["date"]: r["count"] for r in bad_pass_results}
+        self.assertEqual(counts, {"2025-01-01": 2, "2025-01-02": 0})
+
+
+class TestBuildSummaryBadPasses(unittest.TestCase):
+
+    def test_bad_passes_threaded_into_artifact(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        summary = summarizer.build_summary(
+            jobs_key, {}, {},
+            bad_pass_results=[{"date": "2025-01-02", "source": "S6", "count": 4}],
+            completed_at="t",
+        )
+        self.assertEqual(summary["bad_passes"]["total_flagged"], 4)
+        self.assertEqual(summary["bad_passes"]["by_date"], [{"date": "2025-01-02", "count": 4}])
+
+    def test_bad_passes_default_empty(self):
+        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+        summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
+        self.assertEqual(summary["bad_passes"]["total_flagged"], 0)
+        self.assertEqual(summary["bad_passes"]["dates_reported"], 0)
+
+
+class TestRenderBadPasses(unittest.TestCase):
+
+    def _summary(self, bad_passes):
+        # bad_pass lines render *within* the along_track section, so the summary
+        # must carry one (mirrors the real artifact from build_summary).
+        return {
+            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "parameters": {},
+            "product_pipelines": {
+                "along_track": {
+                    "expected": 1,
+                    "deliverables": {
+                        "daily_file_p3": {"stage": "finalizer", "produced": 1, "skipped": 0,
+                                          "provenance_incomplete": 0, "outputs": []},
+                    },
+                    "missing": [],
+                },
+            },
+            "bad_passes": bad_passes,
+        }
+
+    def test_flagged_rendered_with_breakdown(self):
+        summary = self._summary({
+            "dates_reported": 3, "dates_flagged": 2, "total_flagged": 7,
+            "by_date": [{"date": "2025-01-02", "count": 5}, {"date": "2025-01-03", "count": 2}],
+        })
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("bad passes [bad_pass]: 7 flagged across 2 dates", body)
+        self.assertIn("2025-01-02: 5", body)
+        self.assertIn("2025-01-03: 2", body)
+        # rendered inside the along_track section, before its trailing blank line
+        at_idx = body.index("along_track (expected 1):")
+        gridded_or_end = body.find("\n\n", at_idx)
+        self.assertIn("bad passes", body[at_idx:gridded_or_end])
+
+    def test_none_flagged_rendered(self):
+        summary = self._summary({
+            "dates_reported": 4, "dates_flagged": 0, "total_flagged": 0, "by_date": [],
+        })
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("bad passes [bad_pass]: none flagged", body)
+
+    def test_absent_section_when_no_results(self):
+        summary = self._summary({
+            "dates_reported": 0, "dates_flagged": 0, "total_flagged": 0, "by_date": [],
+        })
+        _, body = summarizer.render_notification(summary)
+        self.assertNotIn("bad passes", body)
+
+    def test_singular_date_grammar(self):
+        summary = self._summary({
+            "dates_reported": 1, "dates_flagged": 1, "total_flagged": 3,
+            "by_date": [{"date": "2025-01-02", "count": 3}],
+        })
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("across 1 date", body)
+        self.assertNotIn("across 1 dates", body)
 
 
 class TestBuildSummaryParameters(unittest.TestCase):

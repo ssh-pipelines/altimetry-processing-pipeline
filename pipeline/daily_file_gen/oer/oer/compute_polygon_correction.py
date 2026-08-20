@@ -9,17 +9,74 @@ from oer.oerfit import oerfit
 from utilities.pipeline_layout import daily_file_filename
 from utilities.source_profile import get_source_profile
 
+# trackid packs (cycle, pass) into one integer, matching the crossover schema.
+TRACKID_CYCLE_STRIDE = 10000
 
-def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Dataset:
-    """Fit a cubic-spline orbit-error polygon to self-crossover differences.
 
-    Extracts SSH crossover pairs from *xover_ds*, filters to the target day
-    (with a 2-hour margin), and fits a piecewise cubic spline via ``oerfit``.
-    Returns a dataset containing spline coefficients, breakpoints, and
-    per-interval diagnostics.  If no crossover data falls within the day
-    window, all coefficients are set to zero.
+def _self_pairs(xover_ds: xr.Dataset, ref_timestamp: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build (dssh, psec, trackid) for a *self* crossover file.
+
+    A self crossover compares two observations of the *same* satellite, so the
+    orbit error is shared: each pair contributes twice, once per side with
+    opposite sign (``dssh0`` at pass 1, ``-dssh0`` at pass 2), keyed by both
+    trackids. Reproduces the original behaviour exactly.
     """
-    logging.info("Creating polygon")
+    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
+    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
+    trackid1 = xover_ds["cycle1"].values * TRACKID_CYCLE_STRIDE + xover_ds["pass1"].values
+    trackid2 = xover_ds["cycle2"].values * TRACKID_CYCLE_STRIDE + xover_ds["pass2"].values
+    ssh1 = xover_ds["ssh1"].values
+    ssh2 = xover_ds["ssh2"].values
+
+    dssh0 = ssh1 - ssh2
+    dssh = np.concatenate((dssh0, -dssh0))
+    psec = np.concatenate((psec1, psec2))
+    trackid = np.concatenate((trackid1, trackid2))
+    return dssh, psec, trackid
+
+
+def _reference_pairs(xover_ds: xr.Dataset, ref_timestamp: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build (dssh, psec, trackid) for a *reference* crossover file.
+
+    Side 2 (``ssh2``) is the fixed reference-mission truth, not a second
+    observation of the same satellite — the orbit error is entirely on the
+    high-lat side. So there is **no** sign-flipped stacking: each crossover
+    contributes a single ``dssh = ssh1 - ssh2`` at the high-lat crossover time
+    (``time1``), keyed by the high-lat trackid only. The reference schema has no
+    ``time2``/``cycle2``; only high-lat-side vars are read here.
+    """
+    psec = np.float64(xover_ds["time1"].values + ref_timestamp)
+    trackid = xover_ds["cycle1"].values * TRACKID_CYCLE_STRIDE + xover_ds["pass1"].values
+    dssh = xover_ds["ssh1"].values - xover_ds["ssh2"].values
+    return dssh, psec, trackid
+
+
+def create_polygon(
+    xover_ds: xr.Dataset,
+    date: datetime,
+    source: str,
+    crossover_type: str = "self",
+    ground_speed: float = 5.7,
+    intermission_bias: float = 0.0,
+) -> xr.Dataset:
+    """Fit a cubic-spline orbit-error polygon to crossover differences.
+
+    Extracts SSH crossover pairs from *xover_ds* (self-stacked or reference,
+    per *crossover_type*), filters to the target day (with a 2-hour margin), and
+    fits a piecewise cubic spline via ``oerfit`` using the satellite
+    *ground_speed* for knot placement. Returns a dataset containing spline
+    coefficients, breakpoints, and per-interval diagnostics.  If no crossover
+    data falls within the day window, all coefficients are set to zero.
+
+    On the *reference* path, *intermission_bias* (a per-source constant, in
+    meters) is subtracted from ``dssh`` before fitting so the spline captures
+    pure orbit error rather than the systematic high-lat-vs-reference offset;
+    the absolute offset is applied to ``ssha`` later (finalizer). The bias is
+    ignored on the self path. The ``ssh_max_error`` gate is applied on the self
+    path only — reference crossovers carry a wide, expected spread that should
+    not be gated.
+    """
+    logging.info(f"Creating {crossover_type} polygon")
 
     pgon_def_duration = 86400  # define polygon over 1 day
     pgon_t_margin = 7200  # keep 2 hours of extra data to avoid jumps between days
@@ -28,29 +85,29 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Data
     ref_timestamp = datetime(1990, 1, 1, tzinfo=timezone.utc).timestamp()
     cur_timestamp = date.replace(tzinfo=timezone.utc).timestamp()
 
-    psec1 = np.float64(xover_ds["time1"].values + ref_timestamp)
-    psec2 = np.float64(xover_ds["time2"].values + ref_timestamp)
-    cycle1 = xover_ds["cycle1"].values
-    cycle2 = xover_ds["cycle2"].values
-    pass1 = xover_ds["pass1"].values
-    pass2 = xover_ds["pass2"].values
-    ssh1 = xover_ds["ssh1"].values
-    ssh2 = xover_ds["ssh2"].values
-
-    # compute trackid from passnum & cyc
-    trackid1 = cycle1 * 10000 + pass1
-    trackid2 = cycle2 * 10000 + pass2
-
-    # since these are self crossovers, stack pass1 & pass2 data
-    dssh0 = ssh1 - ssh2
-    dssh = np.concatenate((dssh0, -dssh0))
-    psec = np.concatenate((psec1, psec2))
-    trackid = np.concatenate((trackid1, trackid2))
+    if crossover_type == "reference":
+        dssh, psec, trackid = _reference_pairs(xover_ds, ref_timestamp)
+        # De-bias so the spline fits orbit error, not the constant intermission
+        # offset between the high-lat source and the reference mission.
+        dssh = dssh - intermission_bias
+        apply_error_gate = False
+    else:
+        dssh, psec, trackid = _self_pairs(xover_ds, ref_timestamp)
+        apply_error_gate = True
 
     # need to make a time variable in units of hours, refernced
     # to current date at time 00:00:00.  Polygon will be expressed
     # in terms of this variable
     phours = (psec - cur_timestamp) / 3600
+
+    def _zero_polynomial() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """All-zero spline: a no-op correction for days with no usable data."""
+        tbrk = np.array(range(-3, 28))
+        coef = np.zeros((4, len(tbrk) - 1))
+        rms_sig = np.zeros(len(tbrk) - 1)
+        rms_res = np.zeros(len(tbrk) - 1)
+        nint = np.zeros(len(tbrk) - 1)
+        return coef, tbrk, rms_sig, rms_res, nint
 
     # pick times for spline fit: first find all passes with data
     # within 2 hour window before & after the current day.
@@ -58,23 +115,30 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Data
         (psec >= cur_timestamp - pgon_t_margin) & (psec < cur_timestamp + pgon_def_duration + pgon_t_margin)
     )[0]
 
-    # case of no data in this day, make a polynomial that's all zeros
-    if len(iilimit) == 0:
-        logging.warning(f"No data for {source} {date}")
-        tbrk = np.array(range(-3, 28))
-        coef = np.zeros((4, len(tbrk) - 1))
-        rms_sig = np.zeros(len(tbrk) - 1)
-        rms_res = np.zeros(len(tbrk) - 1)
-        nint = np.zeros(len(tbrk) - 1)
-    else:
-        # make list of passes in this time window & find min/max times for them
+    # make list of passes in this time window & find min/max times for them.
+    # find list of data in this time window (self path also gates on
+    # abs(dssh) < ssh_max_error; the reference path does not — see below).
+    if len(iilimit) > 0:
         cplist, iitrack = np.unique(trackid[iilimit], return_index=True)
         mintime = min(phours[trackid == np.min(cplist)])
         maxtime = max(phours[trackid == np.max(cplist)])
+        in_window = (phours >= mintime) & (phours <= maxtime)
+        if apply_error_gate:
+            in_window = in_window & (np.abs(dssh) < ssh_max_error)
+        iitoday = np.where(in_window)[0]
+    else:
+        iitoday = np.array([], dtype=int)
 
-        # find list of data in this time window & abs(dssh) < ssh_max_error
-        iitoday = np.where((phours >= mintime) & (phours <= maxtime) & (np.abs(dssh) < ssh_max_error))[0]
-
+    # case of no usable data in this day, make a polynomial that's all zeros.
+    # iilimit empty = no crossovers in the day's time window; iitoday empty =
+    # crossovers exist but all were rejected by the ssh_max_error gate (self
+    # path only — the reference path skips the gate because its de-biased
+    # spread is wide and expected). Both must fall back here to avoid indexing
+    # an empty array.
+    if len(iitoday) == 0:
+        logging.warning(f"No usable crossover data for {source} {date}; emitting zero polynomial")
+        coef, tbrk, rms_sig, rms_res, nint = _zero_polynomial()
+    else:
         # sort index by time
         ii = np.argsort(phours[iitoday])
         iitoday = iitoday[ii]
@@ -93,7 +157,9 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Data
         )
 
         # send to our own spline function for fit
-        coef, tbrk, rms_sig, rms_res, nint = oerfit(phours_pad, dssh_pad, trackid_pad)
+        coef, tbrk, rms_sig, rms_res, nint = oerfit(
+            phours_pad, dssh_pad, trackid_pad, ground_speed=ground_speed
+        )
 
     # create xarray data set of variable to save in netcdf file
     ds = xr.Dataset(
@@ -143,6 +209,8 @@ def create_polygon(xover_ds: xr.Dataset, date: datetime, source: str) -> xr.Data
         attrs={
             "title": f"{source} Spline coefficents for Orbit Error Reduction",
             "subtitle": f"created for {source} {date}",
+            "crossover_type": crossover_type,
+            "intermission_bias": intermission_bias,
         },
     )
     return ds

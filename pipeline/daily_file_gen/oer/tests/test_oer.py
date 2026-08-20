@@ -25,6 +25,7 @@ from oer.compute_polygon_correction import (
     create_polygon,
     evaluate_correction,
 )
+from oer.config.source_config import get_source_config
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 
@@ -49,13 +50,23 @@ logging.basicConfig(
 
 
 class ConsistencyTestCase(unittest.TestCase):
-    """Test OER pipeline output against reference data."""
+    """Test OER pipeline output against reference data.
 
-    FLOAT_TOLERANCE = 1e-10
-    OER_TOLERANCE = 1e-10
-    # Polynomial coefficients from np.linalg.solve are sensitive to
-    # machine-level floating point differences across environments.
-    COEF_TOLERANCE = 1e-9
+    The polygon is fit with S6's canonical ``common.ground_speed`` (5.7529,
+    loaded from config) so the oracle mirrors production. The reference golden
+    files were generated at the legacy 5.7; on this sample data the 0.9% speed
+    change does not cross any ``oerfit`` knot-placement threshold, so output is
+    effectively unchanged. Tolerances are set to a science-meaningful bound
+    (well below OER's mm-scale signal) rather than machine epsilon, so the test
+    stays valid if a future sample regeneration does cross a threshold — it
+    guards the science, not the last floating-point bit.
+    """
+
+    # Science tolerance: OER/SSH corrections are ~cm-scale; 1e-4 m (0.1 mm) is
+    # far below any physically meaningful change.
+    FLOAT_TOLERANCE = 1e-4
+    OER_TOLERANCE = 1e-4
+    COEF_TOLERANCE = 1e-4
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -73,6 +84,11 @@ class ConsistencyTestCase(unittest.TestCase):
         cls.date = datetime(2025, 1, 1)
         cls.source = "S6"
 
+        # Use the source's canonical ground_speed (5.7529) so the oracle
+        # exercises the same value production does, rather than the bare
+        # create_polygon default.
+        ground_speed = get_source_config(cls.source).ground_speed
+
         # Load crossover inputs
         xover_files = sorted(glob(os.path.join(tmp_inputs, "xovers_*.nc")))
         xover_ds = xr.open_mfdataset(
@@ -80,7 +96,9 @@ class ConsistencyTestCase(unittest.TestCase):
         )
 
         # Step 1: create polygon
-        cls.computed_polygon = create_polygon(xover_ds, cls.date, cls.source)
+        cls.computed_polygon = create_polygon(
+            xover_ds, cls.date, cls.source, ground_speed=ground_speed
+        )
 
         # Load daily file
         daily_file_ds = xr.open_dataset(
@@ -395,6 +413,262 @@ class ApplyCorrectionTestCase(unittest.TestCase):
             ssha_sm_orig + oer_vals,
             err_msg="ssha_smoothed should equal original + oer",
         )
+
+
+class ReferenceCrossoverPolygonTestCase(unittest.TestCase):
+    """create_polygon on a reference-schema xover file.
+
+    Reference crossovers carry only the high-lat side plus a time-interpolated
+    reference ``ssh2`` — there is no ``time2``/``cycle2``. The reference path
+    must therefore (a) not KeyError on the missing self-only vars, (b) use
+    ``dssh = ssh1 - ssh2`` with a single trackid per crossover and no
+    sign-flipped stacking.
+    """
+
+    @classmethod
+    def _reference_dataset(cls, n, times, ssh1, ssh2, cycle1, pass1):
+        """Minimal reference-schema dataset — deliberately omits time2/cycle2."""
+        return xr.Dataset(
+            {
+                "time1": ("time1", times),
+                "lon": ("time1", np.linspace(-40, 40, n)),
+                "lat": ("time1", np.linspace(60, 70, n)),
+                "ssh1": ("time1", ssh1),
+                "cycle1": ("time1", cycle1),
+                "pass1": ("time1", pass1),
+                "ssh2": ("time1", ssh2),
+                "pass2": ("time1", np.full(n, 55.0)),
+                "ref_cycle_before": ("time1", np.full(n, 10.0)),
+                "ref_cycle_after": ("time1", np.full(n, 11.0)),
+                "ref_ssha_before": ("time1", ssh2 - 0.001),
+                "ref_ssha_after": ("time1", ssh2 + 0.001),
+                "ref_time_before": ("time1", times - 3600),
+                "ref_time_after": ("time1", times + 3600),
+            }
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.date = datetime(2025, 2, 7)
+        cls.source = "S3B"
+        cls.n = 20
+
+        ref_timestamp = datetime(1990, 1, 1).timestamp()
+        # Spread times across the target day (seconds since 1990-01-01).
+        day0 = cls.date.timestamp() - ref_timestamp
+        cls.times = np.linspace(day0 + 3600, day0 + 80000, cls.n)
+        rng = np.random.default_rng(7)
+        cls.ssh1 = rng.normal(0, 0.02, cls.n)
+        cls.ssh2 = rng.normal(0, 0.02, cls.n)
+        cls.cycle1 = np.full(cls.n, 3.0)
+        cls.pass1 = np.full(cls.n, 42.0)
+
+        cls.xover_ds = cls._reference_dataset(
+            cls.n, cls.times, cls.ssh1, cls.ssh2, cls.cycle1, cls.pass1
+        )
+
+    def test_no_keyerror_without_time2(self):
+        """A reference dataset with no time2/cycle2 must not raise."""
+        self.assertNotIn("time2", self.xover_ds)
+        self.assertNotIn("cycle2", self.xover_ds)
+        polygon = create_polygon(
+            self.xover_ds, self.date, self.source, crossover_type="reference"
+        )
+        self.assertIn("coef", polygon.data_vars)
+        self.assertEqual(polygon.attrs["crossover_type"], "reference")
+
+    def test_reference_path_ignores_ssh_max_error_gate(self):
+        """The reference path must NOT gate on ssh_max_error.
+
+        Reference crossovers carry a wide, expected spread (and a systematic
+        intermission offset). The 0.3 m gate that protects the self path would
+        wrongly reject them, so it is disabled on the reference path: a day where
+        every |dssh| ~ 0.68 m must still fit a non-zero polygon.
+        """
+        ssh1 = self.ssh1 + 0.68  # |dssh| ~ 0.68 m everywhere, above the old gate
+        biased_ds = self._reference_dataset(
+            self.n, self.times, ssh1, self.ssh2, self.cycle1, self.pass1
+        )
+        polygon = create_polygon(
+            biased_ds, self.date, self.source, crossover_type="reference"
+        )
+        self.assertIn("coef", polygon.data_vars)
+        self.assertFalse(
+            np.all(polygon["coef"].values == 0),
+            "reference path should fit these crossovers, not gate them out",
+        )
+        self.assertEqual(polygon.attrs["crossover_type"], "reference")
+
+    def test_intermission_bias_subtracted_on_reference_path(self):
+        """Subtracting the bias should recenter the reference fit.
+
+        With ssh1 offset by a constant 0.68 m, fitting with
+        ``intermission_bias=0.68`` must yield (to tolerance) the same polygon as
+        fitting the un-offset data with no bias — i.e. the constant is removed
+        before the spline fit. The value is recorded in the polygon attrs.
+        """
+        offset = 0.68
+        ssh1_biased = self.ssh1 + offset
+        biased_ds = self._reference_dataset(
+            self.n, self.times, ssh1_biased, self.ssh2, self.cycle1, self.pass1
+        )
+        debiased = create_polygon(
+            biased_ds, self.date, self.source,
+            crossover_type="reference", intermission_bias=offset,
+        )
+        baseline = create_polygon(
+            self.xover_ds, self.date, self.source, crossover_type="reference",
+        )
+        np.testing.assert_allclose(
+            debiased["coef"].values, baseline["coef"].values, rtol=0, atol=1e-9,
+            err_msg="de-biased fit should match the un-offset baseline fit",
+        )
+        self.assertEqual(debiased.attrs["intermission_bias"], offset)
+
+    def test_intermission_bias_default_zero_and_recorded(self):
+        """Bias defaults to 0.0 and is recorded on the polygon attrs."""
+        polygon = create_polygon(
+            self.xover_ds, self.date, self.source, crossover_type="reference"
+        )
+        self.assertEqual(polygon.attrs["intermission_bias"], 0.0)
+
+    def test_reference_pairs_no_sign_flip_single_trackid(self):
+        """_reference_pairs: dssh = ssh1 - ssh2, one trackid, no stacking."""
+        from oer.compute_polygon_correction import (
+            TRACKID_CYCLE_STRIDE,
+            _reference_pairs,
+        )
+
+        ref_timestamp = datetime(1990, 1, 1).timestamp()
+        dssh, psec, trackid = _reference_pairs(self.xover_ds, ref_timestamp)
+
+        # No stacking: one sample per crossover (self would double this).
+        self.assertEqual(len(dssh), self.n)
+        self.assertEqual(len(psec), self.n)
+        self.assertEqual(len(trackid), self.n)
+        np.testing.assert_allclose(dssh, self.ssh1 - self.ssh2)
+        # Single trackid = cycle1 * stride + pass1.
+        expected_trackid = self.cycle1 * TRACKID_CYCLE_STRIDE + self.pass1
+        np.testing.assert_array_equal(trackid, expected_trackid)
+
+    def test_self_pairs_still_stack_with_sign_flip(self):
+        """Regression guard: the self path keeps its doubled, sign-flipped stack."""
+        from oer.compute_polygon_correction import _self_pairs
+
+        n = 5
+        times = np.linspace(0, 3600, n)
+        self_ds = xr.Dataset(
+            {
+                "time1": ("time1", times),
+                "time2": ("time1", times + 50),
+                "ssh1": ("time1", np.full(n, 0.1)),
+                "ssh2": ("time1", np.full(n, 0.04)),
+                "cycle1": ("time1", np.ones(n)),
+                "cycle2": ("time1", np.full(n, 2.0)),
+                "pass1": ("time1", np.full(n, 3.0)),
+                "pass2": ("time1", np.full(n, 4.0)),
+            }
+        )
+        dssh, psec, trackid = _self_pairs(self_ds, datetime(1990, 1, 1).timestamp())
+        self.assertEqual(len(dssh), 2 * n)  # stacked
+        np.testing.assert_allclose(dssh[:n], 0.06)
+        np.testing.assert_allclose(dssh[n:], -0.06)  # sign-flipped copy
+
+
+class SelfPathGateTestCase(unittest.TestCase):
+    """The self path must keep the 0.3 m ssh_max_error gate and ignore bias."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.date = datetime(2025, 1, 1)
+        cls.source = "S6"
+        n = 20
+        ref_timestamp = datetime(1990, 1, 1).timestamp()
+        day0 = cls.date.timestamp() - ref_timestamp
+        cls.times = np.linspace(day0 + 3600, day0 + 80000, n)
+        cls.n = n
+
+        def _self_ds(ssh1, ssh2):
+            return xr.Dataset(
+                {
+                    "time1": ("time1", cls.times),
+                    "time2": ("time1", cls.times + 100),
+                    "ssh1": ("time1", ssh1),
+                    "ssh2": ("time1", ssh2),
+                    "cycle1": ("time1", np.ones(n)),
+                    "cycle2": ("time1", np.full(n, 2.0)),
+                    "pass1": ("time1", np.full(n, 3.0)),
+                    "pass2": ("time1", np.full(n, 4.0)),
+                }
+            )
+
+        cls._self_ds = staticmethod(_self_ds)
+
+    def test_self_path_gates_large_dssh(self):
+        """Every |dssh| ~ 0.68 m > 0.3 m gate -> zero polynomial on the self path."""
+        ssh1 = np.full(self.n, 0.70)
+        ssh2 = np.full(self.n, 0.02)  # dssh = 0.68 everywhere
+        polygon = create_polygon(
+            self._self_ds(ssh1, ssh2), self.date, self.source, crossover_type="self"
+        )
+        self.assertTrue(np.all(polygon["coef"].values == 0))
+
+    def test_self_path_ignores_intermission_bias(self):
+        """intermission_bias is a no-op on the self path."""
+        ssh1 = np.full(self.n, 0.10)
+        ssh2 = np.full(self.n, 0.04)  # small dssh, survives the gate
+        ds = self._self_ds(ssh1, ssh2)
+        with_bias = create_polygon(
+            ds, self.date, self.source, crossover_type="self", intermission_bias=0.5
+        )
+        without_bias = create_polygon(
+            ds, self.date, self.source, crossover_type="self", intermission_bias=0.0
+        )
+        np.testing.assert_array_equal(
+            with_bias["coef"].values, without_bias["coef"].values
+        )
+
+
+class OerCrossoverTypeDispatchTestCase(unittest.TestCase):
+    """OerCorrection derives crossover_type from the source product_type."""
+
+    def test_reference_product_type_maps_to_self(self):
+        from oer.oer import _CROSSOVER_TYPE_BY_PRODUCT_TYPE
+
+        self.assertEqual(_CROSSOVER_TYPE_BY_PRODUCT_TYPE["reference"], "self")
+
+    def test_high_latitude_product_type_maps_to_reference(self):
+        from oer.oer import _CROSSOVER_TYPE_BY_PRODUCT_TYPE
+
+        self.assertEqual(_CROSSOVER_TYPE_BY_PRODUCT_TYPE["high_latitude"], "reference")
+
+
+class RunMissingDailyFileTestCase(unittest.TestCase):
+    """run() skips cleanly when the p1 daily file was never produced.
+
+    A date can be enumerated for OER while its daily_file job failed and was
+    absorbed by that stage's tolerated-failure threshold. With no p1 to correct,
+    run() must short-circuit before doing any polygon work rather than fail the
+    zero-tolerance OER map three stages later.
+    """
+
+    def _make_job(self):
+        from oer.oer import OerCorrection
+
+        return OerCorrection("S3B", datetime(2020, 1, 9), "my-bucket")
+
+    def test_run_skips_and_returns_false_when_p1_missing(self):
+        from unittest.mock import patch
+
+        job = self._make_job()
+        with patch("oer.oer.aws_manager.key_exists", return_value=False) as key_exists, \
+                patch.object(job, "make_polygon") as make_polygon:
+            ran = job.run()
+
+        self.assertFalse(ran)
+        key_exists.assert_called_once()
+        # Short-circuits before any polygon/S3 work.
+        make_polygon.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -13,7 +13,6 @@ _MSS_FIELDS = ("source_mss", "target_mss", "mss_diff_file")
 
 @dataclass(kw_only=True, frozen=True)
 class SmoothingConfig:
-    speed: float
     sigma: float
 
 

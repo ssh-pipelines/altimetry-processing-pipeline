@@ -3,6 +3,7 @@ common:
   discovery_type: cmr
   unify: true
   start_date: "2026-01-01"
+  ground_speed: 5.7529
   collections:
     - shortname: JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01
       concept_id: C3332203845-POCLOUD
@@ -30,7 +31,6 @@ daily_files:
   target_mss: DTU21
   mss_diff_file: DTU18_minus_DTU21.nc
   smoothing:
-    speed: 5.745
     sigma: 15
 
 finalizer:

@@ -18,7 +18,6 @@ daily_files:
   target_mss: DTU21
   mss_diff_file: DTU18_minus_DTU21.nc
   smoothing:
-    speed: 5.745
     sigma: 15
 
 finalizer:

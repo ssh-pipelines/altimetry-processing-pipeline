@@ -17,6 +17,7 @@ class TestOerHandler(unittest.TestCase):
 
     @patch("app.OerCorrection")
     def test_handler_runs_and_returns_success(self, mock_oer):
+        mock_oer.return_value.run.return_value = True
         event = {"bucket": "my-bucket", "date": "2025-02-10", "source": "S6"}
         result = handler(event, None)
 
@@ -26,6 +27,14 @@ class TestOerHandler(unittest.TestCase):
         self.assertEqual(args[0], "S6")
         self.assertEqual(args[2], "my-bucket")
         mock_oer.return_value.run.assert_called_once_with()
+
+    @patch("app.OerCorrection")
+    def test_handler_returns_skipped_when_run_skips(self, mock_oer):
+        mock_oer.return_value.run.return_value = False
+        event = {"bucket": "my-bucket", "date": "2020-01-09", "source": "S3B"}
+        result = handler(event, None)
+
+        self.assertEqual(result, {"status": "skipped", "data": event})
 
     def test_missing_source_raises_valueerror(self):
         event = {"bucket": "my-bucket", "date": "2025-02-10"}

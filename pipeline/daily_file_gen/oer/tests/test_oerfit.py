@@ -77,5 +77,49 @@ class OutputShapeTestCase(unittest.TestCase):
         self.assertEqual(int(self.nint.sum()), self.n)
 
 
+class GroundSpeedTestCase(unittest.TestCase):
+    """Test that the ground_speed parameter drives knot placement.
+
+    oerfit converts each pass's knot time-span into an along-track distance via
+    ``delt = (tbrk2 - tbrk1) * 3600 * ground_speed / 10000`` and compares it to
+    0.5 and 1.0 to decide whether to keep the mid/end knots. Changing
+    ground_speed therefore changes the break layout for the same data.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(3)
+        # Two short (~0.4 h) passes with >20 points each, separated by ~10 h.
+        # At this duration the along-track distance delt straddles the 0.5/1.0
+        # thresholds across the speeds tested, so the retained mid/end knots —
+        # and therefore len(tbrk) — differ per speed (2.0→4, 5.7→6, 10.0→8).
+        p1 = np.sort(rng.uniform(2.0, 2.4, 30))
+        p2 = np.sort(rng.uniform(12.0, 12.4, 30))
+        cls.ptime = np.concatenate([p1, p2])
+        cls.dssh = rng.normal(0, 0.03, 60)
+        cls.trackid = np.concatenate([np.full(30, 10001.0), np.full(30, 10002.0)])
+
+    def test_default_matches_explicit_5_7(self):
+        """Omitting ground_speed reproduces the historical 5.7 result exactly."""
+        default = oerfit(self.ptime, self.dssh, self.trackid)
+        explicit = oerfit(self.ptime, self.dssh, self.trackid, ground_speed=5.7)
+        for a, b in zip(default, explicit):
+            np.testing.assert_array_equal(a, b)
+
+    def test_ground_speed_changes_breaks(self):
+        """A different ground_speed changes the spline break placement."""
+        _, tbrk_fast, *_ = oerfit(
+            self.ptime, self.dssh, self.trackid, ground_speed=10.0
+        )
+        _, tbrk_slow, *_ = oerfit(
+            self.ptime, self.dssh, self.trackid, ground_speed=2.0
+        )
+        self.assertNotEqual(
+            len(tbrk_fast),
+            len(tbrk_slow),
+            "ground_speed did not alter knot placement",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

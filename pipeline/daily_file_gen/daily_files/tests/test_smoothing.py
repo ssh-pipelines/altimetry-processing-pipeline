@@ -51,7 +51,8 @@ class EndToEndSmoothingTestCase(unittest.TestCase):
     def test_smoothing(self):
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         smoothed_val = smooth(arr)
-        self.assertAlmostEqual(8.56348, smoothed_val, 4)
+        # Oracle reflects GSFC ground_speed=5.7582 (config-derived filter width).
+        self.assertAlmostEqual(8.56695, smoothed_val, 4)
 
     def test_case_1(self):
         arr = np.array(

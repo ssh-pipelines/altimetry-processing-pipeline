@@ -12,7 +12,12 @@ import numpy as np
 OERFIT_RESULT = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
 
-def oerfit(ptime: np.ndarray, dssh: np.ndarray, trackid: np.ndarray) -> OERFIT_RESULT:
+def oerfit(
+    ptime: np.ndarray,
+    dssh: np.ndarray,
+    trackid: np.ndarray,
+    ground_speed: float = 5.7,
+) -> OERFIT_RESULT:
     """
         OERFIT computes cubic spline polynomial coefficients based on crossover
     differences.  Either 1, 2 or 3 knots are placed on each pass following
@@ -45,6 +50,10 @@ def oerfit(ptime: np.ndarray, dssh: np.ndarray, trackid: np.ndarray) -> OERFIT_R
                    pass.
                    TRACKID - value representing the cycle and pass number of the
                    "current" pass, comptued as 10000*cycle + pass_number
+                   GROUND_SPEED - satellite along-track ground speed in km/s,
+                   used to convert the knot time-span into an along-track
+                   distance when deciding where to place spline breaks. Defaults
+                   to 5.7; the per-source value comes from common.ground_speed.
           Returns:
                    COEF - M x 4 element array containing the coefficients for the
                    spline functions at breaks tbrk.
@@ -88,8 +97,9 @@ def oerfit(ptime: np.ndarray, dssh: np.ndarray, trackid: np.ndarray) -> OERFIT_R
         tbrk3[j] = np.median(pt[ii])
 
     # add a break for knots separated by more than 10,000 km
-    # estiamte speed as 5.7 km/s
-    delt = (tbrk2 - tbrk1) * 3600 * 5.7 / 10000
+    # convert the knot time-span to along-track distance via the satellite
+    # ground speed (km/s), passed in from common.ground_speed
+    delt = (tbrk2 - tbrk1) * 3600 * ground_speed / 10000
     jj = np.where((delt < 0.5) | (nxo < 10))[0]
     ii = np.where((delt > 1) & (nxo > 20))[0]
     tbrk3 = tbrk3[ii]

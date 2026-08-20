@@ -122,19 +122,50 @@ def reconcile_pipeline(
     }
 
 
+def summarize_bad_passes(results: list[dict]) -> dict:
+    """Aggregate bad_pass Job results into the Run-summary diagnostics section.
+
+    bad_pass is a **diagnostic** stage, not a deliverable — it produces no P3 and
+    has nothing to reconcile against the manifest, so it lives outside
+    `product_pipelines`. Each result is the bad_pass handler's return
+    (`{date, source, count}`); `count` is how many (cycle, pass) passes were
+    flagged for that date. We surface, per run, the flagged total and the dates
+    it fell on (dates with zero flags are counted as reported but not listed).
+    """
+    per_date: dict[str, int] = {}
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        date = r.get("date")
+        count = r.get("count")
+        if not date or not isinstance(count, int):
+            continue
+        per_date[date] = per_date.get(date, 0) + count
+
+    flagged = {d: c for d, c in per_date.items() if c > 0}
+    return {
+        "dates_reported": len(per_date),
+        "dates_flagged": len(flagged),
+        "total_flagged": sum(flagged.values()),
+        "by_date": [{"date": d, "count": flagged[d]} for d in sorted(flagged)],
+    }
+
+
 def build_summary(
     jobs_key: str,
     manifests: dict[str, list[dict]],
     outcomes: dict[str, dict[str, list[dict]]],
     *,
     run_params: dict | None = None,
+    bad_pass_results: list[dict] | None = None,
     completed_at: str | None = None,
 ) -> dict:
     """Assemble the Run summary artifact.
 
     `manifests` maps a Product-pipeline name to its Job specs; `outcomes` maps a
     Product-pipeline name to its `{stage: [outcome, ...]}`; `run_params` is the
-    pipeline_init invocation sidecar (or `{}` for legacy runs without one). All are
+    pipeline_init invocation sidecar (or `{}` for legacy runs without one);
+    `bad_pass_results` are the bad_pass stage's raw Job results (or `[]`). All are
     passed in (already loaded) so this stays pure and testable.
     """
     source, run_id = jobs_key_identity(jobs_key)
@@ -159,6 +190,7 @@ def build_summary(
         "completed_at": completed_at,
         "parameters": run_params or {},
         "product_pipelines": product_pipelines,
+        "bad_passes": summarize_bad_passes(bad_pass_results or []),
     }
 
 
@@ -254,11 +286,14 @@ def read_run_params(s3, bucket: str, jobs_key: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict]:
-    """Load all manifests, outcomes, and the params sidecar for a run.
+def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict, list[dict]]:
+    """Load all manifests, outcomes, the params sidecar, and bad_pass results.
 
     Manifests + outcomes are keyed by Product-pipeline name; run_params is the flat
-    pipeline_init invocation sidecar (or ``{}`` when absent)."""
+    pipeline_init invocation sidecar (or ``{}`` when absent); bad_pass_results are the
+    diagnostic bad_pass stage's raw Job results (``{date, source, count}``), read from
+    its ResultWriter prefix. bad_pass has no `Output: $states.result.Payload` unwrap in
+    its Map, so `read_outcomes`'s defensive envelope-unwrap is what yields the results."""
     manifests: dict[str, list[dict]] = {}
     outcomes: dict[str, dict[str, list[dict]]] = {}
     for name, cfg in PRODUCT_PIPELINES.items():
@@ -268,7 +303,8 @@ def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict]:
             for spec in cfg["deliverables"]
         }
     run_params = read_run_params(s3, bucket, jobs_key)
-    return manifests, outcomes, run_params
+    bad_pass_results = read_outcomes(s3, bucket, stage_results_prefix(jobs_key, "bad_pass"))
+    return manifests, outcomes, run_params, bad_pass_results
 
 
 # ─── SNS rendering ────────────────────────────────────────────────────────
@@ -357,6 +393,30 @@ def _missing_line(missing: list[dict]) -> str:
     return f"  missing: {preview}"
 
 
+def _bad_pass_lines(bp: dict) -> list[str]:
+    """Render the diagnostic bad-pass lines *within* the along_track section: the
+    flagged total across the run and the per-date breakdown (dates with zero flags
+    are not listed). Indented to match the section's deliverable lines. Empty when
+    no bad_pass results were found (a run predating the stage, or none reported)."""
+    if not bp or not bp.get("dates_reported"):
+        return []
+
+    total = bp.get("total_flagged", 0)
+    if total == 0:
+        return ["  bad passes [bad_pass]: none flagged"]
+
+    lines = [
+        f"  bad passes [bad_pass]: {total} flagged across {bp['dates_flagged']} "
+        f"date{'s' if bp['dates_flagged'] != 1 else ''}"
+    ]
+    by_date = bp.get("by_date", [])
+    for entry in by_date[:_MAX_LISTED]:
+        lines.append(f"    {entry['date']}: {entry['count']}")
+    if len(by_date) > _MAX_LISTED:
+        lines.append(f"    … ({len(by_date)} dates total)")
+    return lines
+
+
 def render_notification(summary: dict) -> tuple[str, str]:
     """(subject, body) for the success SNS, rendered from the Run summary artifact."""
     source = summary["source"]
@@ -376,6 +436,10 @@ def render_notification(summary: dict) -> tuple[str, str]:
         lines.append(f"{name} (expected {section['expected']}):")
         if name == "along_track":
             lines += _along_track_lines(section["deliverables"], unified)
+            # bad_pass runs inside the along-track chain (between xover_p2 and the
+            # finalizer); its diagnostic counts belong under this section, not as a
+            # trailing block.
+            lines += _bad_pass_lines(summary.get("bad_passes", {}))
         else:
             for kind, d in section["deliverables"].items():
                 lines += _deliverable_lines(_DELIVERABLE_LABELS.get(kind, kind), d)

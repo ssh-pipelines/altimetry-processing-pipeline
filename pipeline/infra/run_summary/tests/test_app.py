@@ -39,7 +39,7 @@ class TestRunSummaryHandler(unittest.TestCase):
     @patch("app.s3")
     @patch("app.summarizer")
     def test_happy_path_writes_and_publishes(self, mock_sum, mock_s3, mock_sns):
-        mock_sum.gather.return_value = ({}, {}, {})
+        mock_sum.gather.return_value = ({}, {}, {}, [])
         mock_sum.build_summary.return_value = _summary()
         mock_sum.summary_key.return_value = "runs/summary.json"
         mock_sum.render_notification.return_value = ("subject", "message")
@@ -55,7 +55,7 @@ class TestRunSummaryHandler(unittest.TestCase):
     @patch("app.s3")
     @patch("app.summarizer")
     def test_s3_and_sns_failures_are_swallowed(self, mock_sum, mock_s3, mock_sns):
-        mock_sum.gather.return_value = ({}, {}, {})
+        mock_sum.gather.return_value = ({}, {}, {}, [])
         mock_sum.build_summary.return_value = _summary()
         mock_sum.summary_key.return_value = "runs/summary.json"
         mock_sum.render_notification.return_value = ("subject", "message")

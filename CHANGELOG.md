@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subtracts a per-source `intermission_bias` before the fit, disables the 0.3 m
   `ssh_max_error` gate, and uses a centered crossover-fetch window. Self-crossover
   output (S6/GSFC) is unchanged.
+- Reference-crossover support in the `bad_pass` stage: dispatches self vs reference from
+  `product_type` and adds a reference load path (unstacked `dssh = ssh1 - ssh2`, centered
+  window) so `high_latitude` sources no longer error. Self-crossover flagging is unchanged.
+- Intermission-bias absolute correction in the `finalizer`: for `high_latitude` sources it
+  subtracts the per-source `intermission_bias` from `ssha`/`ssha_smoothed`, tying the level
+  to the reference datum (idempotent via `intermission_bias_applied`). Adds the S3B
+  `finalizer` config. No-op for reference sources.
+- High-latitude simple grids: registers the `simple_grid_high_latitude` product so the
+  `simple_grids` stage runs on `high_latitude` sources (output `_alt_hilat_simple_grid_`).
+- Flagged bad-pass counts in the `run_summary` notification, reported within the
+  along-track section.
 - Per-source `ground_speed` and `intermission_bias` in the `common` section of source
   configs — one canonical value per source, shared by OER (knot placement, bias
   removal) and daily-file smoothing.

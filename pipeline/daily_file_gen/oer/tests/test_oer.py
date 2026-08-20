@@ -643,5 +643,33 @@ class OerCrossoverTypeDispatchTestCase(unittest.TestCase):
         self.assertEqual(_CROSSOVER_TYPE_BY_PRODUCT_TYPE["high_latitude"], "reference")
 
 
+class RunMissingDailyFileTestCase(unittest.TestCase):
+    """run() skips cleanly when the p1 daily file was never produced.
+
+    A date can be enumerated for OER while its daily_file job failed and was
+    absorbed by that stage's tolerated-failure threshold. With no p1 to correct,
+    run() must short-circuit before doing any polygon work rather than fail the
+    zero-tolerance OER map three stages later.
+    """
+
+    def _make_job(self):
+        from oer.oer import OerCorrection
+
+        return OerCorrection("S3B", datetime(2020, 1, 9), "my-bucket")
+
+    def test_run_skips_and_returns_false_when_p1_missing(self):
+        from unittest.mock import patch
+
+        job = self._make_job()
+        with patch("oer.oer.aws_manager.key_exists", return_value=False) as key_exists, \
+                patch.object(job, "make_polygon") as make_polygon:
+            ran = job.run()
+
+        self.assertFalse(ran)
+        key_exists.assert_called_once()
+        # Short-circuits before any polygon/S3 work.
+        make_polygon.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

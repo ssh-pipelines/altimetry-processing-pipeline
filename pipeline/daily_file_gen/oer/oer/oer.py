@@ -194,11 +194,25 @@ class OerCorrection:
         self._save_and_upload(ds, daily_file_key(self.profile, self.date, "p2"), encoding)
         return ds
 
-    def run(self) -> None:
+    def run(self) -> bool:
         """Run the full OER pipeline: polygon, correction, and daily-file update.
 
         Each intermediate and final netCDF is uploaded to ``self.bucket``.
+
+        Returns ``True`` if OER ran, ``False`` if it was skipped because the p1
+        daily file does not exist. A date can be enumerated for OER while its
+        daily_file job failed and was absorbed by that stage's tolerated-failure
+        threshold, leaving no p1 to correct. There is nothing to do in that case,
+        so we skip cleanly rather than fail the (zero-tolerance) OER map.
         """
+        daily_file_uri = s3_uri(self.bucket, daily_file_key(self.profile, self.date, "p1"))
+        if not aws_manager.key_exists(daily_file_uri):
+            logging.warning(
+                f"Skipping OER for {self.source} {self.date}: p1 daily file does not "
+                f"exist ({daily_file_uri})"
+            )
+            return False
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             self._tmp_dir = tmp_dir
 
@@ -214,3 +228,4 @@ class OerCorrection:
             daily_file_ds.close()
 
         logging.info(f"OER complete for {self.source} {self.date}")
+        return True

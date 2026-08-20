@@ -25,8 +25,8 @@ def handler(event, context):
 
     try:
         oer_job = OerCorrection(source, date, bucket)
-        oer_job.run()
-        result = {"status": "success", "data": event}
+        ran = oer_job.run()
+        result = {"status": "success" if ran else "skipped", "data": event}
         return result
     except Exception as e:
         error_response = {

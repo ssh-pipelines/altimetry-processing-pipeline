@@ -236,5 +236,74 @@ class TestMergeGranulesThreshold(unittest.TestCase):
             gridder.merge_granules()
 
 
+class TestParseBasinConnections(unittest.TestCase):
+    """The basin adjacency parser skips the HDR-prefixed product-style header (and
+    blank lines) that ships on the PO.DAAC-served copy of basin_connection_table.txt."""
+
+    def test_parses_plain_rows(self):
+        from simple_gridder.gridding import parse_basin_connections
+
+        conns = parse_basin_connections(["1:1,14,28", "2:2,23"])
+        self.assertEqual([c.id for c in conns], [1, 2])
+        np.testing.assert_array_equal(conns[0].valid_basins, [1, 14, 28])
+        np.testing.assert_array_equal(conns[1].valid_basins, [2, 23])
+
+    def test_skips_hdr_header_and_blank_lines(self):
+        from simple_gridder.gridding import parse_basin_connections
+
+        lines = [
+            "HDR NASA-SSH Basin Connection Table",
+            "HDR",
+            "HDR Format: <id>:<comma-separated ids>",
+            "HDR Header_End-------------------------------------",
+            "",
+            "1:1,14,28",
+            "   ",
+            "2:2,23",
+        ]
+        conns = parse_basin_connections(lines)
+        self.assertEqual([c.id for c in conns], [1, 2])
+
+    def test_valid_basins_are_int16(self):
+        from simple_gridder.gridding import parse_basin_connections
+
+        conns = parse_basin_connections(["1:1,14,28"])
+        self.assertEqual(conns[0].valid_basins.dtype, np.int16)
+
+    def test_real_table_parses_and_holds_invariants(self):
+        """The shipped basin_connection_table.txt loads through the header-tolerant
+        parser and satisfies the invariants documented in its header / ADR 0007."""
+        import os
+
+        from simple_gridder.gridding import parse_basin_connections
+
+        path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "simple_gridder",
+            "ref_files",
+            "basin_connection_table.txt",
+        )
+        with open(path) as f:
+            conns = parse_basin_connections(f)
+
+        self.assertGreater(len(conns), 0)
+        table = {c.id: list(c.valid_basins) for c in conns}
+
+        # every basin lists itself
+        self.assertEqual([i for i, vs in table.items() if i not in vs], [])
+        # no duplicates within a row
+        self.assertEqual([i for i, vs in table.items() if len(vs) != len(set(vs))], [])
+        # symmetric for ids < 1000
+        asym = [
+            (a, b)
+            for a, vs in table.items()
+            if a < 1000
+            for b in vs
+            if b < 1000 and b != a and b in table and a not in table[b]
+        ]
+        self.assertEqual(asym, [])
+
+
 if __name__ == "__main__":
     unittest.main()

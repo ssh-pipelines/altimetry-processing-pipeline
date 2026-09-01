@@ -238,7 +238,7 @@ class TestMergeGranulesThreshold(unittest.TestCase):
 
 class TestParseBasinConnections(unittest.TestCase):
     """The basin adjacency parser skips the HDR-prefixed product-style header (and
-    blank lines) that ships on the PO.DAAC-served copy of basin_connection_table.txt."""
+    blank lines) that ships on the PO.DAAC-served copy of basin_connection_table_v2.txt."""
 
     def test_parses_plain_rows(self):
         from simple_gridder.gridding import parse_basin_connections
@@ -271,7 +271,7 @@ class TestParseBasinConnections(unittest.TestCase):
         self.assertEqual(conns[0].valid_basins.dtype, np.int16)
 
     def test_real_table_parses_and_holds_invariants(self):
-        """The shipped basin_connection_table.txt loads through the header-tolerant
+        """The shipped basin_connection_table_v2.txt loads through the header-tolerant
         parser and satisfies the invariants documented in its header / ADR 0007."""
         import os
 
@@ -282,7 +282,7 @@ class TestParseBasinConnections(unittest.TestCase):
             "..",
             "simple_gridder",
             "ref_files",
-            "basin_connection_table.txt",
+            "basin_connection_table_v2.txt",
         )
         with open(path) as f:
             conns = parse_basin_connections(f)

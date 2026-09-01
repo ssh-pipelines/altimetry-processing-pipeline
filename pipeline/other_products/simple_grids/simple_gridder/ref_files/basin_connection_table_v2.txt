@@ -18,8 +18,8 @@ HDR   - no duplicate ids within a row
 HDR   - connections are symmetric for basin ids < 1000: if A lists B then B lists A
 HDR   - basin ids >= 1000 are isolated water bodies (self-only)
 HDR
-HDR Version 1.0
-HDR Last updated: 2026-08-24
+HDR Version 2.0
+HDR Last updated: 2026-09-01
 HDR
 HDR Header_End-------------------------------------
 1:1,14,28,34,43,52,53,72,105,106,110,148,127,250

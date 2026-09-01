@@ -89,7 +89,7 @@ class Gridder:
         self.nnan_count = 0
 
     def load_basin_connections(self) -> Iterable[basin_connection]:
-        with open("simple_gridder/ref_files/basin_connection_table.txt", "r") as f:
+        with open("simple_gridder/ref_files/basin_connection_table_v2.txt", "r") as f:
             return parse_basin_connections(f)
 
     def make_grid(self, filename: str) -> xr.Dataset:

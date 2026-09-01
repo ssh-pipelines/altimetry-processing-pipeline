@@ -26,7 +26,7 @@ simple_grids/
 │   ├── gridder.py                      # SimpleGridderJob class (date windowing, S3 I/O, encoding)
 │   ├── gridding.py                     # Gridder, Source, Target classes (resampling logic)
 │   └── ref_files/
-│       ├── basin_connection_table.txt   # Basin adjacency rules for resampling
+│       ├── basin_connection_table_v2.txt   # Basin adjacency rules for resampling
 │       ├── new_basin_mask_halfdeg.nc    # Half-degree basin mask
 │       ├── new_basin_mask_quartdeg.nc   # Quarter-degree basin mask
 │       └── basin/

@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
 - The `daily_file` Distributed Map now sets `ToleratedFailurePercentage: 5`, so a
   small fraction of failing items no longer aborts the whole map run.
+- Updated the `simple_grids` basin connection table (fixed asymmetric connections,
+  removed a duplicate, pruned spurious links across 12 basins), versioned it in the
+  filename (`basin_connection_table_v2.txt`), and added an `HDR` header matching the
+  NASA-SSH PO.DAAC reference-file convention. The loader now skips the header.
 
 ### Fixed
 - S3B MSS-swap ellipsoid bug: the bundled DTU21 mean-sea-surface grid was on the

@@ -47,6 +47,24 @@ class basin_connection:
     valid_basins: Iterable[int]
 
 
+def parse_basin_connections(lines: Iterable[str]) -> list[basin_connection]:
+    """Parse basin adjacency rows of the form ``<id>:<comma-separated ids>``.
+
+    The table is also served on PO.DAAC as a reference resource, so it carries an
+    ``HDR``-prefixed header (matching the NASA-SSH product-header convention,
+    terminated by an ``HDR Header_End`` line). Header lines and blank lines are
+    skipped; parsing resumes at the first data row.
+    """
+    basin_connections = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("HDR"):
+            continue
+        i, valid_is = line.split(":", 1)
+        basin_connections.append(basin_connection(int(i), np.int16(valid_is.split(","))))
+    return basin_connections
+
+
 class Gridder:
     ROI: int = 6e5
     SIGMA: int = 175e3
@@ -71,12 +89,8 @@ class Gridder:
         self.nnan_count = 0
 
     def load_basin_connections(self) -> Iterable[basin_connection]:
-        basin_connections = []
-        with open("simple_gridder/ref_files/basin_connection_table.txt", "r") as f:
-            for line in f:
-                i, valid_is = line.split(":")
-                basin_connections.append(basin_connection(int(i), np.int16(valid_is.split(","))))
-        return basin_connections
+        with open("simple_gridder/ref_files/basin_connection_table_v2.txt", "r") as f:
+            return parse_basin_connections(f)
 
     def make_grid(self, filename: str) -> xr.Dataset:
         self.target = Target(self.resolution)

@@ -11,9 +11,12 @@ For each invocation, the Lambda:
 3. **Queries source modification times** depending on the source's `discovery_type`:
    - **CMR** (`cmr`): Queries NASA CMR for granule modification times using the source's configured `concept_id`(s). For sources with multiple collections (e.g., S6), resolves per-cycle/pass priority so the highest-priority collection wins.
    - **S3 bucket** (`s3_bucket`): Lists the source bucket and extracts modification times from S3 object metadata. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and uses the `LastModified` of covering cycle files as the source modification time for each date.
-4. **Compares timestamps** — a date needs processing if: no daily file exists, no source granule exists but no daily file either, or the source granule was modified after the daily file was last generated. With `force_update`, all dates are included unconditionally.
-5. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording how the run was invoked (the given `start`/`end`/`force_update` overrides, a `defaults_used` flag, and the `resolved_start`/`resolved_end`). The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (Distributed Maps, `rewrite_manifest`, `set_sg_jobs`) depend on; `run_summary` reads the sidecar to report invocation parameters in the success notification (see ADR 0005).
-6. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
+4. **Compares timestamps** — a date with granules needs processing if no daily file exists, or if the newest granule was modified after the daily file was last generated. With `force_update`, all dates are included unconditionally.
+5. **Fills interior gaps** — some sources have dates with no upstream granules at all (GSFC 6.1 has one spanning 2019-02-24 through 2019-03-06). Those dates are planned with an empty `granules` list, which `daily_files` turns into an empty daily file carrying the expected structure and metadata.
+
+   A granule-less date is only filled when it falls *before* the last date that has granules, i.e. when upstream coverage resumes after it. Granule-less dates at the trailing edge are skipped: upstream products land well behind real time, so their emptiness usually means "not published yet", and writing empty files there would churn the weekly simple grids and ENSO products until the data arrives. If nothing at all is enumerated for the range, nothing is planned — so **backfilling a known gap requires a range that extends past it**, far enough that real granules bound the gap on the late side.
+6. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording how the run was invoked (the given `start`/`end`/`force_update` overrides, a `defaults_used` flag, and the `resolved_start`/`resolved_end`). The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (Distributed Maps, `rewrite_manifest`, `set_sg_jobs`) depend on; `run_summary` reads the sidecar to report invocation parameters in the success notification (see ADR 0005).
+7. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
 
 ## Directory structure
 
@@ -60,12 +63,15 @@ The output is consumed directly by the next Step Function state (Daily File Exec
 
 ### Jobs manifest format
 
-Each entry in the manifest is a job for one date:
+Each entry in the manifest is a job for one date, carrying the granule URIs that
+`daily_files` should download. An empty `granules` list is meaningful, not a
+defect: it instructs `daily_files` to write an empty daily file for a date the
+source genuinely has no data for.
 
 ```json
 [
-  {"date": "2025-01-15", "source": "S6", "bucket": "my-bucket"},
-  {"date": "2025-01-16", "source": "S6", "bucket": "my-bucket"}
+  {"date": "2025-01-15", "source": "S6", "bucket": "my-bucket", "granules": ["s3://…/a.nc", "s3://…/b.nc"]},
+  {"date": "2025-01-16", "source": "S6", "bucket": "my-bucket", "granules": []}
 ]
 ```
 

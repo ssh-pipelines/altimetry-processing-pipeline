@@ -52,6 +52,10 @@ source is fully supported.
 - `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
 
 ### Fixed
+- Dates with no upstream granules generate empty along-track files again. 
+  `pipeline_init` now plans every date from the start of the range through the last date with 
+  granules, emitting an empty `granules` list for the gaps, which `daily_files` turns into an 
+  empty daily file. Granule-less dates *after* the last granule are still skipped.
 - S3B MSS-swap ellipsoid bug: the bundled DTU21 mean-sea-surface grid was on the
   TOPEX/Poseidon ellipsoid while the AVISO L2P SSH is on WGS84, a ~0.68 m offset. Rebuilt
   the grid on WGS84 (`DTU21MSS_1min_WGS84.nc`); no code change. See ADR-0002.

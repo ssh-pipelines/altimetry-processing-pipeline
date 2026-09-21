@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+High-latitude (S3B) support is still a work in progress and is not yet enabled in
+production. The entries below ship in the code but remain unannounced until that
+source is fully supported.
+
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
   against the finalized NASA-SSH P3 reference mission instead of themselves, selected by
@@ -31,15 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `finalizer` config. No-op for reference sources.
 - High-latitude simple grids: registers the `simple_grid_high_latitude` product so the
   `simple_grids` stage runs on `high_latitude` sources (output `_alt_hilat_simple_grid_`).
-- Flagged bad-pass counts in the `run_summary` notification, reported within the
-  along-track section.
-- Per-source `ground_speed` and `intermission_bias` in the `common` section of source
-  configs — one canonical value per source, shared by OER (knot placement, bias
-  removal) and daily-file smoothing.
-- `tools/compute_ground_speed.py` and `tools/compute_intermission_bias.py` derive the
-  per-source constants above from a source's L2 files.
-- Handler tests for the `oer`, `bad_pass`, `daily_files`, `indicators`, and
-  `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`.
+- Per-source `intermission_bias` in the `common` section of source configs, consumed by
+  the high-latitude OER bias removal and the finalizer datum correction.
+- `tools/compute_intermission_bias.py` derives the per-source `intermission_bias`
+  constant from a source's L2 files.
 - Retry/backoff on the shared AVISO session (`utilities.aviso_auth`): an `HTTPAdapter`
   with exponential backoff + jitter (5 attempts, `backoff_max=60`) retries transient
   connect/read errors and 429/5xx responses, since AVISO's THREDDS server intermittently
@@ -51,6 +50,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CrossoverProcessor`/`CrossoverSpec` registry that dispatches on `crossover_type`).
   Self-crossover output is preserved bit-for-bit.
 - `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
+
+### Fixed
+- S3B MSS-swap ellipsoid bug: the bundled DTU21 mean-sea-surface grid was on the
+  TOPEX/Poseidon ellipsoid while the AVISO L2P SSH is on WGS84, a ~0.68 m offset. Rebuilt
+  the grid on WGS84 (`DTU21MSS_1min_WGS84.nc`); no code change. See ADR-0002.
+- AVISO L2P (S3B) granule downloads now retry transient body-read/decompress errors (up to 5
+  attempts, exponential backoff). A granule still unrecoverable after retries fails the job
+  closed rather than writing a partial daily file, so the date self-heals on the next run. See
+  issue #41.
+- AVISO `inv_bar_cor` is filled with NaN (written as fill) rather than `0.0`.
+
+## [2.4.0] - 2026-09-21
+
+### Added
+- Flagged bad-pass counts in the `run_summary` notification, reported within the
+  along-track section.
+- Per-source `ground_speed` in the `common` section of source configs — one canonical
+  value per source, shared by OER (knot placement) and daily-file smoothing.
+- `tools/compute_ground_speed.py` derives the per-source `ground_speed` constant from a
+  source's L2 files.
+- Handler tests for the `oer`, `bad_pass`, `daily_files`, `indicators`, and
+  `run_summary` Lambda entry points (previously untested), plus `utilities.encoding`.
+
+### Changed
 - The `daily_file` Distributed Map now sets `ToleratedFailurePercentage: 5`, so a
   small fraction of failing items no longer aborts the whole map run.
 - Updated the `simple_grids` basin connection table (fixed asymmetric connections,
@@ -63,23 +86,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and removed unused in-memory data.
 
 ### Fixed
-- S3B MSS-swap ellipsoid bug: the bundled DTU21 mean-sea-surface grid was on the
-  TOPEX/Poseidon ellipsoid while the AVISO L2P SSH is on WGS84, a ~0.68 m offset. Rebuilt
-  the grid on WGS84 (`DTU21MSS_1min_WGS84.nc`); no code change. See ADR-0002.
 - OER now skips cleanly (`status: skipped`) when a date's p1 daily file does not exist,
   instead of failing the zero-tolerance OER map. A `daily_file` job can fail and be
   absorbed by its `ToleratedFailurePercentage`, leaving no p1 to correct.
-- Reference-crossover jobs intermittently reported "No daily file … skipping" for files
-  that existed: `s3fs` caches parent-directory listings forever by default, so a
-  `key_exists()` check that 404'd before an upstream file landed poisoned the listing for
-  that whole directory across warm-Lambda invocations. Disabled the listing cache
-  (`use_listings_cache=False`) so each check issues a fresh per-key `head_object`.
-- AVISO L2P (S3B) granule downloads now retry transient body-read/decompress errors (up to 5
-  attempts, exponential backoff). A granule still unrecoverable after retries fails the job
-  closed rather than writing a partial daily file, so the date self-heals on the next run. See
-  issue #41.
+- `key_exists()` checks could report a file missing after it had landed: `s3fs` caches
+  parent-directory listings forever by default, so a check that 404'd before an upstream
+  file appeared poisoned that directory's listing across warm-Lambda invocations. Disabled
+  the listing cache (`use_listings_cache=False`) so each check issues a fresh per-key
+  `head_object`.
 - GSFC ingest no longer silently emits corrupt corrections.
-- AVISO `inv_bar_cor` is filled with NaN (written as fill) rather than `0.0`. 
 
 ## [2.3.0] - 2026-07-15
 
@@ -190,7 +205,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Releases before 2.2.0 predate this changelog; see the git tags for their contents:
 [v2.1.0], [v2.0.0], [v1.1.0].
 
-[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.1.0...v2.2.0
 [v2.1.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/releases/tag/v2.1.0

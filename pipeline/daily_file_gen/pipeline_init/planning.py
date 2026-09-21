@@ -40,11 +40,17 @@ def plan_jobs(
         existing = scan_existing_p3_mod_times(bucket, source_config, start, end)
 
     jobs: list[dict] = []
-    for d, grs in sorted(by_date.items()):
-        latest_upstream = max(g.mod_time for g in grs)
+    for d in dates_to_plan(start, end, by_date):
+        grs = by_date.get(d, [])
         existing_mod = existing.get(d)
 
-        if existing_mod is not None and not _is_newer(latest_upstream, existing_mod) and not force_update:
+        if grs:
+            latest_upstream = max(g.mod_time for g in grs)
+            if existing_mod is not None and not _is_newer(latest_upstream, existing_mod):
+                continue
+        elif existing_mod is not None:
+            # Interior gap that already has its empty daily file; there is
+            # nothing upstream that could supersede it.
             continue
 
         sorted_grs = sorted(grs, key=lambda g: (g.sort_key, g.uri))
@@ -57,6 +63,33 @@ def plan_jobs(
             }
         )
     return jobs
+
+
+def dates_to_plan(start: date, end: date, by_date: dict[date, list[GranuleRef]]) -> list[date]:
+    """Dates to consider for this run: every day from ``start`` through the last
+    date that has upstream granules, plus any granule date outside that span.
+
+    Dates within the span that have no granules are *interior gaps* — upstream
+    coverage resumes after them, so their emptiness is a real property of the
+    source rather than publication latency. They are planned with an empty
+    ``granules`` list, which ``daily_files`` turns into an empty daily file
+    (GSFC 6.1 has one such gap, 2019-02-24 through 2019-03-06; see issue #40).
+
+    Dates *after* the last granule are deliberately excluded. Upstream products
+    land well behind real time, so a granule-less trailing date usually means
+    "not published yet", and writing empty files there would churn the weekly
+    grids and ENSO products until the data arrives.
+
+    When nothing at all was enumerated there is no interior to speak of and no
+    dates are planned — a run over a window upstream has not reached yet must
+    not blanket it with empty files. Backfilling a known gap therefore needs a
+    range that extends past the gap, so that real granules bound it.
+    """
+    if not by_date:
+        return []
+    span_end = min(end, max(by_date))
+    span = {start + timedelta(days=i) for i in range((span_end - start).days + 1)}
+    return sorted(span | by_date.keys())
 
 
 def _is_newer(upstream: datetime, existing: datetime) -> bool:

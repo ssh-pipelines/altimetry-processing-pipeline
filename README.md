@@ -11,27 +11,16 @@ Pipeline consists of:
 
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
+Sources with `unify: true` then have their finalized daily files copied into the
+unified NASA-SSH product.
+
 ### Additional product generation
 
-Simple grids -> Indicators -> Imagery for website
+Simple grids -> ENSO grids & imagery -> Indicators
 
-```
-                  GSFC Data     S6 Data
-                      |            |
-                      +------------+
-                            |
-                            v
-                [ Generate Daily Files ]
-                            |   
-                            v   
-                [ Generate Simple Grids ]
-                            |  
-                            v  
-             +--------------+--------------+ 
-             |                             | 
-             v                             v 
-[ Generate ENSO Maps & Imagery]  [ Generate Indicators ]
-```
+For the end-to-end picture — which upstream collections are ingested from where,
+which products are published at each level, and the one place a published product
+re-enters as an input — see **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
 
 ## Description
 
@@ -75,7 +64,9 @@ pipeline.asl.json
 - **Two crossover passes**: The xover state machine is invoked twice — once with `df_version=p1` (before OER) and once with `df_version=p2` (after OER).
 - **Conditional unification**: Sources with `unify=true` (GSFC, S6) get their finalized daily files copied to a unified `NASA-SSH` prefix by the unifier. The `rewrite_manifest` Lambda then produces a new jobs manifest under the NASA-SSH source for downstream simple grid processing.
 
-For a detailed reference of every S3 object written by each stage (success and failure), key patterns, and operator troubleshooting tips, see **[S3_DATA_FLOW.md](S3_DATA_FLOW.md)**.
+The authoritative reference for every S3 key each stage reads and writes is
+[`utilities/pipeline_layout.py`](utilities/pipeline_layout.py) — every Lambda asks
+that module for keys and prefixes rather than building f-strings.
 
 ## Source Configuration
 

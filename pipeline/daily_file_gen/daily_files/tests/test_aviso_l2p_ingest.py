@@ -83,6 +83,13 @@ class TestAvisoL2PIngest(unittest.TestCase):
         # original_ds is intentionally not carried: nothing downstream reads it.
         self.assertNotIn("original_ds", ingested.source_specific)
 
+    def test_unopenable_files_are_skipped_and_empty_batch_raises(self):
+        # A buffer that isn't valid NetCDF is skipped; with no openable files the
+        # ingestor raises rather than emitting an empty product.
+        bad = BytesIO(b"not a netcdf file")
+        with self.assertRaises(RuntimeError):
+            AvisoL2PIngestor().ingest([bad])
+
     def test_multi_pass_concat_is_time_sorted(self):
         """Pass files supplied out of order are concatenated and time-sorted;
         cycle/pass broadcast preserves per-granule identity."""

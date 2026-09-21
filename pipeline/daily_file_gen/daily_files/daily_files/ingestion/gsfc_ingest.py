@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import ExitStack
 from typing import Iterable, TextIO
 
 import numpy as np
@@ -18,17 +19,32 @@ class GSFCIngestor(Ingestor):
                 "GSFCIngestor.ingest requires a non-empty 'bucket' to load the IB_APPLIED and NO_ATMOS flavors"
             )
 
-        opened_files = [xr.open_dataset(file_obj, engine="h5netcdf") for file_obj in file_objs]
-        cycles = np.concatenate([np.full_like(ds["ssha"].values, ds.attrs["merged_cycle"]) for ds in opened_files])
-        og_ds = xr.concat(opened_files, dim="N_Records")
-        opened_files = []
+        with ExitStack() as stack:
+            opened = [stack.enter_context(xr.open_dataset(fo, engine="h5netcdf")) for fo in file_objs]
 
-        ssha = og_ds["ssha"].values / 1000  # Convert from mm
-        lats = og_ds["lat"].values
-        lons = og_ds["lon"].values
-        times = og_ds["time"].values
+            # Per-record cycle id from each file's merged_cycle attr. sizes/dtype are metadata,
+            # so this doesn't read ssha (which is read once, below, from the concatenation).
+            cycles = np.concatenate(
+                [
+                    np.full(ds.sizes["N_Records"], ds.attrs["merged_cycle"], dtype=ds["ssha"].dtype)
+                    for ds in opened
+                ]
+            )
+
+            combined = xr.concat(opened, dim="N_Records")
+            ssha = combined["ssha"].values / 1000  # Convert from mm
+            lats = combined["lat"].values
+            lons = combined["lon"].values
+            times = combined["time"].values
+            reference_orbit = combined["reference_orbit"].values
+            index = combined["index"].values
+
+            # og_ds is carried downstream solely to read flag (values + flag_meanings attr)
+            # and Surface_Type; keeping it an xr.Dataset preserves those attrs.
+            og_ds = combined[["flag", "Surface_Type"]].load()
+
         dac, inv_bar_cor = self._compute_dac_and_inv_bar(np.unique(cycles), ssha, bucket)
-        cycles, passes = self._compute_cycles_passes(og_ds, cycles)
+        cycles, passes = self._compute_cycles_passes(reference_orbit, index, cycles)
 
         return IngestedData(
             ssha=ssha,
@@ -45,7 +61,9 @@ class GSFCIngestor(Ingestor):
         )
 
     @staticmethod
-    def _compute_cycles_passes(ds: xr.Dataset, cycles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _compute_cycles_passes(
+        reference_orbit: np.ndarray, index: np.ndarray, cycles: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Computes passes using look up table that converts a reference_orbit and index value to pass number.
         GSFC uses slightly different pass/cycle definitions. We need to increment cycle number in the ascending half
@@ -58,8 +76,8 @@ class GSFCIngestor(Ingestor):
         ).set_index("id")
 
         ds_ids = [
-            str(orbit).zfill(3) + str(index).zfill(4)
-            for orbit, index in zip(ds["reference_orbit"].values, ds["index"].values)
+            str(orbit).zfill(3) + str(idx).zfill(4)
+            for orbit, idx in zip(reference_orbit, index)
         ]
         passes = df.loc[ds_ids]["pass"].values
 
@@ -87,23 +105,23 @@ class GSFCIngestor(Ingestor):
 
         all_ib_ds = []
         all_no_atmos_ds = []
-        for cycle_num in unique_cycles:
-            logging.info(f"Streaming cycle {cycle_num}")
-            filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V6_1.nc"
+        try:
+            for cycle_num in unique_cycles:
+                logging.info(f"Streaming cycle {cycle_num}")
+                filename = f"Merged_TOPEX_Jason_OSTM_Jason-3_Sentinel-6_Cycle_{int(cycle_num):04}.V6_1.nc"
 
-            ib_src = os.path.join(ib_bucket_path, filename)
-            ib_ds = xr.open_dataset(aws_manager.stream_obj(ib_src), engine="h5netcdf")
-            all_ib_ds.append(ib_ds)
+                ib_src = os.path.join(ib_bucket_path, filename)
+                all_ib_ds.append(xr.open_dataset(aws_manager.stream_obj(ib_src), engine="h5netcdf"))
 
-            no_atmos_src = os.path.join(no_atmos_bucket_path, filename)
-            no_atmos_ds = xr.open_dataset(aws_manager.stream_obj(no_atmos_src), engine="h5netcdf")
-            all_no_atmos_ds.append(no_atmos_ds)
+                no_atmos_src = os.path.join(no_atmos_bucket_path, filename)
+                all_no_atmos_ds.append(xr.open_dataset(aws_manager.stream_obj(no_atmos_src), engine="h5netcdf"))
 
-        ib_ds = xr.concat(all_ib_ds, dim="N_Records")
-        ssha_ib_applied = ib_ds["ssha"].values / 1000
-
-        no_atmos_ds = xr.concat(all_no_atmos_ds, dim="N_Records")
-        ssha_no_atmos = no_atmos_ds["ssha"].values / 1000
+            # .values materializes standalone numpy copies, so the datasets can be closed afterward.
+            ssha_ib_applied = xr.concat(all_ib_ds, dim="N_Records")["ssha"].values / 1000
+            ssha_no_atmos = xr.concat(all_no_atmos_ds, dim="N_Records")["ssha"].values / 1000
+        finally:
+            for ds in (*all_ib_ds, *all_no_atmos_ds):
+                ds.close()
 
         # dac/inv_bar_cor are element-wise differences across independently loaded sources
         # (input files vs. S3 flavors), so the records must align 1:1. Guard against a

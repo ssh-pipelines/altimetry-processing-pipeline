@@ -69,21 +69,19 @@ class TestAvisoL2PIngest(unittest.TestCase):
         self.assertEqual(ingested.cycles.dtype, np.int32)
         self.assertEqual(ingested.passes.dtype, np.int32)
 
-    def test_inv_bar_cor_zero_filled(self):
+    def test_inv_bar_cor_nan_filled(self):
         buf = _make_l2p_bytes(cycle=101, pass_num=745, n=100, t_start="2025-01-07T00:00:00")
         ingested = AvisoL2PIngestor().ingest([buf])
-        self.assertTrue(np.all(ingested.inv_bar_cor == 0.0))
+        self.assertTrue(np.all(np.isnan(ingested.inv_bar_cor)))
         self.assertEqual(ingested.inv_bar_cor.dtype, np.float64)
 
     def test_source_specific_carries_l2p_extras(self):
         buf = _make_l2p_bytes(cycle=101, pass_num=745, n=100, t_start="2025-01-07T00:00:00")
         ingested = AvisoL2PIngestor().ingest([buf])
-        for key in ("original_ds", "mean_sea_surface",
-                    "inter_mission_bias", "validation_flag"):
+        for key in ("mean_sea_surface", "inter_mission_bias", "validation_flag"):
             self.assertIn(key, ingested.source_specific)
-        self.assertIsInstance(
-            ingested.source_specific["original_ds"], xr.Dataset
-        )
+        # original_ds is intentionally not carried: nothing downstream reads it.
+        self.assertNotIn("original_ds", ingested.source_specific)
 
     def test_multi_pass_concat_is_time_sorted(self):
         """Pass files supplied out of order are concatenated and time-sorted;

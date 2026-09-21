@@ -110,49 +110,55 @@ class S6Ingestor(Ingestor):
         Use the netCDF4 library to efficiently open and extract grouped variables
         from in-memory bytes.
         """
+        # nc_var[:] copies each variable into memory, so the in-memory netCDF handle can be
+        # closed once extraction is done (merged_ds holds only copies). try/finally ensures it
+        # closes even if a variable is missing.
         ds = nc.Dataset("file_like", "r", memory=data)
+        try:
+            das = []
 
-        das = []
+            for var in [
+                "latitude",
+                "longitude",
+                "surface_classification_flag",
+                "rain_flag_nr",
+                "rad_water_vapor_qual",
+                "dac",
+                "inv_bar_cor",
+                "mean_sea_surface_sol1",
+                "mean_sea_surface_sol2",
+            ]:
+                nc_var = ds.groups["data_01"].variables[var]
+                nc_var_data = nc_var[:]
+                nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
+                da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
+                das.append(da)
 
-        for var in [
-            "latitude",
-            "longitude",
-            "surface_classification_flag",
-            "rain_flag_nr",
-            "rad_water_vapor_qual",
-            "dac",
-            "inv_bar_cor",
-            "mean_sea_surface_sol1",
-            "mean_sea_surface_sol2",
-        ]:
-            nc_var = ds.groups["data_01"].variables[var]
-            nc_var_data = nc_var[:]
-            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
-            da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
-            das.append(da)
+            for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
+                nc_var = ds.groups["data_01"].groups["ku"].variables[var]
+                nc_var_data = nc_var[:]
+                nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
+                da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
+                das.append(da)
 
-        for var in ["sig0_ocean_nr", "range_ocean_nr_qual", "swh_ocean_nr", "ssha_nr"]:
-            nc_var = ds.groups["data_01"].groups["ku"].variables[var]
-            nc_var_data = nc_var[:]
-            nc_var_attrs = {k: v for k, v in nc_var.__dict__.items() if k != "scale_factor"}
-            da = xr.DataArray(nc_var_data, dims="time", attrs=nc_var_attrs, name=var)
-            das.append(da)
+            merged_ds = xr.merge(das)
+            merged_ds = merged_ds.set_coords(["latitude", "longitude"])
+            merged_ds["time"] = ds.groups["data_01"].variables["time"][:]
+            merged_ds["time"].attrs = {
+                k: v
+                for k, v in ds.groups["data_01"].variables["time"].__dict__.items()
+                if k != "scale_factor" and k != "add_offset"
+            }
+            merged_ds.attrs = {k: v for k, v in ds.__dict__.items() if k != "scale_factor" and k != "add_offset"}
+            merged_ds["cycle"] = (
+                ("time"),
+                np.full(merged_ds["time"].values.shape, ds.cycle_number),
+            )
+            merged_ds["passes"] = (
+                ("time"),
+                np.full(merged_ds["time"].values.shape, ds.pass_number),
+            )
+        finally:
+            ds.close()
 
-        merged_ds = xr.merge(das)
-        merged_ds = merged_ds.set_coords(["latitude", "longitude"])
-        merged_ds["time"] = ds.groups["data_01"].variables["time"][:]
-        merged_ds["time"].attrs = {
-            k: v
-            for k, v in ds.groups["data_01"].variables["time"].__dict__.items()
-            if k != "scale_factor" and k != "add_offset"
-        }
-        merged_ds.attrs = {k: v for k, v in ds.__dict__.items() if k != "scale_factor" and k != "add_offset"}
-        merged_ds["cycle"] = (
-            ("time"),
-            np.full(merged_ds["time"].values.shape, ds.cycle_number),
-        )
-        merged_ds["passes"] = (
-            ("time"),
-            np.full(merged_ds["time"].values.shape, ds.pass_number),
-        )
         return xr.decode_cf(merged_ds)

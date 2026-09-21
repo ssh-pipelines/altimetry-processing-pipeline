@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed a duplicate, pruned spurious links across 12 basins), versioned it in the
   filename (`basin_connection_table_v2.txt`), and added an `HDR` header matching the
   NASA-SSH PO.DAAC reference-file convention. The loader now skips the header.
+- Renamed the GSFC `dac`/`inv_bar_cor` source flavors to describe their contents:
+  `GSFC_6.1_IB_APPLIED` and `GSFC_6.1_NO_ATMOS`.
+- Tidied the GSFC/S6/AVISO ingestors: opened datasets are now closed deterministically
+  and removed unused in-memory data.
 
 ### Fixed
 - S3B MSS-swap ellipsoid bug: the bundled DTU21 mean-sea-surface grid was on the
@@ -74,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attempts, exponential backoff). A granule still unrecoverable after retries fails the job
   closed rather than writing a partial daily file, so the date self-heals on the next run. See
   issue #41.
+- GSFC ingest no longer silently emits corrupt corrections.
+- AVISO `inv_bar_cor` is filled with NaN (written as fill) rather than `0.0`. 
 
 ## [2.3.0] - 2026-07-15
 

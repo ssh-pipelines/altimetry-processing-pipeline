@@ -107,10 +107,10 @@ source registry (`utilities/source_profile.py` + `utilities/products.yaml`), key
 
 ## Step Function
 
-Part of the `simple_grid_pipeline` orchestration defined in `state_machines/simple_grid_pipeline.asl.json`:
+Part of the `sg_pipeline` orchestration defined in `state_machines/sg_pipeline.asl.json`:
 
 1. **Set SG Jobs** — filters the manifest and prepares the jobs list
-2. **Simple Grids Execution** — Distributed Map (`state_machines/simple_grid.asl.json`, max concurrency 500) that invokes the `simple_grids` Lambda for each date
+2. **Simple Grids Execution** — Distributed Map (`state_machines/simple_grids.asl.json`, max concurrency 500) that invokes the `simple_grids` Lambda for each date
 3. **ENSO Execution** — downstream stage
 4. **Indicators** — downstream stage
 

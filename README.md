@@ -48,7 +48,7 @@ A top-level orchestrator (`pipeline.asl.json`) coordinates three sub-pipelines, 
 
 ```
 pipeline.asl.json
-├── along_track_pipeline.asl.json
+├── at_pipeline.asl.json
 │   ├── pipeline_init (Lambda — determines which dates need processing)
 │   ├── daily_file.asl.json (Distributed Map → daily_files Lambda)
 │   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p1)
@@ -59,12 +59,17 @@ pipeline.asl.json
 ├── unifier.asl.json (conditional — runs if source has unify=true)
 │   ├── Distributed Map → unifier Lambda
 │   └── rewrite_manifest (Lambda — rewrites jobs manifest with NASA-SSH source)
-└── simple_grid_pipeline.asl.json
-    ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
-    ├── simple_grid.asl.json (Distributed Map → simple_grids Lambda)
-    ├── enso.asl.json (Distributed Map → enso Lambda)
-    └── indicators (Lambda)
+├── sg_pipeline.asl.json
+│   ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
+│   ├── simple_grids.asl.json (Distributed Map → simple_grids Lambda)
+│   ├── enso.asl.json (Distributed Map → enso Lambda)
+│   └── indicators (Lambda)
+└── run_summary (Lambda — reconciles expected vs produced, per product pipeline)
 ```
+
+An along-track run that finds no dates to process short-circuits past unification
+and the gridded pipeline straight to the summary, which reconciles to an empty run
+rather than a failure.
 
 ### Key patterns
 
@@ -73,6 +78,7 @@ pipeline.asl.json
 - **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` to pass the original input (`jobs_key`, `bucket`, `source`) through to the next state, since child state machine outputs aren't needed upstream.
 - **Two crossover passes**: The xover state machine is invoked twice — once with `df_version=p1` (before OER) and once with `df_version=p2` (after OER).
 - **Conditional unification**: Sources with `unify=true` (GSFC, S6) get their finalized daily files copied to a unified `NASA-SSH` prefix by the unifier. The `rewrite_manifest` Lambda then produces a new jobs manifest under the NASA-SSH source for downstream simple grid processing.
+- **Declared outcomes, not inferred ones**: each deliverable stage returns a Job outcome naming the S3 keys it wrote, persisted per item by `ResultWriter`. `run_summary` reconciles those against the manifest's job specs rather than listing S3 and matching date tokens ([ADR 0005](docs/adr/0005-job-outcome-contract-and-run-summary.md)). Failures take the mirrored path through `failure_handling` ([ADR 0003](docs/adr/0003-failure-surfacing.md)).
 
 The authoritative reference for every S3 key each stage reads and writes is
 [`utilities/pipeline_layout.py`](utilities/pipeline_layout.py) — every Lambda asks

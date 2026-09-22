@@ -96,7 +96,7 @@ On error, raises an exception with a JSON body containing `status`, `errorType`,
 
 ## Step Function
 
-Invoked as the final step in the `simple_grid_pipeline` orchestration defined in `state_machines/simple_grid_pipeline.asl.json`. Runs after both Simple Grids and ENSO stages complete. Unlike those stages, indicators is invoked as a single direct Lambda Task (not a Distributed Map), since it processes all dates in one invocation and manages its own caching.
+Invoked as the final step in the `sg_pipeline` orchestration defined in `state_machines/sg_pipeline.asl.json`. Runs after both Simple Grids and ENSO stages complete. Unlike those stages, indicators is invoked as a single direct Lambda Task (not a Distributed Map), since it processes all dates in one invocation and manages its own caching.
 
 ## Running tests
 

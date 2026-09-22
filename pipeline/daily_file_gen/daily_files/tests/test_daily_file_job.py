@@ -4,7 +4,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import xarray as xr
-from daily_files.config.source_config import get_source_config
+from daily_files.config.source_config import get_available_sources, get_source_config
 from daily_files.daily_file_job import (
     SOURCE_REGISTRY,
     AcquiredData,
@@ -38,6 +38,32 @@ class TestSourceRegistry(unittest.TestCase):
         pipeline = SOURCE_REGISTRY["EXAMPLE_S3"]
         self.assertIs(pipeline.downloader, S3Downloader)
         self.assertIsNone(pipeline.downloader_kwargs["credentials_fn"])
+
+    def test_registry_matches_configured_sources(self):
+        """Running a source needs both halves: a SOURCE_REGISTRY entry (which
+        components to use) and a `daily_files:` section in its profile (how to
+        configure them). Neither half checks the other at import time, so a
+        mismatch only surfaces at runtime — as SourceNotSupported for a
+        profile with no entry, or a ValueError from get_source_config for an
+        entry with no profile. Pin them together instead.
+        """
+        registered = set(SOURCE_REGISTRY)
+        configured = set(get_available_sources())
+
+        self.assertEqual(
+            registered - configured,
+            set(),
+            "SOURCE_REGISTRY entries with no `daily_files:` section in "
+            "utilities/sources/{source}.yaml — get_source_config would raise. "
+            "Add the profile section or drop the registry entry.",
+        )
+        self.assertEqual(
+            configured - registered,
+            set(),
+            "Sources with a `daily_files:` section but no SOURCE_REGISTRY entry "
+            "— start_job would raise SourceNotSupported. Wire up the "
+            "downloader/ingestor/processor or remove the profile section.",
+        )
 
 
 class TestDailyFileJobInit(unittest.TestCase):

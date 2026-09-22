@@ -20,11 +20,11 @@ The Lambda receives one item from the jobs manifest per invocation, with `df_ver
 | Parameter    | Example      | Description                          |
 |--------------|--------------|--------------------------------------|
 | `date`       | `2025-01-01` | Processing day (ISO 8601)            |
-| `source`     | `S6`         | Satellite source (`GSFC`, `S6`, `S6B`) |
+| `source`     | `S6`         | Satellite source (`GSFC`, `S6`, `S6B`, `S3B`) |
 | `df_version` | `p1`         | Daily file generation step (`p1`, `p2`) |
 | `bucket`     | `my-bucket`  | S3 bucket for input/output           |
 
-All four fields are required. Available sources are defined in `crossover/config/sources.yaml`.
+All four fields are required. Available sources are those with an `xover:` section in `utilities/sources/{source}.yaml`.
 
 ## Lambda output
 
@@ -53,52 +53,90 @@ Filename prefix is determined by the global source registry (`utilities/source_p
 
 ```
 xover/
-├── app.py                              # Lambda handler + processor dispatch
+├── app.py                              # Lambda handler; picks the spec from crossover_type
 ├── crossover/
-│   ├── parallel_crossovers.py          # Crossover class: data loading, track pairing, output
+│   ├── processor.py                    # CrossoverProcessor + SelfSpec / ReferenceSpec + SPECS
+│   ├── loader.py                       # stream_files, load_track_window
+│   ├── search.py                       # find_self_crossovers / find_reference_crossovers
+│   ├── results.py                      # pack_records, filter_and_sort, dataset builders
+│   ├── track_window.py                 # The loaded-window container
 │   ├── xover_ssh.py                    # Geometric crossover detection (xover_ssh)
 │   └── config/
-│       ├── sources.yaml                # Per-source orbital parameters
 │       └── source_config.py            # SourceConfig dataclass + loader
 ├── tests/
 │   ├── test_crossover.py               # Consistency, empty-input, and all-NaN tests
-│   ├── test_source_config.py           # Config loading tests (GSFC, S6, S6B)
-│   └── sample_data/
-│       ├── sample_inputs/              # 12 daily file granules (gzip-compressed)
-│       └── sample_output/              # Reference crossover output (gzip-compressed)
+│   ├── test_reference_crossover.py     # Reference-mission crossover tests
+│   ├── test_search.py                  # Track-pairing and search tests
+│   ├── test_source_config.py           # Config loading tests
+│   └── test_app.py                     # Handler + dispatch tests
 ├── Dockerfile
 └── README.md
 ```
 
+Per-source settings live in `utilities/sources/{source}.yaml`, not in this directory.
+
 ## How it works
 
-1. **`stream_files()`** — Globs S3 for daily files within the processing window (day through day + `window_size` + `window_padding`).
-2. **`extract_and_set_data()`** — Concatenates all daily files, drops NaN SSH rows, and builds arrays for time, lon, lat, SSH, and track IDs (`cycle * 10000 + pass`). Computes unique tracks, their start times, and a pre-built index for fast per-track lookups.
-3. **`search_day_for_crossovers()`** — For each track starting on the processing day, finds candidate crossing tracks (different cycle, opposite pass direction, within one orbital cycle). Calls `xover_ssh()` for each pair.
-4. **`xover_ssh()`** — Geometric crossover detection between two ground tracks. Finds where latitude-interpolated tracks cross, interpolates SSH and time at the intersection, and rejects crossovers where the nearest real data point is beyond a distance cutoff (default 30 km).
-5. **Output** — Results are filtered to the processing day, sorted by time, and saved as a NetCDF with crossover coordinates, SSH, time, cycle, and pass for both tracks.
+`CrossoverProcessor` owns the run; the source's `crossover_type` selects a
+**`CrossoverSpec`** (`SelfSpec` or `ReferenceSpec` from the `SPECS` registry) that plugs
+in the type-specific load / search / to_dataset steps. Everything else is shared:
+
+1. **`spec.load()`** — `stream_files()` globs S3 for daily files in the window, then
+   `load_track_window()` concatenates them, drops NaN SSH rows, and builds arrays for
+   time, lon, lat, SSH and track IDs (`cycle * 10000 + pass`) plus a per-track index.
+   - `SelfSpec` loads **one** window: day through day + `window_size` + `window_padding`.
+   - `ReferenceSpec` loads **two**: the high-lat source over `[D-1, D+1]` (neighbor days
+     so passes straddling midnight reassemble), and the reference mission over a window
+     *centered* on the day, always at `reference_version` regardless of the high-lat
+     `df_version` ([ADR 0006](../../../docs/adr/0006-reference-crossovers-against-nasa-ssh-p3.md)).
+2. **`spec.search()`** — For each track starting on the processing day, finds candidate
+   crossing tracks and calls `xover_ssh()` per pair. `find_self_crossovers()` pairs a
+   source against itself (different cycle, opposite pass direction, within one orbital
+   cycle); `find_reference_crossovers()` pairs the high-lat window against the reference
+   window and interpolates the reference SSH *in time* to the high-lat crossover time.
+3. **`xover_ssh()`** — Geometric crossover detection between two ground tracks. Finds
+   where latitude-interpolated tracks cross, interpolates SSH and time at the
+   intersection, and rejects crossovers where the nearest real data point is beyond a
+   distance cutoff (default 30 km).
+4. **`pack_records()` / `filter_and_sort()`** — Packs the typed records columnwise, then
+   filters to the processing day and sorts by time. `ReferenceSpec` sets
+   `two_sided_filter`, so the filter also drops `time1 < day` (its window opens *before*
+   the day; the self window does not).
+5. **`spec.to_dataset()` → save/upload** — Builds the type-specific `xr.Dataset` and
+   writes the NetCDF. The two types carry different schemas, distinguished by a
+   `crossover_type` global attribute.
 
 ## Source configuration
 
-Orbital parameters live in `crossover/config/sources.yaml`:
+Orbital parameters live in the `xover:` section of `utilities/sources/{source}.yaml`:
 
 | Parameter        | Description                                            |
 |------------------|--------------------------------------------------------|
-| `crossover_type` | Processing mode (currently always `self`)              |
+| `crossover_type` | `self` or `reference` — selects the spec (see above)   |
 | `cycle_length`   | Orbital repeat period in days (used as max time diff)  |
-| `window_size`    | Days of data to load after the processing day          |
+| `window_size`    | Days of data to load. Forward-looking for `self`; reinterpreted as a **centered ±** window for `reference` |
 | `window_padding` | Extra days to pad the window                           |
 | `max_pass_number`| Maximum pass number for the satellite                  |
+| `reference_source` | *(`reference` only, required)* The reference mission to cross against — `NASA-SSH` |
+| `reference_version` | *(`reference` only, required)* Reference daily-file version to load — always `p3` ([ADR 0006](../../../docs/adr/0006-reference-crossovers-against-nasa-ssh-p3.md)) |
+
+`crossover_type` follows from the source's `product_type`: a `reference` product type
+uses `self` crossovers, a `high_latitude` source uses `reference` crossovers. The two
+`reference_*` fields are optional on the shared dataclass but validated as required in
+`__post_init__` when the type is `reference`.
 
 Current sources:
 
-| Source | Cycle Length | Window Size | Window Padding |
-|--------|-------------|-------------|----------------|
-| GSFC   | 9.9156 days | 10 days     | 2 days         |
-| S6     | 9.9156 days | 10 days     | 2 days         |
-| S6B    | 9.9156 days | 10 days     | 2 days         |
+| Source | Crossover type | Cycle Length | Window Size | Window Padding |
+|--------|----------------|-------------|-------------|----------------|
+| GSFC   | `self`         | 9.9156 days | 10 days (forward) | 2 days   |
+| S6     | `self`         | 9.9156 days | 10 days (forward) | 2 days   |
+| S6B    | `self`         | 9.9156 days | 10 days (forward) | 2 days   |
+| S3B    | `reference`    | 9.9156 days | 12 days (±)       | 2 days   |
 
-To add a new satellite, add an entry to `crossover/config/sources.yaml`. No code changes required — the stage is source-agnostic.
+To add a new satellite, add an `xover:` section to its `utilities/sources/{source}.yaml`.
+No code changes required for either existing `crossover_type` — the stage is
+source-agnostic.
 
 ## Step Function
 

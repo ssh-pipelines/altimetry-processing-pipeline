@@ -128,10 +128,10 @@ stays green — faded, but a product rather than an intermediate file. GSFC and 
 are the only sources enabled today, which is why the entire high-latitude branch
 is dashed.
 
-**Required inputs** is grouped by which family of run consumes them, which is why
-one input is green: a high-latitude run needs the pipeline's own reference-mission
-product, already published, to compute its crossovers against — it has no
-same-mission passes of its own to cross (see
+The two **runs** boxes at the top group inputs by which family consumes them, which
+is why one input is green: a high-latitude run needs the pipeline's own
+reference-mission product, already published, to compute its crossovers against — it
+has no same-mission passes of its own to cross (see
 [ADR-0006](adr/0006-reference-crossovers-against-nasa-ssh-p3.md)). That product
 therefore appears twice: as an input at the top, as an output below.
 

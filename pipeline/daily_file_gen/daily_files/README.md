@@ -1,6 +1,6 @@
 # Daily Files
 
-Generates level-1 (P1) along-track daily files from satellite altimeter data. For each processing date and source, queries NASA's CMR for granules, ingests and harmonizes the raw data, applies quality flagging, MSS correction, smoothing, and basin mapping, then uploads the resulting NetCDF to S3.
+Generates level-1 (P1) along-track daily files from satellite altimeter data. For each processing date and source, downloads the granules `pipeline_init` discovered, ingests and harmonizes the raw data, applies quality flagging, MSS correction, smoothing, and basin mapping, then uploads the resulting NetCDF to S3.
 
 Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON event.
 
@@ -8,23 +8,20 @@ Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON
 
 For each processing date, the Lambda:
 
-1. **Validates the source** against `daily_files/config/sources.yaml`.
-2. **Enumerates granules** depending on the source's `discovery_type`:
-   - **CMR** (`cmr`): Queries NASA CMR for the source's configured collection(s). For multi-collection sources (S6), selects the highest-priority granule per cycle/pass combination.
-   - **S3 bucket** (`s3_bucket`): Lists an internal S3 bucket and matches filenames by date. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and returns files whose range overlaps the target date.
-3. **Downloads** granule files from PODAAC's S3 bucket (CMR sources) or the source S3 bucket directly (S3 bucket sources).
-4. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields). For S6/S6B sources, an **orbit swap** is applied per pass file: a precise orbit file (POE for NTC granules, MOE for STC granules) is downloaded from JPL and passed to a C executable (`interpPosGoaToNetCDFtimes.e`) that recomputes SSHA using the improved orbit. If the orbit file cannot be fetched or the swap fails (wrong output length, non-zero exit code, timeout), the ingester falls back to the original `ssha_nr` values and logs a warning. Orbit files are cached in `/tmp/` by date and type so multiple passes on the same day share a single download.
-5. **Processes** the ingested data into a daily file dataset:
+1. **Validates the source** against `utilities/sources/{source}.yaml` and `SOURCE_REGISTRY`.
+2. **Downloads** the granules named in the event — from PODAAC's S3 bucket for CMR sources, the AVISO HTTP endpoint for THREDDS sources, or the source S3 bucket directly for `s3_bucket` sources. Granule *discovery* happens in `pipeline_init`; this stage consumes the URIs it is handed.
+3. **Ingests** raw files into a normalized `IngestedData` structure (source-specific: extracts SSHA, lat/lon, time, cycle, pass, DAC, and any source-specific fields). For S6/S6B sources, an **orbit swap** is applied per pass file: a precise orbit file (POE for NTC granules, MOE for STC granules) is downloaded from JPL and passed to a C executable (`interpPosGoaToNetCDFtimes.e`) that recomputes SSHA using the improved orbit. If the orbit file cannot be fetched or the swap fails (wrong output length, non-zero exit code, timeout), the ingester falls back to the original `ssha_nr` values and logs a warning. Orbit files are cached in `/tmp/` by date and type so multiple passes on the same day share a single download.
+4. **Processes** the ingested data into a daily file dataset:
    - Maps observations to geographic basins using basin shapefiles
    - Creates `nasa_flag` from source-specific quality flags and a rolling median filter
    - Subsets data to the target date and drops duplicate times
-   - Applies MSS swap (source MSS to DTU21) using precomputed difference grids
+   - Normalizes the MSS reference to DTU21 — `reference` sources swap via a precomputed difference grid, `high_latitude` sources interpolate a bundled DTU21 grid at each granule's lon/lat ([ADR 0002](../../../docs/adr/0002-aviso-l2p-mss-handling.md))
    - Flags land/lake basins in `nasa_flag`
-   - Computes `ssha_smoothed` using a 19-point Gaussian-like along-track filter
+   - Computes `ssha_smoothed` using a 19-point Gaussian-like along-track filter, with `sigma` from the `daily_files:` config and the along-track speed from `common.ground_speed`
    - Sets variable and global CF-compliant metadata
-6. **Validates** the output dataset against a schema (required global attributes, variables, and per-variable attributes).
-7. **Appends a `processing_history` step** (generation step 1, recording the source files / granule count) before uploading — the first entry in the in-file provenance trail that OER and the finalizer extend (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005).
-8. **Uploads** the P1 daily file to S3 and removes the local temp copy.
+5. **Validates** the output dataset against a schema (required global attributes, variables, and per-variable attributes).
+6. **Appends a `processing_history` step** (generation step 1, recording the source files / granule count) before uploading — the first entry in the in-file provenance trail that OER and the finalizer extend (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005).
+7. **Uploads** the P1 daily file to S3 and removes the local temp copy.
 
 If no granules are found for a date, an empty template NetCDF with appropriate metadata is uploaded instead.
 
@@ -101,7 +98,7 @@ The Lambda receives one item from the jobs manifest per invocation:
 }
 ```
 
-All four fields are required. Available sources are defined in `daily_files/config/sources.yaml`. The `granules` list is produced by `pipeline_init` and consumed verbatim — no upstream discovery happens here.
+All four fields are required. Available sources are those with a `daily_files:` section in `utilities/sources/{source}.yaml` **and** an entry in `SOURCE_REGISTRY`. The `granules` list is produced by `pipeline_init` and consumed verbatim — no upstream discovery happens here.
 
 ## Lambda output
 
@@ -120,42 +117,43 @@ All four fields are required. Available sources are defined in `daily_files/conf
 
 | Path                                                                    | Description                                                 |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file (write)                                |
+| `daily_files/p1/{source}/{year}/{source}_alt_ref_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file, `reference` product type (write)       |
+| `daily_files/p1/{source}/{year}/{source}_alt_hilat_at_v1_1_{YYYYMMDD}.nc` | Output P1 daily file, `high_latitude` product type (write) |
 | `aux_files/GSFC_NOIB/Merged_..._Cycle_{NNNN}.V5_2.nc`                   | GSFC NOIB cycle files for DAC computation (read, GSFC only) |
+
+Both come from `utilities.pipeline_layout`; the filename family follows the source's `product_type`.
 
 ## Source configuration
 
-Each source has settings at two levels:
+One file per source, `utilities/sources/{source}.yaml`, holding a `common:` block plus one section per stage. `get_source_config` merges `common` with the `daily_files:` section into a `SourceConfig`.
 
-**Global registry** (`utilities/sources.yaml`) — shared fields inherited by all stages: `product_type`, `unify`, `start_date`, `end_date`.
-
-**Stage-local config** (`daily_files/config/sources.yaml`) — daily-files-specific fields merged with the global registry:
+The `daily_files:` section — this stage's own fields:
 
 | Field                     | Description                                                                                                                                                                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `filename_template`       | Output filename pattern (e.g. `{source}_alt_ref_at_v1_1_{date}.nc`)                                                                                                                                                                                                            |
-| `s3_prefix`               | S3 key prefix for output files                                                                                                                                                                                                                                                 |
-| `source_mss`              | Source mean sea surface (e.g. DTU15, DTU18)                                                                                                                                                                                                                                    |
-| `target_mss`              | Target mean sea surface (DTU21)                                                                                                                                                                                                                                                |
-| `mss_diff_file`           | MSS difference grid filename                                                                                                                                                                                                                                                   |
-| `empty_template`          | Empty NetCDF template filename                                                                                                                                                                                                                                                 |
-| `smoothing`               | Filter parameters: `speed` (km/s) and `sigma` (km)                                                                                                                                                                                                                             |
-| `collections`             | CMR collection(s): `shortname`, `concept_id`, `priority`, `source_label`, `source_url`, `reference`                                                                                                                                                                            |
-| `source_bucket`           | _(S3 bucket sources only)_ S3 bucket containing source files                                                                                                                                                                                                                   |
-| `source_prefix_pattern`   | _(S3 bucket sources only)_ S3 prefix pattern with `{source}`, `{year}` placeholders                                                                                                                                                                                            |
-| `source_filename_pattern` | _(S3 bucket sources only)_ Filename pattern with `{source}`, `{date8}` placeholders                                                                                                                                                                                            |
-| `cycle_index_key`         | _(S3 bucket sources only, optional)_ S3 key to a JSON file mapping cycle filenames to `{"start", "end"}` date ranges. When set, the enumerator uses the index to find files whose date range overlaps the target date instead of matching filenames by date.                   |
+| `source_mss`              | _(`reference` product type only, required)_ Source mean sea surface (e.g. DTU15, DTU18)                                                                                                                                                                                        |
+| `target_mss`              | _(`reference` only, required)_ Target mean sea surface (DTU21)                                                                                                                                                                                                                 |
+| `mss_diff_file`           | _(`reference` only, required)_ MSS difference grid filename                                                                                                                                                                                                                    |
+| `smoothing`               | Filter parameter: `sigma` (km). The along-track speed is **not** set here — it comes from `common.ground_speed`, which the OER stage shares.                                                                                                                                    |
 | `bad_points`              | _(optional)_ Map of ISO date strings to lists of `{time: <ISO datetime>}` entries. Any observation whose timestamp matches a listed time (at second precision) will have `nasa_flag` forced to 1, regardless of other quality criteria. Supported for GSFC and S6/S6B sources. |
 
-Current sources:
+`SourceConfig.__post_init__` enforces the MSS fields by product type: a `reference` source **must** set all three, and a `high_latitude` source **must not** set any of them — high-latitude processors interpolate DTU21 directly from a bundled grid instead of swapping via a diff file ([ADR 0002](../../../docs/adr/0002-aviso-l2p-mss-handling.md)).
 
-| Source | Collections                                                                      | Source MSS | Target MSS |
-| ------ | -------------------------------------------------------------------------------- | ---------- | ---------- |
-| GSFC   | `MERGED_TP_J1_OSTM_OST_CYCLES_V52`                                               | DTU15      | DTU21      |
-| S6     | `JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01`, `..._NTC_G01_UNVALIDATED`, `..._STC_F` | DTU18      | DTU21      |
-| S6B    | `JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G`                                           | DTU18      | DTU21      |
+Relevant `common:` fields (shared with other stages): `product_type`, `discovery_type`, `ground_speed`, `collections`, and — for `s3_bucket` discovery — `source_bucket`, `source_prefix_pattern`, `source_filename_pattern`, `cycle_index_key`.
 
-To add a new source, add an entry to `utilities/sources.yaml` first, then add the stage-specific entry to `daily_files/config/sources.yaml`, implement the required components (enumerator, ingestor, processor), and register them in `SOURCE_REGISTRY`.
+Output prefixes and filenames are **not** configured per source. They are derived from `utilities.pipeline_layout` and `utilities/products.yaml`, which own the version and filename template per product family. Empty-file templates are built in code (`processing/empty_template.py`), not read from config.
+
+Current sources (those with a `daily_files:` section):
+
+| Source | Product type   | Collections                                                                      | MSS handling        |
+| ------ | -------------- | -------------------------------------------------------------------------------- | ------------------- |
+| GSFC   | reference      | `MERGED_TP_J1_OSTM_OST_CYCLES_V61`                                               | DTU15 → DTU21 (diff file) |
+| S6     | reference      | `JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01`, `..._NTC_G01_UNVALIDATED`, `..._STC_F` | DTU18 → DTU21 (diff file) |
+| S6B    | reference      | `JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G`                                           | DTU18 → DTU21 (diff file) |
+| S3B    | high_latitude  | `dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz` (THREDDS)                        | DTU21 interpolated  |
+| EXAMPLE_S3 | reference  | — (template, not a real source)                                                  | DTU15 → DTU21 (diff file) |
+
+To add a new source, create `utilities/sources/{source}.yaml` with a `common` block and a `daily_files:` section, implement the required components (downloader, ingestor, processor), and register them in `SOURCE_REGISTRY` (`daily_files/daily_file_job.py`).
 
 ## Step Function
 

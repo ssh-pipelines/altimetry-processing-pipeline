@@ -11,16 +11,16 @@ the reference.
 Usage (S3 mode):
     python tools/compute_source_offset.py \\
         --source S6B \\
-        --reference GSFC_6.1 \\
+        --reference GSFC \\
         --bucket your-bucket-name \\
         --duration 6
 
 Usage (local mode):
     python tools/compute_source_offset.py \\
         --source S6B \\
-        --reference GSFC_6.1 \\
+        --reference GSFC \\
         --source-dir /data/grids/S6B \\
-        --reference-dir /data/grids/GSFC_6.1 \\
+        --reference-dir /data/grids/GSFC \\
         --duration 6
 
     # Save the mean difference map for visual inspection:
@@ -36,8 +36,8 @@ Offset convention:
       - Positive offset: source reads lower than reference → add to bring it up
       - Negative offset: source reads higher than reference → subtract to bring it down
 
-    Enter the result under the new source in:
-        pipeline/daily_file_gen/finalizer/finalization/config/sources.yaml
+    Enter the result under the `finalizer:` section of the new source's profile:
+        utilities/sources/{source}.yaml
 
 Prerequisites:
     pip install boto3 xarray numpy netcdf4
@@ -269,8 +269,8 @@ Offset convention:
   Positive: source reads lower than reference (offset will raise it)
   Negative: source reads higher than reference (offset will lower it)
 
-Enter the result in:
-  pipeline/daily_file_gen/finalizer/finalization/config/sources.yaml
+Enter the result under the `finalizer:` section of:
+  utilities/sources/{source}.yaml
         """,
     )
     parser.add_argument(
@@ -281,7 +281,7 @@ Enter the result in:
     parser.add_argument(
         "--reference",
         required=True,
-        help="Reference source name (e.g. GSFC_6.1)",
+        help="Reference source name (e.g. GSFC); in S3 mode this is the simple_grids/ prefix",
     )
     parser.add_argument(
         "--duration",
@@ -399,9 +399,9 @@ Enter the result in:
 
     print("\nResults:")
     print(f"  Offset ({args.reference} - {args.source}): {offset:+.4f} m  ({offset * 100:+.2f} cm)")
-    print("\nAdd to pipeline/daily_file_gen/finalizer/finalization/config/sources.yaml:")
-    print(f"  {args.source}:")
-    print(f"    offset: {offset:.4f}")
+    print(f"\nAdd to utilities/sources/{args.source}.yaml:\n")
+    print("finalizer:")
+    print(f"  offset: {offset:.4f}")
 
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)

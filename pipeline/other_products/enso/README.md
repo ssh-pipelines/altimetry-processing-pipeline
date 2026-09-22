@@ -92,7 +92,7 @@ containing `status`, `errorType`, `errorMessage`, and the original `input`.
 
 Defined in `state_machines/enso.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `enso` Lambda for each date. Results are written to `pipeline_runs/results/enso/` in S3.
 
-Also invoked as part of the `simple_grid_pipeline` orchestration (`state_machines/simple_grid_pipeline.asl.json`), where it runs after the Simple Grids stage and before Indicators.
+Also invoked as part of the `sg_pipeline` orchestration (`state_machines/sg_pipeline.asl.json`), where it runs after the Simple Grids stage and before Indicators.
 
 ## Cartopy setup
 

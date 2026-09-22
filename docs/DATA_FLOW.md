@@ -6,7 +6,9 @@
 The along-track stages (`daily_files` → `xover` → `oer` → `xover` → `bad_pass` →
 `finalizer`) are generic — *every* source runs its own independent instance of
 them. Reference-mission sources continue into the **unifier**, which exists to 
-assemble the reference-mission record; high-latitude sources never enter it.
+assemble the reference-mission record; high-latitude sources never enter it. So the
+two families end differently: many reference-mission sources collapse into one
+stitched product, while each high-latitude satellite publishes its own.
 
 
 ```mermaid
@@ -15,6 +17,7 @@ flowchart TB
         direction LR
         GSFC["<b>GSFC</b><br/>1992-10-25 → 2025-12-31"]
         S6["<b>S6</b><br/>2026-01-01 →"]
+        S6B["<b>S6B</b><br/>TBD → TBD"]
     end
 
     subgraph UA["High-latitude runs — AVISO granules via THREDDS, plus the reference mission"]
@@ -69,7 +72,7 @@ flowchart TB
 
     subgraph HILAT["High-latitude product lines; not yet in production"]
         direction TB
-        HLP[/"NASA-SSH high-latitude along-track product"/]
+        HLP[/"NASA-SSH high-latitude along-track product<br/><i>one per source</i>"/]
     end
 
     subgraph REF["Reference-mission product line"]
@@ -103,7 +106,7 @@ flowchart TB
     classDef disabled fill:#e6e4e1,stroke:#a6a09a,stroke-width:1.5px,stroke-dasharray:5 3,color:#615c57
     classDef published_disabled fill:#eaf5ee,stroke:#8cc4a5,stroke-width:2px,stroke-dasharray:5 3,color:#3f4b45
 
-    class GSFC,S6,S3B upstream
+    class GSFC,S6 upstream
     class DF,OER,FIN,X1,X2,BP,UNIF,SGS,ENSO,IND stage
     class P1,P2,XO1,XO2,P3 internal
     class NSSH,NSSHREF,SGP,EM,INDP published
@@ -111,7 +114,7 @@ flowchart TB
     %% Not enabled yet. Sources drain to grey — safe, since every grey node
     %% elsewhere is a parallelogram. HLP keeps a faded green instead: a grey
     %% parallelogram would read as an intermediate file rather than a product.
-    class S3A,HY2B,SARAL,CRYO,HY2A,ENVI,ERS1,ERS2 disabled
+    class S3B,S6B,S3A,HY2B,SARAL,CRYO,HY2A,ENVI,ERS1,ERS2 disabled
     class HLP published_disabled
 ```
 
@@ -121,8 +124,9 @@ parallelograms are files; the boxes are grouping only.
 
 A **dashed border means not enabled yet**, and a dashed edge marks a branch that
 is not live. Color still carries the role, so the inactive high-latitude product
-stays green — faded, but a product rather than an intermediate file. S3B is the
-only high-latitude source running today.
+stays green — faded, but a product rather than an intermediate file. GSFC and S6
+are the only sources enabled today, which is why the entire high-latitude branch
+is dashed.
 
 **Required inputs** is grouped by which family of run consumes them, which is why
 one input is green: a high-latitude run needs the pipeline's own reference-mission
@@ -135,18 +139,3 @@ In the along-track pipeline, the bold chain is the daily file as each stage
 rewrites it. The side branches compute the statistics that drive those rewrites —
 crossover stats set the OER correction, bad-pass stats decide which passes get
 flagged.
-
-## What the diagram leaves out
-
-- **Cross-date windows.** OER and bad-pass flagging each read a window of crossover
-  files spanning several dates, not only the date being processed.
-- **Write-only artifacts.** OER's fitted polygons and corrections are saved for
-  diagnostics; no stage reads them back.
-- **S6B**, a configured reference source that reaches P3 without contributing to
-  the reference-mission record.
-
-The upstream collections each source reads are declared in
-`utilities/sources/{source}.yaml`. Stage configuration and the Step Functions
-hierarchy are documented in the [README](../README.md); each stage's directory has
-its own README, and S3 key conventions live in
-[`utilities/pipeline_layout.py`](../utilities/pipeline_layout.py).

@@ -1,5 +1,4 @@
-# Declared build/deploy facts per Target. See CONTEXT.md -> Build & deploy and
-# docs/adr/0004-target-registry.md.
+# Declared build/deploy facts per Target. See docs/adr/0004-target-registry.md.
 #
 # Existence and packaging kind are DERIVED from the filesystem (a Dockerfile =>
 # container, an infra app.py => zip). This file declares only the facts that

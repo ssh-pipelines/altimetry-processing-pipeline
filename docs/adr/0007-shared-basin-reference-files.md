@@ -85,9 +85,8 @@ Create a **top-level `reference_data/` directory** (sibling of `src/`,
 mask and the basin shapefile live together there — they are the same basin
 definition in raster and vector form.
 
-This placement is chosen against the planned reorganization
-(`.claude/REORGANIZATION_PLAN.md`), which renames `pipeline/` → `src/` and moves
-`utilities/` → `src/shared/`:
+This placement is chosen against the planned reorganization, which renames 
+`pipeline/` → `src/` and moves `utilities/` → `src/shared/`:
 
 - **Not `src/shared/`.** That target is a `pip install`-ed Python package baked into
   every Lambda image; the reorg is actively *narrowing* what lives there (it wants to

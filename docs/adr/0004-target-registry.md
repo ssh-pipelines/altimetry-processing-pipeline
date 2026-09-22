@@ -21,7 +21,7 @@ This is an **implicit, unowned contract** in the same spirit as the scientific-s
 
 ## Decision
 
-Introduce a **Target registry** (`utilities/targets.py`, `utilities/targets.yaml`) as the one module the build/deploy scripts query. See CONTEXT.md → **Build & deploy** for the full vocabulary.
+Introduce a **Target registry** (`utilities/targets.py`, `utilities/targets.yaml`) as the one module the build/deploy scripts query.
 
 - A **Target** is anything the scripts manage — a buildable image and/or a deployable Lambda.
 - **Existence** and **packaging kind** (`container` vs `zip`) are **derived from the filesystem**: a Dockerfile ⇒ `container`; an `app.py` under `pipeline/infra/` with no Dockerfile ⇒ `zip`.

@@ -11,16 +11,18 @@ Pipeline consists of:
 
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
-Sources with `unify: true` then have their finalized daily files copied into the
-unified NASA-SSH product.
+Every source runs its own independent instance of this sequence. Reference-mission
+sources (`unify: true`) then have their finalized daily files copied into the
+unified NASA-SSH reference-mission product by the unifier; high-latitude sources
+produce a sibling `alt_hilat_at_*` family and do not pass through it.
 
 ### Additional product generation
 
 Simple grids -> ENSO grids & imagery -> Indicators
 
 For the end-to-end picture — which upstream collections are ingested from where,
-which products are published at each level, and the one place a published product
-re-enters as an input — see **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
+and what is published at each level — see
+**[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
 
 ## Description
 
@@ -94,7 +96,7 @@ Source-identity metadata used by multiple stages:
 Each stage that a source participates in gets its own section (`pipeline_init:`,
 `daily_files:`, `finalizer:`, `xover:`, …) carrying only that stage's settings.
 
-The `xover:` section selects the **crossover type** (see CONTEXT.md):
+The `xover:` section selects the **crossover type**:
 
 - `crossover_type: self` — a `reference` product-type source (S6, S6B, GSFC)
   crossed against its own passes over a forward window. Fields: `cycle_length`,

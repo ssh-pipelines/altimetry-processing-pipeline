@@ -89,13 +89,13 @@ flowchart TB
     subgraph SG["Gridded product pipeline"]
         direction TB
 
-        SGS["simple grids<br/>basin-aware Gaussian resample to 0.5°"]
+        SGS["<i>simple grids</i><br/>basin-aware Gaussian resample to 0.5°"]
         SGS ==> SGP[/"NASA-SSH reference-mission simple grid product"/]
 
-        SGP --> ENSO["enso grids<br/>smooth, deseason, detrend, → 0.25°"]
+        SGP --> ENSO["<i>enso grids</i><br/>smooth, deseason, detrend, → 0.25°"]
         ENSO ==> EM[/"ENSO maps<br/>ortho + plate PNGs for websites"/]
 
-        SGP --> IND["indicators<br/>GMSL, ENSO, PDO, IOD"]
+        SGP --> IND["<i>indicators</i><br/>GMSL, ENSO, PDO, IOD"]
         IND ==> INDP[/"NASA-SSH indicators products"/]
     end
 

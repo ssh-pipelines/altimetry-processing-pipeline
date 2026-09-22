@@ -16,7 +16,7 @@ flowchart TB
     subgraph UP["Reference-mission runs — PO.DAAC granules via CMR"]
         direction LR
         GSFC["<b>GSFC</b><br/>1992-10-25 → 2025-12-31"]
-        S6["<b>S6</b><br/>2026-01-01 →"]
+        S6A["<b>S6A</b><br/>2026-01-01 →"]
         S6B["<b>S6B</b><br/>TBD → TBD"]
     end
 
@@ -106,7 +106,7 @@ flowchart TB
     classDef disabled fill:#e6e4e1,stroke:#a6a09a,stroke-width:1.5px,stroke-dasharray:5 3,color:#615c57
     classDef published_disabled fill:#eaf5ee,stroke:#8cc4a5,stroke-width:2px,stroke-dasharray:5 3,color:#3f4b45
 
-    class GSFC,S6 upstream
+    class GSFC,S6A upstream
     class DF,OER,FIN,X1,X2,BP,UNIF,SGS,ENSO,IND stage
     class P1,P2,XO1,XO2,P3 internal
     class NSSH,NSSHREF,SGP,EM,INDP published

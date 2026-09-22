@@ -81,10 +81,8 @@ flowchart TB
         UNIF ==> NSSH[/"NASA-SSH reference-mission along-track product"/]
     end
 
-    P3 -.->|"high-latitude sources"| HLP
-    P3 -->|"reference-mission sources"| UNIF
-
-    NSSH --> SGS
+    P3 -.->|"high-latitude sources"| HILAT
+    P3 -->|"reference-mission sources"| REF
 
     subgraph SG["Gridded product pipeline"]
         direction TB
@@ -98,6 +96,8 @@ flowchart TB
         SGP --> IND["<i>indicators</i><br/>GMSL, ENSO, PDO, IOD"]
         IND ==> INDP[/"NASA-SSH indicators products"/]
     end
+
+    NSSH --> SG
 
     classDef upstream fill:#fdeae1,stroke:#eb6834,stroke-width:1.5px,color:#0b0b0b
     classDef stage fill:#cde2fb,stroke:#2a78d6,stroke-width:1.5px,color:#0b0b0b

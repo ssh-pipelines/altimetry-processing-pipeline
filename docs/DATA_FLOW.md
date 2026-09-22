@@ -101,23 +101,28 @@ flowchart TB
     classDef internal fill:#f0efec,stroke:#8a8985,stroke-width:1px,color:#0b0b0b
     classDef published fill:#d7f2e7,stroke:#1baf7a,stroke-width:2px,color:#0b0b0b
     classDef disabled fill:#e6e4e1,stroke:#a6a09a,stroke-width:1.5px,stroke-dasharray:5 3,color:#615c57
+    classDef published_disabled fill:#eaf5ee,stroke:#8cc4a5,stroke-width:2px,stroke-dasharray:5 3,color:#3f4b45
 
     class GSFC,S6,S3B upstream
     class DF,OER,FIN,X1,X2,BP,UNIF,SGS,ENSO,IND stage
     class P1,P2,XO1,XO2,P3 internal
     class NSSH,NSSHREF,SGP,EM,INDP published
 
-    %% Not enabled yet — greyed so the live path reads at a glance.
-    class S3A,HY2B,SARAL,CRYO,HY2A,ENVI,ERS1,ERS2,HLP disabled
+    %% Not enabled yet. Sources drain to grey — safe, since every grey node
+    %% elsewhere is a parallelogram. HLP keeps a faded green instead: a grey
+    %% parallelogram would read as an intermediate file rather than a product.
+    class S3A,HY2B,SARAL,CRYO,HY2A,ENVI,ERS1,ERS2 disabled
+    class HLP published_disabled
 ```
 
 **Reading the diagram.** Blue = a processing stage; gray = an intermediate file;
 green = a published product; orange = upstream granules. Rectangles are stages,
 parallelograms are files; the boxes are grouping only.
 
-Anything **greyed out with a dashed border is not enabled yet**, and the dashed
-edge into it marks the branch that is not live. S3B is the only high-latitude
-source running today, so its product line is drawn but inactive.
+A **dashed border means not enabled yet**, and a dashed edge marks a branch that
+is not live. Color still carries the role, so the inactive high-latitude product
+stays green — faded, but a product rather than an intermediate file. S3B is the
+only high-latitude source running today.
 
 **Required inputs** is grouped by which family of run consumes them, which is why
 one input is green: a high-latitude run needs the pipeline's own reference-mission

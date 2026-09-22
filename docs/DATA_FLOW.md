@@ -17,25 +17,6 @@ flowchart TB
         S6["<b>S6</b><br/>2026-01-01 →"]
     end
 
-    %% The ~~~ links inside UA below are invisible layout scaffolding — no data
-    %% flow implied. Under direction TB a rank is a row, so each chain becomes a
-    %% column. Two rules keep the grid honest:
-    %%   1. Every chain must be the SAME length. dagre makes edges tight, so a
-    %%      short chain gets pulled down to meet NSSHREF and its head stops
-    %%      lining up with the others. Nine sources divide evenly by three; an
-    %%      uneven count needs a transparent spacer node to fill the last slot.
-    %%   2. NSSHREF needs a link from EVERY column tail — dagre centers a node
-    %%      across its predecessors, so fewer links would pull it off centre.
-    %%
-    %% Sources read left to right, top to bottom, most recent launch first:
-    %%
-    %%   HY-2B (2018-10)   S3B (2018-04)   S3A (2016)
-    %%   Saral (2013)      HY-2A (2011)    CryoSat-2 (2010)
-    %%   Envisat (2002)    ERS-2 (1995)    ERS-1 (1991)
-    %%                       NSSHREF
-    %%
-    %% Keep these comments out of the subgraph: GitHub's Mermaid build renders a
-    %% comment that directly follows a node as that node's label, printing "%%".
     subgraph UA["High-latitude runs — AVISO granules via THREDDS, plus the reference mission"]
         direction TB
         HY2B["<b>HY-2B</b><br/>TBD → TBD"]

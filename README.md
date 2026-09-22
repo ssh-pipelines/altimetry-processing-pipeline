@@ -20,9 +20,17 @@ produce a sibling `alt_hilat_at_*` family and do not pass through it.
 
 Simple grids -> ENSO grids & imagery -> Indicators
 
-For the end-to-end picture — which upstream collections are ingested from where,
-and what is published at each level — see
-**[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
+### Documentation
+
+- **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)** — the end-to-end picture as a diagram:
+  which upstream collections are ingested from where, and what is published at each
+  level.
+- **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — the vocabulary this repo is written in
+  (source, granule, daily file, P1/P2/P3, crossover type, product type, run
+  summary). Worth skimming before a first PR.
+- **[docs/adr/](docs/adr/)** — architecture decision records: why the scientific
+  stack is pinned in one image, why AVISO L2P skips the MSS swap, how failures are
+  surfaced, and more.
 
 ## Description
 

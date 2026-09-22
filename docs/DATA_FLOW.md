@@ -20,43 +20,47 @@ flowchart TB
     %% The ~~~ links inside UA below are invisible layout scaffolding — no data
     %% flow implied. Under direction TB a rank is a row, so each chain becomes a
     %% column. Two rules keep the grid honest:
-    %%   1. Both chains must be the SAME length. dagre makes edges tight, so a
-    %%      shorter right-hand chain gets pulled down to meet NSSHREF and S3A
-    %%      stops lining up with S3B. GAP is a transparent node holding the odd
-    %%      slot open; with an odd number of sources there is always one.
-    %%   2. NSSHREF needs a link from BOTH column tails — dagre centers a node
-    %%      between its predecessors, so one link would pin it under one column.
+    %%   1. Every chain must be the SAME length. dagre makes edges tight, so a
+    %%      short chain gets pulled down to meet NSSHREF and its head stops
+    %%      lining up with the others. Nine sources divide evenly by three; an
+    %%      uneven count needs a transparent spacer node to fill the last slot.
+    %%   2. NSSHREF needs a link from EVERY column tail — dagre centers a node
+    %%      across its predecessors, so fewer links would pull it off centre.
     %%
-    %%   S3B    S3A
-    %%   SARAL  CRYO
-    %%   ENVI   ERS2
-    %%   ERS1   GAP (invisible)
-    %%      NSSHREF
+    %% Sources read left to right, top to bottom, most recent launch first:
+    %%
+    %%   HY-2B (2018-10)   S3B (2018-04)   S3A (2016)
+    %%   Saral (2013)      HY-2A (2011)    CryoSat-2 (2010)
+    %%   Envisat (2002)    ERS-2 (1995)    ERS-1 (1991)
+    %%                       NSSHREF
     %%
     %% Keep these comments out of the subgraph: GitHub's Mermaid build renders a
-    %% comment that directly follows GAP as GAP's label, printing a "%%" box.
+    %% comment that directly follows a node as that node's label, printing "%%".
     subgraph UA["High-latitude runs — AVISO granules via THREDDS, plus the reference mission"]
         direction TB
+        HY2B["<b>HY-2B</b><br/>TBD → TBD"]
         S3B["<b>S3B</b><br/>2018-11-24 → 2026-04-10"]
-        S3A["<b>S3A</b><br/>2018-11-24 → 2026-04-10"]
-        SARAL["<b>Saral</b><br/>2018-11-24 → 2026-04-10"]
-        CRYO["<b>Cryosat-2</b><br/>2018-11-24 → 2026-04-10"]
-        ENVI["<b>Envisat</b><br/>2018-11-24 → 2026-04-10"]
-        ERS1["<b>ERS-1</b><br/>2018-11-24 → 2026-04-10"]
-        ERS2["<b>ERS-2</b><br/>2018-11-24 → 2026-04-10"]
-        GAP["&nbsp;"]
+        S3A["<b>S3A</b><br/>TBD → TBD"]
+        SARAL["<b>Saral</b><br/>TBD → TBD"]
+        HY2A["<b>HY-2A</b><br/>TBD → TBD"]
+        CRYO["<b>Cryosat-2</b><br/>TBD → TBD"]
+        ENVI["<b>Envisat</b><br/>TBD → TBD"]
+        ERS2["<b>ERS-2</b><br/>TBD → TBD"]
+        ERS1["<b>ERS-1</b><br/>TBD → TBD"]
         NSSHREF[/"NASA-SSH reference-mission along-track product<br/><i>required for crossovers</i>"/]
 
-        S3B ~~~ SARAL
+        HY2B ~~~ SARAL
         SARAL ~~~ ENVI
-        ENVI ~~~ ERS1
+
+        S3B ~~~ HY2A
+        HY2A ~~~ ERS2
 
         S3A ~~~ CRYO
-        CRYO ~~~ ERS2
-        ERS2 ~~~ GAP
+        CRYO ~~~ ERS1
 
+        ENVI ~~~ NSSHREF
+        ERS2 ~~~ NSSHREF
         ERS1 ~~~ NSSHREF
-        GAP ~~~ NSSHREF
     end
 
     UP --> AT
@@ -116,9 +120,6 @@ flowchart TB
     classDef internal fill:#f0efec,stroke:#8a8985,stroke-width:1px,color:#0b0b0b
     classDef published fill:#d7f2e7,stroke:#1baf7a,stroke-width:2px,color:#0b0b0b
     classDef disabled fill:#e6e4e1,stroke:#a6a09a,stroke-width:1.5px,stroke-dasharray:5 3,color:#615c57
-    classDef hidden fill:none,stroke:none,color:transparent
-
-    class GAP hidden
 
     class GSFC,S6,S3B upstream
     class DF,OER,FIN,X1,X2,BP,UNIF,SGS,ENSO,IND stage
@@ -126,7 +127,7 @@ flowchart TB
     class NSSH,NSSHREF,SGP,EM,INDP published
 
     %% Not enabled yet — greyed so the live path reads at a glance.
-    class S3A,SARAL,CRYO,ENVI,ERS1,ERS2,HLP disabled
+    class S3A,HY2B,SARAL,CRYO,HY2A,ENVI,ERS1,ERS2,HLP disabled
 ```
 
 **Reading the diagram.** Blue = a processing stage; gray = an intermediate file;

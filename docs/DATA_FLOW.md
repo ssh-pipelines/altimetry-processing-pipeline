@@ -17,6 +17,24 @@ flowchart TB
         S6["<b>S6</b><br/>2026-01-01 →"]
     end
 
+    %% The ~~~ links inside UA below are invisible layout scaffolding — no data
+    %% flow implied. Under direction TB a rank is a row, so each chain becomes a
+    %% column. Two rules keep the grid honest:
+    %%   1. Both chains must be the SAME length. dagre makes edges tight, so a
+    %%      shorter right-hand chain gets pulled down to meet NSSHREF and S3A
+    %%      stops lining up with S3B. GAP is a transparent node holding the odd
+    %%      slot open; with an odd number of sources there is always one.
+    %%   2. NSSHREF needs a link from BOTH column tails — dagre centers a node
+    %%      between its predecessors, so one link would pin it under one column.
+    %%
+    %%   S3B    S3A
+    %%   SARAL  CRYO
+    %%   ENVI   ERS2
+    %%   ERS1   GAP (invisible)
+    %%      NSSHREF
+    %%
+    %% Keep these comments out of the subgraph: GitHub's Mermaid build renders a
+    %% comment that directly follows GAP as GAP's label, printing a "%%" box.
     subgraph UA["High-latitude runs — AVISO granules via THREDDS, plus the reference mission"]
         direction TB
         S3B["<b>S3B</b><br/>2018-11-24 → 2026-04-10"]
@@ -26,26 +44,8 @@ flowchart TB
         ENVI["<b>Envisat</b><br/>2018-11-24 → 2026-04-10"]
         ERS1["<b>ERS-1</b><br/>2018-11-24 → 2026-04-10"]
         ERS2["<b>ERS-2</b><br/>2018-11-24 → 2026-04-10"]
+        GAP["&nbsp;"]
         NSSHREF[/"NASA-SSH reference-mission along-track product<br/><i>required for crossovers</i>"/]
-
-        GAP[" "]
-
-        %% Invisible links only — layout scaffolding, no data flow implied.
-        %% Under direction TB a rank is a row, so each chain below becomes one
-        %% column. Two rules drive this:
-        %%   1. Both chains must be the SAME length. dagre makes edges tight, so
-        %%      a shorter right-hand chain gets pulled down to meet NSSHREF and
-        %%      S3A stops lining up with S3B. GAP is a transparent node that
-        %%      holds the empty fourth slot open and keeps the chains even.
-        %%   2. NSSHREF needs a link from BOTH column tails — dagre centers a
-        %%      node between its predecessors, so one link would pin it under a
-        %%      single column.
-        %%
-        %%   S3B    S3A
-        %%   SARAL  CRYO
-        %%   ENVI   ERS2
-        %%   ERS1   GAP (invisible)
-        %%      NSSHREF
 
         S3B ~~~ SARAL
         SARAL ~~~ ENVI

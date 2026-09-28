@@ -1,7 +1,6 @@
 # run_summary
 
-Success-path reconciliation Lambda. See [ADR 0005](../../../docs/adr/0005-job-outcome-contract-and-run-summary.md)
-and `RUN_SUMMARY_CONTRACT_PLAN.md`.
+Success-path reconciliation Lambda. See [ADR 0005](../../../docs/adr/0005-job-outcome-contract-and-run-summary.md).
 
 Runs once at the top of `pipeline.asl` (replacing `Notify Success`) after the gridded
 pipeline succeeds. Given `{jobs_key, bucket, source}` it:

@@ -12,23 +12,6 @@ For each processing date, the Lambda:
 
 After the Distributed Map completes, the Step Function invokes a separate `rewrite_manifest` Lambda that rewrites the jobs manifest with `source: "NASA-SSH"` for downstream simple grid processing.
 
-## Directory structure
-
-```
-unifier/
-├── app.py                          # Lambda handler (S3 copy logic)
-├── config/
-│   ├── __init__.py
-│   └── source_config.py            # Binds the shared source profile to this stage
-├── tests/
-│   ├── __init__.py
-│   └── test_unifier.py             # Unit tests (config loading, handler copy, error cases)
-├── Dockerfile
-└── README.md
-```
-
-Per-source settings live in `utilities/sources/{source}.yaml`, not in this directory.
-
 ## Lambda input
 
 The Lambda receives one item from the jobs manifest per invocation:

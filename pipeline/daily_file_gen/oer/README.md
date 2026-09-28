@@ -11,7 +11,7 @@ OER handles two crossover geometries, dispatched from the source's `product_type
 | `reference` (e.g. S6, GSFC) | `self` | `dssh = ssh1 - ssh2` between two observations of the **same** satellite | Both sides contribute: `+dssh` at pass 1 and `-dssh` at pass 2, keyed by both trackids (shared orbit error) | Backward-looking (10 days back + 1 pad) |
 | `high_latitude` (e.g. S3B) | `reference` | `dssh = ssh1 - ssh2` where `ssh2` is the fixed, finalized reference-mission truth | Single sample per crossover at `time1`, keyed by the high-lat trackid only (**no** sign-flip stacking); reference schema has no `time2`/`cycle2` | Centered (±`reference_window_size` days) |
 
-The mapping is `_CROSSOVER_TYPE_BY_PRODUCT_TYPE` in [`oer/oer.py`](oer/oer.py). Both paths share the same `oerfit` spline solver, correction evaluation, and application steps — only the pair-building and fetch window differ.
+The mapping is `_CROSSOVER_TYPE_BY_PRODUCT_TYPE` in [`oer/oer.py`](oer/oer.py), whose `OerCorrection` class owns the S3 I/O and orchestration. Both paths share the same `oerfit` spline solver — the low-level cubic solver in [`oer/oerfit.py`](oer/oerfit.py), implementing La Traon & Ogor, JGR, 1998 — plus the correction evaluation and application steps in [`oer/compute_polygon_correction.py`](oer/compute_polygon_correction.py). Only the pair-building and fetch window differ.
 
 ## Ground speed
 
@@ -27,30 +27,6 @@ For each processing date, the Lambda:
 4. **Applies the correction** — adds the OER correction to `ssha` and `ssha_smoothed`, attaches the `oer` variable to the daily file, sets `product_generation_step = "2"`, updates `history`, and appends a `processing_history` step (generation step 2, recording the correction source) to the in-file provenance trail (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005). Uploads the P2 daily file to S3 with zlib compression.
 
 All intermediate and final NetCDFs are written to a temporary directory that is cleaned up after the run.
-
-## Directory structure
-
-```
-oer/
-├── app.py                              # Lambda handler (entry point)
-├── oer/
-│   ├── __init__.py
-│   ├── oer.py                          # OerCorrection class: S3 I/O, pipeline orchestration, crossover-type dispatch
-│   ├── compute_polygon_correction.py   # Spline fitting (self/reference pair-building), correction evaluation & application
-│   ├── oerfit.py                       # Low-level cubic spline solver (La Traon & Ogor, 1998)
-│   └── config/
-│       └── source_config.py            # OerConfig (ground_speed, reference_window_size) loaded from source YAML
-├── tests/
-│   ├── __init__.py
-│   ├── test_oer.py                     # Consistency, empty-input, apply-correction, and reference-polygon tests
-│   ├── test_oerfit.py                  # Spline solver input validation, output shape, and ground_speed tests
-│   ├── test_source_config.py           # OerConfig loading and product_type→crossover_type dispatch
-│   └── sample_data/
-│       ├── sample_inputs/              # 13 crossover files + 1 daily file (gzip-compressed)
-│       └── sample_output/              # Reference polygon, correction, and daily file (gzip-compressed)
-├── Dockerfile
-└── README.md
-```
 
 ## Lambda input
 

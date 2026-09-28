@@ -25,49 +25,6 @@ For each processing date, the Lambda:
 
 If no granules are found for a date, an empty template NetCDF with appropriate metadata is uploaded instead.
 
-## Directory structure
-
-```
-daily_files/
-├── app.py                                  # Lambda handler (entry point)
-├── daily_files/
-│   ├── daily_file_job.py                   # Job orchestration, save/upload, empty template
-│   ├── config/
-│   │   ├── source_config.py                # Dataclasses + YAML loader (lazy-cached)
-│   │   ├── sources.yaml                    # Per-source config (collections, MSS, smoothing)
-│   │   ├── dataset_schema.py               # Output schema definition + validation
-│   │   └── paths.py                        # Reference file directory paths
-│   ├── fetching/
-│   │   ├── downloader.py                   # S3Downloader / HttpDownloader (consume URI strings)
-│   │   ├── aviso_auth.py                   # AVISO HTTP session builder
-│   │   └── orbit_fetcher.py                # OrbitFetcher (downloads POE/MOE orbit files from JPL)
-│   ├── ingestion/
-│   │   ├── ingest.py                       # Abstract Ingestor + IngestedData dataclass
-│   │   ├── gsfc_ingest.py                  # GSFCIngestor (pass LUT, DAC from NOIB cycles)
-│   │   ├── s6_ingest.py                    # S6Ingestor (grouped NetCDF extraction + orbit swap)
-│   │   └── orbit_swap.py                   # run_orbit_swap(): shells out to C executable, returns swapped SSHA
-│   ├── processing/
-│   │   ├── daily_file.py                   # Abstract DailyFile base class
-│   │   ├── gsfc_daily_file.py              # GSFCDailyFile (GSFC flag splitting, manual outliers, bad_points)
-│   │   ├── s6_daily_file.py                # S6DailyFile (S6 flag logic, MSS sol1/sol2 correction, bad_points)
-│   │   └── smoothing.py                    # 19-point Gaussian-like SSHA smoothing filter
-│   └── ref_files/
-│       ├── empty_templates/                # Empty NetCDF templates per source
-│       ├── mss_diffs/                      # MSS difference grids (DTU15/18 minus DTU21)
-│       ├── basin/                          # Basin/lake polygon shapefiles
-│       └── complete_gsfc_pass_lut.csv      # GSFC orbit/index to pass number lookup
-├── tests/
-│   ├── test_source_config.py               # YAML loading, config fields, cycle_index_key
-│   ├── test_daily_file_job.py              # Source registry, job init, acquire phase
-│   ├── test_gsfc_processing.py             # End-to-end GSFC processing with synthetic data
-│   ├── test_s6_processing.py               # End-to-end S6 processing with synthetic data
-│   ├── test_bad_points.py                  # bad_points config flagging
-│   ├── test_empty_templates.py             # Empty template schema validation
-│   ├── test_smoothing.py                   # Smoothing filter edge cases
-├── Dockerfile
-└── README.md
-```
-
 ## Architecture
 
 The code uses a plugin-style registry pattern. Each source is defined as a `SourcePipeline` — a bundle of three interchangeable components:
@@ -79,6 +36,8 @@ The code uses a plugin-style registry pattern. Each source is defined as a `Sour
 | **Processor**  | `DailyFile`  | `GSFCDailyFile` (GSFC flag splitting) | `S6DailyFile` (S6 flag logic, MSS correction)               | Source-specific                                 |
 
 Granule discovery happens upstream in `pipeline_init`, which writes a manifest of granule URIs per date. The `SOURCE_REGISTRY` in `daily_file_job.py` maps source names to their `SourcePipeline`. To add a new satellite source, implement the three components and add a registry entry.
+
+`HttpDownloader`'s AVISO session builder is shared rather than stage-local — `build_aviso_session` in `utilities/aviso_auth.py`, passed through the registry entry's `session_fn`.
 
 Processing runs in two phases:
 

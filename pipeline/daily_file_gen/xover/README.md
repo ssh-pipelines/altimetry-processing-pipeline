@@ -49,32 +49,6 @@ All four fields are required. Available sources are those with an `xover:` secti
 
 Filename prefix is determined by the global source registry (`utilities/source_profile.py`).
 
-## Directory structure
-
-```
-xover/
-├── app.py                              # Lambda handler; picks the spec from crossover_type
-├── crossover/
-│   ├── processor.py                    # CrossoverProcessor + SelfSpec / ReferenceSpec + SPECS
-│   ├── loader.py                       # stream_files, load_track_window
-│   ├── search.py                       # find_self_crossovers / find_reference_crossovers
-│   ├── results.py                      # pack_records, filter_and_sort, dataset builders
-│   ├── track_window.py                 # The loaded-window container
-│   ├── xover_ssh.py                    # Geometric crossover detection (xover_ssh)
-│   └── config/
-│       └── source_config.py            # SourceConfig dataclass + loader
-├── tests/
-│   ├── test_crossover.py               # Consistency, empty-input, and all-NaN tests
-│   ├── test_reference_crossover.py     # Reference-mission crossover tests
-│   ├── test_search.py                  # Track-pairing and search tests
-│   ├── test_source_config.py           # Config loading tests
-│   └── test_app.py                     # Handler + dispatch tests
-├── Dockerfile
-└── README.md
-```
-
-Per-source settings live in `utilities/sources/{source}.yaml`, not in this directory.
-
 ## How it works
 
 `CrossoverProcessor` owns the run; the source's `crossover_type` selects a

@@ -22,34 +22,22 @@ The Lambda reads a jobs manifest from S3, constructs S3 keys for each simple gri
    - `.mp` metadata files — JSON with granule info, bounding box, and MD5 checksum
    - Archival versions — timestamped copies of text and `.mp` files under `archive/{INDICATOR}/`
 
-## Directory structure
+## Reference files
 
-```
-indicators/
-├── app.py                              # Lambda handler (entry point) + build_sg_key()
-├── indicators/
-│   ├── compute_indicators.py           # IndicatorProcessor class (processing, caching, upload)
-│   ├── pattern_data.py                 # Pattern class (loads ENSO/PDO/IOD spatial patterns)
-│   └── utils.py                        # Helpers: decimal year conversion, text/mp file generation
-├── ref_files/
-│   ├── BH_offset_and_trend_v0_new_grid.nc  # Trend + offset for detrending
-│   ├── half_deg_grid_cell_areas.nc         # Grid cell areas for GMSL weighting
-│   ├── ann_pattern.nc                      # Monthly seasonal cycle
-│   ├── enso_pattern_and_index.nc           # ENSO spatial pattern
-│   ├── pdo_pattern_and_index.nc            # PDO spatial pattern
-│   ├── iod_pattern_and_index.nc            # IOD spatial pattern
-│   └── txt_templates/
-│       ├── README.md
-│       ├── NASA_SSH_GMSL_INDICATOR.txt     # Header template for GMSL text output
-│       ├── NASA_SSH_ENSO_INDICATOR.txt     # Header template for ENSO text output
-│       ├── NASA_SSH_IOD_INDICATOR.txt      # Header template for IOD text output
-│       └── NASA_SSH_PDO_INDICATOR.txt      # Header template for PDO text output
-├── tests/
-│   ├── __init__.py
-│   └── test_indicator.py              # Unit tests
-├── Dockerfile
-└── README.md
-```
+Bundled under `ref_files/`:
+
+| File | Purpose |
+|------|---------|
+| `BH_offset_and_trend_v0_new_grid.nc` | Offset + trend grid used for detrending |
+| `half_deg_grid_cell_areas.nc` | Grid cell areas for area-weighted GMSL |
+| `ann_pattern.nc` | Monthly seasonal cycle |
+| `enso_pattern_and_index.nc` | ENSO spatial pattern and index |
+| `pdo_pattern_and_index.nc` | PDO spatial pattern and index |
+| `iod_pattern_and_index.nc` | IOD spatial pattern and index |
+| `txt_templates/NASA_SSH_{GMSL,ENSO,PDO,IOD}_INDICATOR.txt` | Header templates for the text outputs |
+
+The spatial patterns are loaded by the `Pattern` class (`indicators/pattern_data.py`);
+`IndicatorProcessor` (`indicators/compute_indicators.py`) owns processing, caching and upload.
 
 ## Lambda input
 

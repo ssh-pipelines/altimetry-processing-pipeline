@@ -19,16 +19,20 @@ Thank you for your interest in contributing! We welcome improvements, bug fixes,
 2. **Clone your fork locally**:
    ```bash
    git clone git@github.com:<your-username>/altimetry-processing-pipeline.git
+   ```
 3. **Create a new branch for your feature or fix**:
     ```bash
     git checkout -b feature/my-new-feature
+    ```
 4. **Make your changes, then commit following clear messages**:
     ```bash
     git add <files>
     git commit -m "Brief description of changes"
+    ```
 5. **Push your branch to your fork**:
     ```bash 
     git push origin feature/my-new-feature
+    ```
 6. **Open a Pull Request (PR) against main of this repo.**
 
 ## Reporting Issues

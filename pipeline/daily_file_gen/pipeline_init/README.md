@@ -8,7 +8,7 @@ For each invocation, the Lambda:
 
 1. **Validates the source** against `utilities/sources/{source}.yaml` and determines the date range — either from explicit `start`/`end` event parameters, or defaults to the source's `start_date` through the most recent processable date (based on a Monday cadence with a 10-day window buffer). Caps the end date at the source's `end_date` if configured.
 2. **Queries existing daily files** in S3 by listing objects under the source's P3 prefix and extracting file dates from the filenames. Both the prefix and the filename pattern come from `utilities.pipeline_layout`. Records the `LastModified` timestamp for each date.
-3. **Queries source modification times** depending on the source's `discovery_type`:
+3. **Queries source modification times** depending on the source's `discovery_type` — one enumerator per upstream protocol, in `enumeration/`, behind the shared interface in `base.py`:
    - **CMR** (`cmr`): Queries NASA CMR for granule modification times using the source's configured `concept_id`(s). For sources with multiple collections (e.g., S6), resolves per-cycle/pass priority so the highest-priority collection wins.
    - **THREDDS** (`thredds`): Crawls the AVISO THREDDS catalog for the configured `thredds_collection` / `thredds_version`, walking per-cycle catalogs to enumerate granules. The modification time is the processing-date token parsed out of each granule's filename — AVISO's catalog exposes no per-file timestamp.
    - **S3 bucket** (`s3_bucket`): Lists the source bucket and extracts modification times from S3 object metadata. If the source provides a `cycle_index_key`, reads a JSON index mapping cycle filenames to date ranges and uses the `LastModified` of covering cycle files as the source modification time for each date.
@@ -18,29 +18,6 @@ For each invocation, the Lambda:
    A granule-less date is only filled when it falls *before* the last date that has granules, i.e. when upstream coverage resumes after it. Granule-less dates at the trailing edge are skipped: upstream products land well behind real time, so their emptiness usually means "not published yet", and writing empty files there would churn the weekly simple grids and ENSO products until the data arrives. If nothing at all is enumerated for the range, nothing is planned — so **backfilling a known gap requires a range that extends past it**, far enough that real granules bound the gap on the late side.
 6. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording how the run was invoked (the given `start`/`end`/`force_update` overrides, a `defaults_used` flag, and the `resolved_start`/`resolved_end`). The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (Distributed Maps, `rewrite_manifest`, `set_sg_jobs`) depend on; `run_summary` reads the sidecar to report invocation parameters in the success notification (see ADR 0005).
 7. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
-
-## Directory structure
-
-```
-pipeline_init/
-├── app.py                          # Lambda handler + orchestration
-├── planning.py                     # Date-range resolution, gap filling, manifest assembly
-├── config/
-│   ├── __init__.py
-│   └── source_config.py            # Binds the shared source profile to this stage
-├── enumeration/
-│   ├── __init__.py
-│   ├── base.py                     # Enumerator interface (the discovery seam)
-│   ├── cmr.py                      # discovery_type: cmr
-│   ├── thredds.py                  # discovery_type: thredds
-│   └── s3_bucket.py                # discovery_type: s3_bucket
-├── tests/
-├── Dockerfile
-└── README.md
-```
-
-Per-source settings are **not** stored here — they live in `utilities/sources/{source}.yaml`
-(see [Source configuration](#source-configuration) below).
 
 ## Lambda input
 

@@ -22,26 +22,19 @@ For each processing date, the Lambda:
 
 The satellite name overlay is determined from a hardcoded date-to-satellite mapping (TOPEX/Poseidon through Sentinel-6 Michael Freilich).
 
-## Directory structure
+## Reference files
 
-```
-enso/
-├── app.py                              # Lambda handler (entry point)
-├── cartopy_setup.py                    # Pre-downloads Cartopy features for offline Lambda use
-├── enso_jobs/
-│   ├── __init__.py
-│   ├── enso_processing.py              # start_job() orchestration (stream, process, upload)
-│   ├── ensogridder.py                  # ENSOGridder class (smooth, detrend, interpolate)
-│   ├── ensomapper.py                   # ENSOMapper class (orthographic + plate-carree maps)
-│   ├── smoother.py                     # Diffusion-based spatial smoother
-│   └── ref_files/
-│       ├── akiko_colorscale.txt        # Custom colormap for maps
-│       ├── trnd_seas_simple_grid.nc    # Seasonal cycle and trend reference
-│       ├── new_basin_mask_quartdeg.nc  # Quarter-degree basin mask
-│       └── diff_operator_halfdeg.nc    # Diffusion operator for smoother
-├── Dockerfile
-└── README.md
-```
+Bundled under `enso_jobs/ref_files/`:
+
+| File | Purpose |
+|------|---------|
+| `trnd_seas_simple_grid.nc` | Seasonal cycle and trend reference (deseason/detrend) |
+| `diff_operator_halfdeg.nc` | Diffusion operator used by the spatial smoother |
+| `new_basin_mask_quartdeg.nc` | Quarter-degree basin mask |
+| `akiko_colorscale.txt` | Custom colormap for the output maps |
+
+`cartopy_setup.py` pre-downloads Cartopy coastline/ocean/land features at build time so
+the Lambda needs no network access at runtime (see [Cartopy setup](#cartopy-setup)).
 
 ## Lambda input
 
@@ -92,7 +85,7 @@ containing `status`, `errorType`, `errorMessage`, and the original `input`.
 
 Defined in `state_machines/enso.asl.json`. Uses a Distributed Map (max concurrency 500) that reads dates from a jobs manifest in S3 and invokes the `enso` Lambda for each date. Results are written to `pipeline_runs/results/enso/` in S3.
 
-Also invoked as part of the `simple_grid_pipeline` orchestration (`state_machines/simple_grid_pipeline.asl.json`), where it runs after the Simple Grids stage and before Indicators.
+Also invoked as part of the `sg_pipeline` orchestration (`state_machines/sg_pipeline.asl.json`), where it runs after the Simple Grids stage and before Indicators.
 
 ## Cartopy setup
 

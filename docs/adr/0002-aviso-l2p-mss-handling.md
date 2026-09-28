@@ -11,7 +11,7 @@ For AVISO L2P sources (S3B and the planned successors S3A, SARAL/AltiKa, HY-2B),
 
 ## Decision
 
-Skip the swap pattern for AVISO L2P. Bundle DTU's official **WGS84** global DTU21 MSS grid under `pipeline/daily_file_gen/daily_files/daily_files/ref_files/mss/DTU21MSS_1min_WGS84.nc` (LFS-tracked; DTU-native `int32` + `scale_factor=0.0001` encoding, ~295 MB). The grid **must be on the WGS84 ellipsoid** to match AVISO L2P's `mean_sea_surface`; an earlier bundle on the TOPEX/Poseidon datum (`DTU21_mss_global.nc`) injected a ~0.71 m offset into S3B `ssha` — see [docs/findings/2026-08-06-s3b-mss-swap-ellipsoid-offset.md](../findings/2026-08-06-s3b-mss-swap-ellipsoid-offset.md). The MSS variable is `mean_sea_surf_sol2` on a `[lat, lon]` grid.
+Skip the swap pattern for AVISO L2P. Bundle DTU's official **WGS84** global DTU21 MSS grid under `pipeline/daily_file_gen/daily_files/daily_files/ref_files/mss/DTU21MSS_1min_WGS84.nc` (LFS-tracked; DTU-native `int32` + `scale_factor=0.0001` encoding, ~295 MB). The grid **must be on the WGS84 ellipsoid** to match AVISO L2P's `mean_sea_surface`; an earlier bundle on the TOPEX/Poseidon datum (`DTU21_mss_global.nc`) injected a ~0.71 m offset into S3B `ssha`, which surfaced as an apparent inter-mission bias against NASA-SSH rather than as an obvious datum error. The MSS variable is `mean_sea_surf_sol2` on a `[lat, lon]` grid.
 
 At processing time, `AvisoL2PDailyFile` bilinearly interpolates DTU21 at each L2P granule's `(lat, lon)` via `scipy.interpolate.RegularGridInterpolator(method="linear")` and treats the result as the AvisoL2P equivalent of S6's `mean_sea_surface_sol2`:
 

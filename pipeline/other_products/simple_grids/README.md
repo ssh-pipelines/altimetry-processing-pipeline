@@ -16,28 +16,19 @@ For each processing date, the Lambda:
 6. **Builds the output dataset** — includes `ssha`, `basin_flag`, `counts`, `time`, `basin_names_table`, and full CF-1.7 global attributes (DOI, institution, gridding method, etc.).
 7. **Saves and uploads** the NetCDF to S3, with compressed encoding for all data variables.
 
-## Directory structure
+## Reference files
 
-```
-simple_grids/
-├── app.py                              # Lambda handler (entry point)
-├── simple_gridder/
-│   ├── __init__.py
-│   ├── gridder.py                      # SimpleGridderJob class (date windowing, S3 I/O, encoding)
-│   ├── gridding.py                     # Gridder, Source, Target classes (resampling logic)
-│   └── ref_files/
-│       ├── basin_connection_table_v2.txt   # Basin adjacency rules for resampling
-│       ├── new_basin_mask_halfdeg.nc    # Half-degree basin mask
-│       ├── new_basin_mask_quartdeg.nc   # Quarter-degree basin mask
-│       └── basin/
-│           ├── new_basin_lake_polygons.shp  # Basin names/IDs (shapefile)
-│           ├── new_basin_lake_polygons.dbf
-│           ├── new_basin_lake_polygons.shx
-│           └── new_basin_lake_polygons.prj
-├── Dockerfile
-├── .dockerignore
-└── README.md
-```
+Bundled under `simple_gridder/ref_files/`:
+
+| File | Purpose |
+|------|---------|
+| `basin_connection_table_v2.txt` | Basin adjacency rules — which basins may share data when resampling |
+| `new_basin_mask_halfdeg.nc` | Half-degree basin mask (the output grid) |
+| `new_basin_mask_quartdeg.nc` | Quarter-degree basin mask |
+| `basin/new_basin_lake_polygons.{shp,dbf,shx,prj}` | Basin names/IDs as a shapefile |
+
+`SimpleGridderJob` (`simple_gridder/gridder.py`) owns date windowing, S3 I/O and encoding;
+the `Gridder`/`Source`/`Target` classes in `simple_gridder/gridding.py` hold the resampling logic.
 
 ## Lambda input
 
@@ -107,10 +98,10 @@ source registry (`utilities/source_profile.py` + `utilities/products.yaml`), key
 
 ## Step Function
 
-Part of the `simple_grid_pipeline` orchestration defined in `state_machines/simple_grid_pipeline.asl.json`:
+Part of the `sg_pipeline` orchestration defined in `state_machines/sg_pipeline.asl.json`:
 
 1. **Set SG Jobs** — filters the manifest and prepares the jobs list
-2. **Simple Grids Execution** — Distributed Map (`state_machines/simple_grid.asl.json`, max concurrency 500) that invokes the `simple_grids` Lambda for each date
+2. **Simple Grids Execution** — Distributed Map (`state_machines/simple_grids.asl.json`, max concurrency 500) that invokes the `simple_grids` Lambda for each date
 3. **ENSO Execution** — downstream stage
 4. **Indicators** — downstream stage
 

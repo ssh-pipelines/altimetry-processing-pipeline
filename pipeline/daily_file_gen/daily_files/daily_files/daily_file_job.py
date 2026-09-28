@@ -56,12 +56,6 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         ingestor=S6Ingestor,
         processor=S6DailyFile,
     ),
-    "GSFC_6.1": SourcePipeline(
-        downloader=S3Downloader,
-        downloader_kwargs={"credentials_fn": None},
-        ingestor=GSFCIngestor,
-        processor=GSFCDailyFile,
-    ),
     "EXAMPLE_S3": SourcePipeline(
         downloader=S3Downloader,
         downloader_kwargs={"credentials_fn": None},

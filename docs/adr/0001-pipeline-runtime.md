@@ -128,9 +128,6 @@ orthogonal and best done in its own initiative across the whole repo.
   set; `git checkout v1.4.0` rebuilds the bit-for-bit-equivalent image.
 - Per-stage `requirements.txt` files shrink to just their extras, making
   stage dependencies easier to read.
-- Unit tests run against the same scientific stack as prod, since the venv
-  setup script (`.devcontainer/setup_python_venvs.sh`) layers the runtime
-  requirements first.
 
 **Negative**:
 

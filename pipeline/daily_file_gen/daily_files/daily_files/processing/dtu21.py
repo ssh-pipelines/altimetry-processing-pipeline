@@ -6,7 +6,7 @@ official WGS84 release) is loaded once per Lambda container;
 on-disk `mean_sea_surf_sol2[lat, lon]` layout, so no transpose is needed. The
 grid MUST be on the WGS84 ellipsoid to match AVISO L2P's `mean_sea_surface`; an
 earlier bundled grid on the TOPEX/Poseidon datum injected a ~0.71 m offset into
-S3B ssha (see docs/findings/2026-08-06-s3b-mss-swap-ellipsoid-offset.md). xarray
+S3B ssha (see ADR 0002). xarray
 decodes the int32+scale_factor encoding to float64 by default; we cast to
 float32 to halve resident memory (~1.87 GB → ~933 MB) at no meaningful precision
 cost for MSS use.

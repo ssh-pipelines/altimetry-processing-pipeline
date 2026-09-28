@@ -2,7 +2,7 @@
 
 Produces level-3 (P3) daily files from level-2 (P2) inputs. Applies a source-specific absolute offset to `ssha` and `ssha_smoothed`, flags bad passes using crossover-derived thresholds, sets metadata attributes, and uploads the finalized NetCDF to S3.
 
-Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON event.
+Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON event. The logic lives in the `Finalizer` class (`finalization/finalizer.py`).
 
 ## How it works
 
@@ -20,24 +20,6 @@ For each processing date, the Lambda:
 10. **Uploads** the finalized P3 file to S3 and removes the local temp copy.
 
 As a **deliverable stage** the handler returns a **Job outcome** (`utilities.job_outcome.JobOutcome`) declaring the P3 key it wrote — the success-side analog of the structured failure entry (ADR 0005). The Distributed Map's `ResultWriter` persists it to `SUCCEEDED_n.json`, and the `run_summary` Lambda reconciles it against the jobs manifest. The outcome's `metadata` carries the file's `processing_history`, a `provenance_complete` flag, and the `product_type`/`unify` source-config fields. An upload failure now **raises** (previously returned silently) so the failure path records it.
-
-## Directory structure
-
-```
-finalizer/
-├── app.py                              # Lambda handler (entry point)
-├── finalization/
-│   ├── finalizer.py                    # Finalizer class + apply_bad_pass()
-│   └── config/
-│       ├── __init__.py
-│       └── source_config.py            # FinalizerSourceConfig dataclasses + loader
-│                                       # (delegates to utilities/source_profile.py)
-├── tests/
-│   ├── __init__.py                     # Adds finalization/ to sys.path for test imports
-│   └── test_finalizer.py              # Unit tests
-├── Dockerfile
-└── README.md
-```
 
 ## Lambda input
 

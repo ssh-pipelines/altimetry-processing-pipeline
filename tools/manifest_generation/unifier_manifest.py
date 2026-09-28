@@ -45,7 +45,7 @@ def main():
     )
     parser.add_argument("--bucket", required=True, help="S3 bucket name")
     parser.add_argument("--profile", required=True, help="AWS CLI profile name")
-    parser.add_argument("--sources", required=True, nargs="+", help="Source names to include (e.g. GSFC_6.1 S6)")
+    parser.add_argument("--sources", required=True, nargs="+", help="Source names to include (e.g. GSFC S6)")
     args = parser.parse_args()
 
     validate_sources(args.sources)

@@ -14,7 +14,7 @@ Operators care about two outcomes from a failed run:
 
 A `failure_handling` Lambda has existed in `pipeline/infra/failure_handling/` since the early pipeline build but is wired into no state machine. The `Catch` blocks in `pipeline.asl.json`, `at_pipeline.asl.json`, and `sg_pipeline.asl.json` all point straight at `Fail`.
 
-Three failure modes drive the design (see CONTEXT.md: **Code failure**, **Runtime failure**, **Auth failure**):
+Three failure modes drive the design:
 
 - **Code failure** — handler's `try/except` ran; the raised exception carries our structured `{errorType, errorMessage, input}` JSON. Per-item detail is in the Distributed Map's `ResultWriter` output as `FAILED_*.json`.
 - **Runtime failure** — Lambda runtime killed the process (timeout, OOM, init error) before `try/except` could run. The `FAILED_*.json` carries only the raw Step Functions `Cause`.
@@ -96,7 +96,7 @@ The class name itself is the machine-readable signal `failure_handling` uses to 
 - Operator workflow collapses from 5+ console hops to one notification + at most one S3 link for overflow.
 - Adding a new stage requires one `Catch` block on the new Task; the `Notify Failure` state is reused.
 - `failure_handling`'s only AWS dependencies are SNS and S3 — no Step Functions API, so no IAM expansion beyond the existing bucket policies.
-- The failure taxonomy in CONTEXT.md is now codified in code (`PipelineError`), in the SNS message format, and in any future runbook.
+- The failure taxonomy is now codified in code (`PipelineError`), in the SNS message format, and in any future runbook.
 
 **Negative:**
 - `failure_handling`'s input shape becomes a load-bearing interface across 12 Catch wirings. Changing it later means touching every Catch.

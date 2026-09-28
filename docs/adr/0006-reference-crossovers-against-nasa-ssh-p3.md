@@ -1,4 +1,9 @@
-# Reference-mission crossovers compare against finalized NASA-SSH P3
+# ADR 0006: Reference-mission crossovers compare against finalized NASA-SSH P3
+
+- **Status**: Accepted
+- **Date**: 2026-07-16
+
+## Context
 
 High-latitude sources (e.g. S3B) have no self-crossovers, so their SSHA is assessed
 via reference-mission crossovers against the **reference mission** — the unified

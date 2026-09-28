@@ -2,7 +2,7 @@
 
 This directory contains the scripts that build, tag, push, and deploy the pipeline — both its Lambda **targets** and its Step Functions **state machine definitions** — for **development** and **production**. The workflow is tightly integrated with Git to ensure traceability, reproducibility, and minimal rebuild effort.
 
-What each script manages — which targets exist, where they live, which are heavy (`FROM` pipeline_runtime), which map to a Lambda, and how they are packaged — comes from the **Target registry** (`utilities/targets.py` + `utilities/targets.yaml`), the single source of truth. State machines are not Targets (the registry does not track them); they are rendered from `state_machines/*.asl.json`. See `CONTEXT.md` → **Build & deploy** and `docs/adr/0004-target-registry.md`.
+What each script manages — which targets exist, where they live, which are heavy (`FROM` pipeline_runtime), which map to a Lambda, and how they are packaged — comes from the **Target registry** (`utilities/targets.py` + `utilities/targets.yaml`), the single source of truth. State machines are not Targets (the registry does not track them); they are rendered from `state_machines/*.asl.json`. See `docs/adr/0004-target-registry.md`.
 
 ---
 

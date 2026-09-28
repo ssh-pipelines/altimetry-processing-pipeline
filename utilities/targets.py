@@ -3,7 +3,7 @@
 A *Target* is anything the build/deploy scripts manage — a buildable image
 and/or a deployable Lambda. Existence and packaging kind are derived from the
 filesystem; the ``heavy`` / ``deployable`` facts are declared in ``targets.yaml``.
-See CONTEXT.md -> Build & deploy and docs/adr/0004-target-registry.md.
+See docs/adr/0004-target-registry.md.
 
 Callers (the bash scripts) use the CLI:
 
@@ -194,7 +194,7 @@ def dirty(changed_paths: Iterable[str]) -> list[Target]:
     """The Targets that must be rebuilt/redeployed for a set of changed
     repo-relative paths. Pure over (changed_paths, catalog).
 
-    Edges (see CONTEXT.md -> Change-impact):
+    Edges:
       - own dir changed                     -> any target
       - utilities/ or pyproject.toml changed -> every container target except pipeline_runtime
       - pipeline_runtime/ changed           -> every heavy target + pipeline_runtime itself

@@ -36,8 +36,7 @@ _DTYPE_OVERRIDES = {
     "oer": {"dtype": "float64", "_FillValue": np.finfo(np.float64).max},
 }
 
-# product_type ↔ crossover_type ↔ OER path (documented 1:1; see
-# PLAN_reference_crossovers.md "Staged CONTEXT.md additions"). A reference
+# product_type ↔ crossover_type ↔ OER path (documented 1:1). A reference
 # mission (product_type=reference) crosses against itself → "self" OER; a
 # high_latitude source crosses against the finalized reference mission →
 # "reference" OER.

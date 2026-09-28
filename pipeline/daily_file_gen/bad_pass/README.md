@@ -34,23 +34,8 @@ For each processing date, the Lambda:
    - **RMS**: If `n > 25` points and `std(dssh) > 0.27` m
 4. **Writes results** to `s3://{bucket}/bad_passes/{source}/{date}.json` (only when bad passes are found).
 
-A static list of known bad passes is also maintained in `bad_passes/bad_pass_list.csv`.
-
-## Directory structure
-
-```
-bad_pass/
-├── app.py                        # Lambda handler
-├── bad_passes/
-│   ├── bad_pass_flag.py          # XoverProcessor — core logic
-│   ├── config/
-│   │   └── source_config.py      # BadPassConfig — product_type dispatch + reference window
-│   └── bad_pass_list.csv         # Static list of known bad passes
-├── tests/
-│   └── test_bad_pass_flag.py     # Unit tests
-├── Dockerfile
-└── README.md
-```
+The logic lives in `XoverProcessor` (`bad_passes/bad_pass_flag.py`); the product-type
+dispatch and reference window come from `BadPassConfig` (`bad_passes/config/source_config.py`).
 
 ## Lambda input
 

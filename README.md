@@ -11,27 +11,26 @@ Pipeline consists of:
 
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
+Every source runs its own independent instance of this sequence. Reference-mission
+sources (`unify: true`) then have their finalized daily files copied into the
+unified NASA-SSH reference-mission product by the unifier; high-latitude sources
+produce a sibling `alt_hilat_at_*` family and do not pass through it.
+
 ### Additional product generation
 
-Simple grids -> Indicators -> Imagery for website
+Simple grids -> ENSO grids & imagery -> Indicators
 
-```
-                  GSFC Data     S6 Data
-                      |            |
-                      +------------+
-                            |
-                            v
-                [ Generate Daily Files ]
-                            |   
-                            v   
-                [ Generate Simple Grids ]
-                            |  
-                            v  
-             +--------------+--------------+ 
-             |                             | 
-             v                             v 
-[ Generate ENSO Maps & Imagery]  [ Generate Indicators ]
-```
+### Documentation
+
+- **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)** — the end-to-end picture as a diagram:
+  which upstream collections are ingested from where, and what is published at each
+  level.
+- **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — the vocabulary this repo is written in
+  (source, granule, daily file, P1/P2/P3, crossover type, product type, run
+  summary). Worth skimming before a first PR.
+- **[docs/adr/](docs/adr/)** — architecture decision records: why the scientific
+  stack is pinned in one image, why AVISO L2P skips the MSS swap, how failures are
+  surfaced, and more.
 
 ## Description
 
@@ -49,7 +48,7 @@ A top-level orchestrator (`pipeline.asl.json`) coordinates three sub-pipelines, 
 
 ```
 pipeline.asl.json
-├── along_track_pipeline.asl.json
+├── at_pipeline.asl.json
 │   ├── pipeline_init (Lambda — determines which dates need processing)
 │   ├── daily_file.asl.json (Distributed Map → daily_files Lambda)
 │   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p1)
@@ -60,12 +59,17 @@ pipeline.asl.json
 ├── unifier.asl.json (conditional — runs if source has unify=true)
 │   ├── Distributed Map → unifier Lambda
 │   └── rewrite_manifest (Lambda — rewrites jobs manifest with NASA-SSH source)
-└── simple_grid_pipeline.asl.json
-    ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
-    ├── simple_grid.asl.json (Distributed Map → simple_grids Lambda)
-    ├── enso.asl.json (Distributed Map → enso Lambda)
-    └── indicators (Lambda)
+├── sg_pipeline.asl.json
+│   ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
+│   ├── simple_grids.asl.json (Distributed Map → simple_grids Lambda)
+│   ├── enso.asl.json (Distributed Map → enso Lambda)
+│   └── indicators (Lambda)
+└── run_summary (Lambda — reconciles expected vs produced, per product pipeline)
 ```
+
+An along-track run that finds no dates to process short-circuits past unification
+and the gridded pipeline straight to the summary, which reconciles to an empty run
+rather than a failure.
 
 ### Key patterns
 
@@ -74,8 +78,11 @@ pipeline.asl.json
 - **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` to pass the original input (`jobs_key`, `bucket`, `source`) through to the next state, since child state machine outputs aren't needed upstream.
 - **Two crossover passes**: The xover state machine is invoked twice — once with `df_version=p1` (before OER) and once with `df_version=p2` (after OER).
 - **Conditional unification**: Sources with `unify=true` (GSFC, S6) get their finalized daily files copied to a unified `NASA-SSH` prefix by the unifier. The `rewrite_manifest` Lambda then produces a new jobs manifest under the NASA-SSH source for downstream simple grid processing.
+- **Declared outcomes, not inferred ones**: each deliverable stage returns a Job outcome naming the S3 keys it wrote, persisted per item by `ResultWriter`. `run_summary` reconciles those against the manifest's job specs rather than listing S3 and matching date tokens ([ADR 0005](docs/adr/0005-job-outcome-contract-and-run-summary.md)). Failures take the mirrored path through `failure_handling` ([ADR 0003](docs/adr/0003-failure-surfacing.md)).
 
-For a detailed reference of every S3 object written by each stage (success and failure), key patterns, and operator troubleshooting tips, see **[S3_DATA_FLOW.md](S3_DATA_FLOW.md)**.
+The authoritative reference for every S3 key each stage reads and writes is
+[`utilities/pipeline_layout.py`](utilities/pipeline_layout.py) — every Lambda asks
+that module for keys and prefixes rather than building f-strings.
 
 ## Source Configuration
 
@@ -103,7 +110,7 @@ Source-identity metadata used by multiple stages:
 Each stage that a source participates in gets its own section (`pipeline_init:`,
 `daily_files:`, `finalizer:`, `xover:`, …) carrying only that stage's settings.
 
-The `xover:` section selects the **crossover type** (see CONTEXT.md):
+The `xover:` section selects the **crossover type**:
 
 - `crossover_type: self` — a `reference` product-type source (S6, S6B, GSFC)
   crossed against its own passes over a forward window. Fields: `cycle_length`,

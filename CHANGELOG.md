@@ -11,6 +11,19 @@ High-latitude (S3B) support is still a work in progress and is not yet enabled i
 production. The entries below ship in the code but remain unannounced until that
 source is fully supported.
 
+### Fixed
+- High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
+  product's in-file identity. `title`, `summary`, `id` (DOI), `processing_level`,
+  `product_short_name`, `product_version`, `references`, and `source_url` moved out of
+  Python literals in `daily_files/processing/daily_file.py` and
+  `simple_gridder/gridding.py` and into per-product entries in `utilities/products.yaml`,
+  resolved from the source's `product_type`. Reference-product values are unchanged.
+  The high-latitude values are placeholders derived from the reference mission, with
+  `id: "TBD"` marking those products as not yet deliverable to PO.DAAC.
+  `product_version` is now derived from the product's `version` rather than restated,
+  so the filename and the in-file version cannot disagree. `geospatial_lat_min/max`
+  remain hardcoded to ±90, which is wrong for every along-track product; unchanged here.
+
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
   against the finalized NASA-SSH P3 reference mission instead of themselves, selected by

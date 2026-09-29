@@ -9,6 +9,8 @@ import geopandas as gpd
 import numpy as np
 import xarray as xr
 
+from utilities.source_profile import Product
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
     import pyresample as pr
@@ -78,6 +80,7 @@ class Gridder:
         filenames: Iterable[str],
         streamed_files: Iterable[TextIOWrapper],
         resolution: Optional[str],
+        product: Product,
     ) -> None:
         self.streamed_files = streamed_files
         self.center_date = center_date
@@ -86,6 +89,7 @@ class Gridder:
         self.filenames = filenames
         self.basin_connections = self.load_basin_connections()
         self.resolution = resolution
+        self.product = product
         self.nnan_count = 0
 
     def load_basin_connections(self) -> Iterable[basin_connection]:
@@ -281,18 +285,11 @@ class Gridder:
 
         creation_time = datetime.now().isoformat(timespec="seconds")
 
-        # Set global attributes
+        # Global attributes shared by every NASA-SSH product. Identity — title,
+        # summary, DOI, short name, processing level, version, and the pointers
+        # back to the along-track product — belongs to the product and is merged
+        # in below, so a high-latitude grid cannot claim the reference grid's DOI.
         ds.attrs["Conventions"] = "CF-1.9"
-        ds.attrs["title"] = (
-            "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
-        )
-        ds.attrs["summary"] = (
-            "This data set contains satellite based measurements of sea surface height, computed "
-            "relative to the mean sea surface specified in mean_sea_surface. Data have been collected "
-            "from multiple satellites, and processed to maximize compatibility and minimize bias "
-            "between satellites. They are intended for use in studies and applications requiring "
-            "climate-quality observations without additional adjustments or filtering."
-        )
         ds.attrs["acknowledgement"] = "This data is provided by NASAs PO.DAAC."
         ds.attrs["license"] = "https://creativecommons.org/licenses/by/4.0/"
         ds.attrs["geospatial_lat_max"] = 90.0
@@ -301,16 +298,12 @@ class Gridder:
         ds.attrs["geospatial_lon_min"] = 0.0
         ds.attrs["date_created"] = creation_time
         ds.attrs["history"] = f"Created on {creation_time}"
-        ds.attrs["id"] = "10.5067/NSREF-SG0V11"
         ds.attrs["institution"] = "NASA/Jet Propulsion Laboratory"
         ds.attrs["instrument"] = "Altimeter"
         ds.attrs["keywords"] = "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level"
         ds.attrs["keywords_vocabulary"] = "NASA Global Change Master Directory (GCMD) Science Keywords"
         ds.attrs["naming_authority"] = "gov.nasa.jpl.podaac"
         ds.attrs["platform"] = "Satellite"
-        ds.attrs["processing_level"] = "Level 3"
-        ds.attrs["product_short_name"] = "NASA_SSH_REF_SIMPLE_GRID_V11"
-        ds.attrs["product_version"] = "V1.1"
         ds.attrs["project"] = "NASA-SSH"
         ds.attrs["publisher_name"] = "PO.DAAC"
         ds.attrs["publisher_url"] = "https://podaac.jpl.nasa.gov/"
@@ -318,8 +311,6 @@ class Gridder:
         ds.attrs["creator_name"] = "Josh Willis"
         ds.attrs["creator_url"] = "https://podaac.jpl.nasa.gov/NASA-SSH/"
         ds.attrs["creator_email"] = "podaac@podaac.jpl.nasa.gov"
-        ds.attrs["references"] = "https://doi.org/10.5067/NSREF-AT0V1"
-        ds.attrs["source_url"] = "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v11"
         ds.attrs["standard_name_vocabulary"] = "CF Standard Name Table v86"
         ds.attrs["mean_sea_surface"] = "DTU21"
         ds.attrs["gridding_method"] = (
@@ -331,4 +322,5 @@ class Gridder:
         ds.attrs["time_coverage_end"] = (self.end_date + timedelta(days=1)).isoformat(timespec="seconds")
         ds.attrs["source_files"] = ", ".join(self.filenames)
         ds.attrs["source_valid_points"] = self.nnan_count
+        ds.attrs.update(self.product.global_attrs())
         return ds

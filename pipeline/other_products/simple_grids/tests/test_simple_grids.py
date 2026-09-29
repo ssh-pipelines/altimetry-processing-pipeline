@@ -197,6 +197,8 @@ class TestMergeGranulesThreshold(unittest.TestCase):
     def _gridder(self, streamed_files):
         from simple_gridder.gridding import Gridder
 
+        from utilities.source_profile import get_product
+
         return Gridder(
             datetime(2025, 1, 7),
             datetime(2025, 1, 2),
@@ -204,6 +206,7 @@ class TestMergeGranulesThreshold(unittest.TestCase):
             ["f.nc"],
             streamed_files,
             None,
+            get_product("simple_grid_reference"),
         )
 
     @patch("simple_gridder.gridding.xr.open_mfdataset")
@@ -303,6 +306,124 @@ class TestParseBasinConnections(unittest.TestCase):
             if b < 1000 and b != a and b in table and a not in table[b]
         ]
         self.assertEqual(asym, [])
+
+
+class TestReferenceGridIdentity(unittest.TestCase):
+    """In-file identity of the reference simple-grid product.
+
+    Built through the empty-grid path (no streamed files → InsufficientData →
+    all-NaN grid), which still writes the full global-attr set offline. Pinned
+    because these are the values PO.DAAC ingested: moving identity out of
+    `gridding.py` literals and into `utilities/products.yaml` must not change them.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from simple_gridder.gridding import Gridder
+
+        from utilities.source_profile import get_product
+
+        gridder = Gridder(
+            datetime(2025, 1, 7),
+            datetime(2025, 1, 2),
+            datetime(2025, 1, 11),
+            ["f.nc"],
+            [],
+            None,
+            get_product("simple_grid_reference"),
+        )
+        ds = gridder.make_grid("out.nc")
+        cls.attrs = dict(ds.attrs)
+        ds.close()
+
+    def test_title(self):
+        self.assertEqual(
+            self.attrs["title"],
+            "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1",
+        )
+
+    def test_doi(self):
+        self.assertEqual(self.attrs["id"], "10.5067/NSREF-SG0V11")
+
+    def test_product_short_name(self):
+        self.assertEqual(self.attrs["product_short_name"], "NASA_SSH_REF_SIMPLE_GRID_V11")
+
+    def test_processing_level_is_gridded(self):
+        """Level 3, not the along-track product's Level 2."""
+        self.assertEqual(self.attrs["processing_level"], "Level 3")
+
+    def test_product_version(self):
+        self.assertEqual(self.attrs["product_version"], "V1.1")
+
+    def test_references_and_source_url_point_at_the_along_track_product(self):
+        self.assertEqual(self.attrs["references"], "https://doi.org/10.5067/NSREF-AT0V1")
+        self.assertEqual(
+            self.attrs["source_url"],
+            "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v11",
+        )
+
+    def test_shared_attrs_survive(self):
+        self.assertEqual(self.attrs["project"], "NASA-SSH")
+        self.assertEqual(self.attrs["institution"], "NASA/Jet Propulsion Laboratory")
+        self.assertEqual(self.attrs["mean_sea_surface"], "DTU21")
+
+
+class TestHighLatitudeGridIdentity(unittest.TestCase):
+    """A high-latitude grid must not inherit the reference grid's identity. The DOI
+    is the placeholder `TBD` until the science side settles this product."""
+
+    @classmethod
+    def setUpClass(cls):
+        from simple_gridder.gridding import Gridder
+
+        from utilities.source_profile import get_product
+
+        gridder = Gridder(
+            datetime(2025, 1, 7),
+            datetime(2025, 1, 2),
+            datetime(2025, 1, 11),
+            ["f.nc"],
+            [],
+            None,
+            get_product("simple_grid_high_latitude"),
+        )
+        ds = gridder.make_grid("out.nc")
+        cls.attrs = dict(ds.attrs)
+        ds.close()
+
+    def test_does_not_claim_the_reference_doi(self):
+        self.assertNotEqual(self.attrs["id"], "10.5067/NSREF-SG0V11")
+        self.assertEqual(self.attrs["id"], "TBD")
+
+    def test_product_short_name(self):
+        self.assertEqual(self.attrs["product_short_name"], "NASA_SSH_HILAT_SIMPLE_GRID_V11")
+
+    def test_title_does_not_claim_reference_missions(self):
+        self.assertNotIn("Reference Missions", self.attrs["title"])
+
+    def test_processing_level_still_gridded(self):
+        self.assertEqual(self.attrs["processing_level"], "Level 3")
+
+    def test_does_not_point_at_the_reference_along_track_product(self):
+        self.assertEqual(self.attrs["references"], "")
+        self.assertEqual(self.attrs["source_url"], "")
+
+
+class TestGridIdentityComesFromTheSource(unittest.TestCase):
+    """The stage resolves the grid product from the source's product_type, so the
+    Lambda's own event is enough to get the identity right."""
+
+    def test_reference_source_resolves_reference_grid_product(self):
+        from simple_gridder.gridder import SimpleGridderJob
+
+        job = SimpleGridderJob("2025-01-07", "b", "S6", None)
+        self.assertEqual(job.product.name, "simple_grid_reference")
+
+    def test_high_latitude_source_resolves_hilat_grid_product(self):
+        from simple_gridder.gridder import SimpleGridderJob
+
+        job = SimpleGridderJob("2025-01-07", "b", "S3B", None)
+        self.assertEqual(job.product.name, "simple_grid_high_latitude")
 
 
 if __name__ == "__main__":

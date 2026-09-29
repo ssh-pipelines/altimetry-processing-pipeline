@@ -88,13 +88,14 @@ source registry (`utilities/source_profile.py` + `utilities/products.yaml`), key
 `product_type`: `reference` sources produce `_alt_ref_simple_grid_` grids, `high_latitude` sources
 (e.g. S3B) produce `_alt_hilat_simple_grid_` grids.
 
-> **Known limitation (high-latitude sources).** The gridding math is source-agnostic, but the
-> output's CF **global attributes** (`title`, `product_short_name`, DOIs, `summary`, `source_url`,
-> etc. in `gridding.py`) are currently hardcoded to the NASA-SSH *reference* product. On a
-> `high_latitude` grid the `ssha`/`counts`/`basin_flag` data are correct, but those descriptive
-> attributes mislabel the product. They must be parametrized per `product_type` before high-lat
-> grids are shipped as a standalone product; they are adequate for internal validation
-> (e.g. `tools/compute_source_offset.py`).
+The same resolution decides the output's in-file identity. `gridding.py` writes the CF global
+attributes that every NASA-SSH product shares (`institution`, `project`, `publisher_*`, `creator_*`,
+the gridding method, the time coverage) and merges the product's own identity — `title`, `summary`,
+`id`, `processing_level`, `product_short_name`, `product_version`, `references`, `source_url` — over
+them from `utilities/products.yaml`. A `high_latitude` grid therefore no longer claims the reference
+grid's DOI; it carries `simple_grid_high_latitude`'s placeholder identity, whose `id: "TBD"` marks it
+as not yet deliverable to PO.DAAC. That product has never produced a distributed file and is used
+for internal validation only (e.g. `tools/compute_source_offset.py`).
 
 ## Step Function
 
@@ -116,7 +117,8 @@ From the repo root (after `uv sync --extra dev`):
 ```
 
 `tests/test_simple_grids.py` covers the handler's Job-outcome shape (success and the
-no-daily-files skip). The job is also wired into CI (`.github/workflows/tests.yml`).
+no-daily-files skip), key/window derivation, the coverage guard, the basin-connection parser, and
+the per-product in-file identity. The job is also wired into CI (`.github/workflows/tests.yml`).
 
 ## Dependencies
 

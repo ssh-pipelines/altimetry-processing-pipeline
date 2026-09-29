@@ -18,7 +18,7 @@ For each processing date, the Lambda:
    - Normalizes the MSS reference to DTU21 — `reference` sources swap via a precomputed difference grid, `high_latitude` sources interpolate a bundled DTU21 grid at each granule's lon/lat ([ADR 0002](../../../docs/adr/0002-aviso-l2p-mss-handling.md))
    - Flags land/lake basins in `nasa_flag`
    - Computes `ssha_smoothed` using a 19-point Gaussian-like along-track filter, with `sigma` from the `daily_files:` config and the along-track speed from `common.ground_speed`
-   - Sets variable and global CF-compliant metadata
+   - Sets variable and global CF-compliant metadata — the shared attrs from `get_base_global_attrs`, the product's own identity (`title`, `summary`, `id`, `processing_level`, `product_short_name`, `product_version`) from `utilities/products.yaml`, and the per-source `source` / `source_url` / `references` from the source's collection metadata
 5. **Validates** the output dataset against a schema (required global attributes, variables, and per-variable attributes).
 6. **Appends a `processing_history` step** (generation step 1, recording the source files / granule count) before uploading — the first entry in the in-file provenance trail that OER and the finalizer extend (see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005).
 7. **Uploads** the P1 daily file to S3 and removes the local temp copy.
@@ -100,7 +100,9 @@ The `daily_files:` section — this stage's own fields:
 
 Relevant `common:` fields (shared with other stages): `product_type`, `discovery_type`, `ground_speed`, `collections`, and — for `s3_bucket` discovery — `source_bucket`, `source_prefix_pattern`, `source_filename_pattern`, `cycle_index_key`.
 
-Output prefixes and filenames are **not** configured per source. They are derived from `utilities.pipeline_layout` and `utilities/products.yaml`, which own the version and filename template per product family. Empty-file templates are built in code (`processing/empty_template.py`), not read from config.
+Output prefixes and filenames are **not** configured per source. They are derived from `utilities.pipeline_layout` and `utilities/products.yaml`, which own the version, filename template, and in-file identity metadata per product family. Empty-file templates are built in code (`processing/empty_template.py`), not read from config.
+
+A source's `product_type` therefore decides which identity its files carry: a `reference` source writes the `along_track_reference` product's title, DOI, and short name; a `high_latitude` source writes `along_track_high_latitude`'s. The high-latitude values are placeholders — `id: "TBD"` marks that product as not yet deliverable to PO.DAAC.
 
 Current sources (those with a `daily_files:` section):
 

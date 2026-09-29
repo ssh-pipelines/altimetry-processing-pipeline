@@ -7,6 +7,7 @@ import xarray as xr
 from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
 from daily_files.processing.daily_file import get_base_global_attrs, get_var_attrs
+from utilities.pipeline_layout import along_track_product
 
 # Source-flag configuration per processor class name.
 # Update these when flag column definitions change in the corresponding DailyFile subclass.
@@ -177,7 +178,7 @@ def build_empty_dataset(source_config: SourceConfig, processor_cls: type) -> xr.
         ds["median_filter_flag"].attrs[attr] = value
 
     # Global attrs
-    ds.attrs.update(get_base_global_attrs())
+    ds.attrs.update(get_base_global_attrs(along_track_product(source_config)))
     ds.attrs["mean_sea_surface"] = target_mss
     ds.attrs["granule_id"] = ""
     ds.attrs["flagged_passes"] = "N/A"

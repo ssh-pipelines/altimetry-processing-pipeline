@@ -23,6 +23,11 @@ source is fully supported.
   `product_version` is now derived from the product's `version` rather than restated,
   so the filename and the in-file version cannot disagree. `geospatial_lat_min/max`
   remain hardcoded to ±90, which is wrong for every along-track product; unchanged here.
+- `pass_flag_notes` in the `finalizer` now follows the source's crossover type. It was
+  an unconditional literal describing self crossovers over a 20-day window, so every
+  high-latitude file misdescribed its own flagging: those passes are flagged against
+  the NASA-SSH reference mission over a window centered on the processing day. The
+  `reference`-source wording is byte-identical to what is already distributed.
 
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed

@@ -518,6 +518,74 @@ class TestProcessS3B(unittest.TestCase, _ProcessTestMixin):
 
 class TestProcessAttributes(unittest.TestCase, _ProcessTestMixin):
 
+    # Pinned byte-for-byte: this is the string every distributed reference-mission
+    # file already carries, so the per-crossover-type split must not perturb it.
+    SELF_PASS_FLAG_NOTES = (
+        "passes are flagged, with nasa_flag set to 1 whenever a pass contains "
+        "differences that are too large relative to self crossovers, computed using "
+        "data from a 20-day window.  To be flagged, there must be at least "
+        "pass_flag_mean_num crossover points for a pass and the absolute value of its "
+        "mean crossover difference is larger than pass_flag_mean_threshold (meters), "
+        "or when it has at least pass_flag_rms_num crossover points with RMS larger "
+        "than pass_flag_rms_threshold (meters). Passes that have been flagged are "
+        "stored in the flagged_passes attribute as comma separated cycle/pass"
+    )
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_self_crossover_source_pass_flag_notes(self, mock_aws):
+        proc_date = date(2020, 5, 1)
+        self._setup_process_mocks(mock_aws, source="GSFC")
+        try:
+            f = Finalizer(proc_date, "GSFC", "bucket")
+            f.process("bucket")
+
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            self.assertEqual(ds.pass_flag_notes, self.SELF_PASS_FLAG_NOTES)
+            ds.close()
+        finally:
+            self._cleanup()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_high_latitude_source_pass_flag_notes(self, mock_aws):
+        """A high-latitude pass is flagged against the reference mission, not against
+        its own crossovers, so it must not inherit the `self` wording."""
+        proc_date = date(2020, 5, 1)
+        self._setup_process_mocks(mock_aws, source="S3B")
+        try:
+            f = Finalizer(proc_date, "S3B", "bucket")
+            f.process("bucket")
+
+            ds = nc.Dataset(self.uploaded_copy, "r")
+            notes = ds.pass_flag_notes
+            self.assertNotEqual(notes, self.SELF_PASS_FLAG_NOTES)
+            self.assertNotIn("self crossovers", notes)
+            self.assertNotIn("20-day", notes)
+            self.assertIn("reference crossovers", notes)
+            self.assertIn("centered on the processing day", notes)
+            # The criteria half is shared, not duplicated per crossover type.
+            self.assertIn("at least pass_flag_mean_num crossover points", notes)
+            self.assertTrue(notes.endswith("comma separated cycle/pass"))
+            ds.close()
+        finally:
+            self._cleanup()
+
+    def test_pass_flag_notes_share_the_criteria_clause(self):
+        """Both variants end in the same criteria text, so a threshold rename cannot
+        update one wording and miss the other."""
+        from finalization.finalizer import _PASS_FLAG_CRITERIA, pass_flag_notes
+
+        for product_type in ("reference", "high_latitude"):
+            with self.subTest(product_type=product_type):
+                self.assertTrue(pass_flag_notes(product_type).endswith(_PASS_FLAG_CRITERIA))
+
+    def test_unknown_product_type_raises(self):
+        """A new product_type must declare what its passes are compared against
+        rather than silently inheriting the reference-mission wording."""
+        from finalization.finalizer import pass_flag_notes
+
+        with self.assertRaises(KeyError):
+            pass_flag_notes("not_a_product_type")
+
     @patch("finalization.finalizer.aws_manager")
     def test_output_attributes(self, mock_aws):
         proc_date = date(2020, 5, 1)

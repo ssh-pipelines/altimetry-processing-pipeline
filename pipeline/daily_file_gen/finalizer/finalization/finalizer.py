@@ -18,6 +18,57 @@ from utilities.pipeline_layout import (
 )
 from utilities.provenance import append_to_nc, read_from_nc
 
+# product_type ↔ crossover_type (documented 1:1; mirrors the oer and bad_pass
+# stages' _CROSSOVER_TYPE_BY_PRODUCT_TYPE). A reference mission crosses against
+# itself; a high_latitude source crosses against the finalized reference mission.
+_CROSSOVER_TYPE_BY_PRODUCT_TYPE = {
+    "reference": "self",
+    "high_latitude": "reference",
+}
+
+# What a flagged pass was measured against. Only this clause varies by crossover
+# type — the thresholds and the flagged_passes carrier are shared, so they live in
+# _PASS_FLAG_CRITERIA rather than being duplicated per type and left to drift.
+#
+# The `self` wording is byte-identical to what every distributed reference-mission
+# file already carries. The `reference` wording deliberately states no window
+# length: bad_pass owns that value (`reference_window_size`), and a number restated
+# here would silently disagree with the code that actually applies it.
+_PASS_FLAG_COMPARISON = {
+    "self": (
+        "differences that are too large relative to self crossovers, computed using "
+        "data from a 20-day window.  "
+    ),
+    "reference": (
+        "differences that are too large relative to the NASA-SSH reference mission, "
+        "computed from reference crossovers in a window centered on the processing day. "
+    ),
+}
+
+_PASS_FLAG_CRITERIA = (
+    "To be flagged, there must be at least pass_flag_mean_num crossover points for a "
+    "pass and the absolute value of its mean crossover difference is larger than "
+    "pass_flag_mean_threshold (meters), or when it has at least pass_flag_rms_num "
+    "crossover points with RMS larger than pass_flag_rms_threshold (meters). Passes "
+    "that have been flagged are stored in the flagged_passes attribute as comma "
+    "separated cycle/pass"
+)
+
+
+def pass_flag_notes(product_type: str) -> str:
+    """The `pass_flag_notes` global attr for a source's product type.
+
+    The flagging criteria are identical across product types, but what a pass was
+    compared against is not: a high-latitude pass is flagged against the reference
+    mission, not against its own crossovers, so the unconditional `self` wording
+    misdescribed its own algorithm in every distributed high-latitude file.
+    """
+    return (
+        "passes are flagged, with nasa_flag set to 1 whenever a pass contains "
+        + _PASS_FLAG_COMPARISON[_CROSSOVER_TYPE_BY_PRODUCT_TYPE[product_type]]
+        + _PASS_FLAG_CRITERIA
+    )
+
 
 @dataclass
 class FinalizerResult:
@@ -98,15 +149,7 @@ class Finalizer:
 
         pf = self.config.pass_flag
         ds.flagged_passes = "N/A"
-        ds.pass_flag_notes = (
-            "passes are flagged, with nasa_flag set to 1 whenever a pass contains differences that are "
-            "too large relative to self crossovers, computed using data from a 20-day window.  To be "
-            "flagged, there must be at least pass_flag_mean_num crossover points for a pass and the "
-            "absolute value of its mean crossover difference is larger than pass_flag_mean_threshold "
-            "(meters), or when it has at least pass_flag_rms_num crossover points with RMS larger than "
-            "pass_flag_rms_threshold (meters). Passes that have been flagged are stored in the "
-            "flagged_passes attribute as comma separated cycle/pass"
-        )
+        ds.pass_flag_notes = pass_flag_notes(self.config.product_type)
         ds.pass_flag_mean_num = pf.mean_num
         ds.pass_flag_rms_num = pf.rms_num
         ds.pass_flag_mean_threshold = pf.mean_threshold

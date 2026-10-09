@@ -560,8 +560,11 @@ class TestProcessAttributes(unittest.TestCase, _ProcessTestMixin):
             self.assertNotEqual(notes, self.SELF_PASS_FLAG_NOTES)
             self.assertNotIn("self crossovers", notes)
             self.assertNotIn("20-day", notes)
-            self.assertIn("reference crossovers", notes)
-            self.assertIn("centered on the processing day", notes)
+            self.assertIn("NASA-SSH reference mission", notes)
+            self.assertIn("5-day window centered on the processing day", notes)
+            # Per-pass, not five days of pooling: a high-lat trackid never recurs
+            # within the window, so the window only collects the pass's own file.
+            self.assertIn("each pass's own crossovers", notes)
             # The criteria half is shared, not duplicated per crossover type.
             self.assertIn("at least pass_flag_mean_num crossover points", notes)
             self.assertTrue(notes.endswith("comma separated cycle/pass"))
@@ -577,6 +580,31 @@ class TestProcessAttributes(unittest.TestCase, _ProcessTestMixin):
         for product_type in ("reference", "high_latitude"):
             with self.subTest(product_type=product_type):
                 self.assertTrue(pass_flag_notes(product_type).endswith(_PASS_FLAG_CRITERIA))
+
+    def test_stated_window_matches_the_bad_pass_default(self):
+        """The 5-day figure is bad_pass's centered ±reference_window_size (default 2).
+        That constant lives in another stage, so it cannot be imported here; assert
+        instead that no high-latitude source overrides it, which is what would make
+        the wording wrong."""
+        import yaml
+
+        from utilities.source_profile import (
+            SOURCES_DIR,
+            get_registered_sources,
+            get_source_profile,
+        )
+
+        for source in get_registered_sources():
+            if get_source_profile(source).product_type != "high_latitude":
+                continue
+            with open(SOURCES_DIR / f"{source}.yaml") as f:
+                raw = yaml.safe_load(f) or {}
+            with self.subTest(source=source):
+                self.assertNotIn(
+                    "reference_window_size",
+                    raw.get("bad_pass") or {},
+                    f"{source} overrides the bad_pass window; update pass_flag_notes",
+                )
 
     def test_unknown_product_type_raises(self):
         """A new product_type must declare what its passes are compared against

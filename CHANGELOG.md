@@ -26,8 +26,9 @@ source is fully supported.
 - `pass_flag_notes` in the `finalizer` now follows the source's crossover type. It was
   an unconditional literal describing self crossovers over a 20-day window, so every
   high-latitude file misdescribed its own flagging: those passes are flagged against
-  the NASA-SSH reference mission over a window centered on the processing day. The
-  `reference`-source wording is byte-identical to what is already distributed.
+  the NASA-SSH reference mission, from each pass's own crossovers, collected over a
+  5-day window centered on the processing day. The `reference`-source wording is
+  byte-identical to what is already distributed.
 
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed

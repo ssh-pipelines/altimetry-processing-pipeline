@@ -31,9 +31,15 @@ _CROSSOVER_TYPE_BY_PRODUCT_TYPE = {
 # _PASS_FLAG_CRITERIA rather than being duplicated per type and left to drift.
 #
 # The `self` wording is byte-identical to what every distributed reference-mission
-# file already carries. The `reference` wording deliberately states no window
-# length: bad_pass owns that value (`reference_window_size`), and a number restated
-# here would silently disagree with the code that actually applies it.
+# file already carries; its "20-day" approximates the span a backward-looking window
+# of forward-looking pair files covers, and a reference pass genuinely pools
+# crossovers across those days (it recurs as side 2 of earlier files).
+#
+# A high-latitude pass does not: reference crossover files are seeded by the passes
+# starting that day, and the source's repeat cycle means a trackid never recurs
+# within the window, so its statistics come from that one pass. The window is stated
+# because the reference wording should say as much as the self wording does, but it
+# is qualified as per-pass so it cannot be read as five days of pooling.
 _PASS_FLAG_COMPARISON = {
     "self": (
         "differences that are too large relative to self crossovers, computed using "
@@ -41,7 +47,8 @@ _PASS_FLAG_COMPARISON = {
     ),
     "reference": (
         "differences that are too large relative to the NASA-SSH reference mission, "
-        "computed from reference crossovers in a window centered on the processing day. "
+        "computed from each pass's own crossovers with the reference mission, "
+        "collected over a 5-day window centered on the processing day.  "
     ),
 }
 

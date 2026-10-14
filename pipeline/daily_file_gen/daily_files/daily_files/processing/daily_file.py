@@ -12,39 +12,32 @@ from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
 from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.smoothing import ssha_smoothing
+from utilities.pipeline_layout import along_track_product
+from utilities.source_profile import Product
 
 
-def get_base_global_attrs(source_files: str = "") -> dict:
-    """Return the global attrs shared between DailyFile.set_global_attrs() and make_empty()."""
+def get_base_global_attrs(product: Product, source_files: str = "") -> dict:
+    """Return the global attrs shared between DailyFile.set_global_attrs() and make_empty().
+
+    Identity — title, summary, DOI, short name, processing level, version — comes
+    from the product, not from this module: the reference and high-latitude
+    along-track files are written by the same code path, so a literal here would
+    ship the reference mission's DOI in every high-latitude file.
+    """
     creation_time = datetime.now().isoformat(timespec="seconds")
-    return {
+    attrs = {
         "Conventions": "CF-1.9",
-        "title": "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1.1",
-        "summary": (
-            "This data set contains satellite based measurements of sea surface height, "
-            "computed relative to the mean sea surface specified in mean_sea_surface. "
-            "Data have been collected from multiple satellites, and processed to maximize "
-            "compatibility and minimize bias between satellites. They are intended for use "
-            "in studies and applications requiring climate-quality observations without "
-            "additional adjustments or filtering."
-        ),
         "institution": "NASA/Jet Propulsion Laboratory",
         "source": "",
-        "source_url": "",
         "source_files": source_files,
         "date_created": creation_time,
         "history": f"Created on {creation_time}",
-        "references": "",
         "standard_name_vocabulary": "CF Standard Name Table v86",
-        "id": "10.5067/NSREF-AT0V11",
         "naming_authority": "gov.nasa.jpl.podaac",
         "project": "NASA-SSH",
-        "processing_level": "Level 2",
         "product_generation_step": "1",
-        "product_short_name": "NASA_SSH_REF_ALONGTRACK_V11",
         "acknowledgement": "This data is provided by NASAs PO.DAAC.",
         "license": "https://creativecommons.org/licenses/by/4.0/",
-        "product_version": "V1.1",
         "keywords": "Earth Science, Oceans, Ocean Topography, Sea Surface Height, Sea Level",
         "keywords_vocabulary": "NASA Global Change Master Directory (GCMD) Science Keywords",
         "cdm_data_type": "Point",
@@ -62,6 +55,8 @@ def get_base_global_attrs(source_files: str = "") -> dict:
         "geospatial_lon_min": 0.0,
         "geospatial_lon_max": 360.0,
     }
+    attrs.update(product.global_attrs())
+    return attrs
 
 
 def get_var_attrs(target_mss: str) -> dict:
@@ -412,7 +407,9 @@ class DailyFile(ABC):
         Sets the global attrs that are common across all sources. Individual processors
         set source specific global attrs via the abstract set_source_attrs().
         """
-        global_attrs = get_base_global_attrs(source_files=self.source_files)
+        global_attrs = get_base_global_attrs(
+            along_track_product(self.source_config), source_files=self.source_files
+        )
         global_attrs["time_coverage_start"] = (
             str(self.ds["time"].values[0])[:19] + "Z" if len(self.ds["time"]) > 0 else "N/A"
         )

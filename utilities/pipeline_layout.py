@@ -16,7 +16,7 @@ from datetime import date as date_type
 from datetime import datetime
 from typing import Literal
 
-from utilities.source_profile import SourceCommon, get_product
+from utilities.source_profile import Product, SourceCommon, get_product
 
 DailyFileVersion = Literal["p1", "p2", "p3"]
 CrossoverVersion = Literal["p1", "p2"]
@@ -35,13 +35,24 @@ def _simple_grid_product_name(product_type: str) -> str:
     return f"simple_grid_{product_type}"
 
 
+def along_track_product(profile: SourceCommon) -> Product:
+    """The Product a Source's along-track daily files belong to. Writers need it
+    for the in-file identity attrs, not only for the filename."""
+    return get_product(_along_track_product_name(profile.product_type))
+
+
+def simple_grid_product(profile: SourceCommon) -> Product:
+    """The Product a Source's simple grids belong to."""
+    return get_product(_simple_grid_product_name(profile.product_type))
+
+
 # ─── Along-track daily files ──────────────────────────────────────────────
 
 def daily_file_filename(profile: SourceCommon, d: date_type | datetime) -> str:
     """Just the filename (no prefix). Used by callers that already have a
     directory and only need the leaf name."""
     d = _to_date(d)
-    product = get_product(_along_track_product_name(profile.product_type))
+    product = along_track_product(profile)
     return product.filename_template.format(
         source=profile.source,
         version=product.version,
@@ -215,7 +226,7 @@ def stage_results_prefix(jobs_key: str, stage: str) -> str:
 def simple_grid_filename(profile: SourceCommon, d: date_type | datetime) -> str:
     """Simple-grid output filename (no prefix)."""
     d = _to_date(d)
-    product = get_product(_simple_grid_product_name(profile.product_type))
+    product = simple_grid_product(profile)
     return product.filename_template.format(
         source=profile.source,
         version=product.version,

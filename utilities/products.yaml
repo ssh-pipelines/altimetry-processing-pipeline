@@ -1,16 +1,85 @@
+# The wire format of every artifact the pipeline produces: version, filename
+# template, and the in-file CF identity a consumer reads. All of it belongs to
+# the product rather than to a contributing source — sources sharing a product
+# must publish the same identity, and a source contributing to a different
+# product must not inherit it. `references` and `source_url` are declared here
+# but left empty on the along-track path, where each source fills them from its
+# own collection metadata (`DailyFile.set_source_attrs`).
 products:
   along_track_reference:
     version: "v1_1"
     filename_template: "{source}_alt_ref_at_{version}_{YYYYMMDD}.nc"
+    title: "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1.1"
+    summary: >-
+      This data set contains satellite based measurements of sea surface height,
+      computed relative to the mean sea surface specified in mean_sea_surface.
+      Data have been collected from multiple satellites, and processed to maximize
+      compatibility and minimize bias between satellites. They are intended for use
+      in studies and applications requiring climate-quality observations without
+      additional adjustments or filtering.
+    id: "10.5067/NSREF-AT0V11"
+    processing_level: "Level 2"
+    product_short_name: "NASA_SSH_REF_ALONGTRACK_V11"
+    references: ""
+    source_url: ""
+
+  # Placeholder identity, structurally derived from the reference mission. The
+  # science side has not settled the title, summary, or DOI; `id: "TBD"` is the
+  # visible marker that these files are not yet deliverable to PO.DAAC, which is
+  # preferable to a plausible-looking fake DOI in a distributed file.
   along_track_high_latitude:
     version: "v1_1"
     filename_template: "{source}_alt_hilat_at_{version}_{YYYYMMDD}.nc"
+    title: "NASA-SSH Along-Track Sea Surface Height from High-Latitude Missions Version 1.1"
+    summary: >-
+      This data set contains satellite based measurements of sea surface height at
+      high latitudes, computed relative to the mean sea surface specified in
+      mean_sea_surface and tied to the level of the NASA-SSH reference missions.
+      They extend the reference-mission record beyond its 66 degree inclination
+      limit.
+    id: "TBD"
+    processing_level: "Level 2"
+    product_short_name: "NASA_SSH_HILAT_ALONGTRACK_V11"
+    references: ""
+    source_url: ""
+
   simple_grid_reference:
     version: "v1_1"
     filename_template: "{source}_alt_ref_simple_grid_{version}_{YYYYMMDD}.nc"
+    title: "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
+    summary: >-
+      This data set contains satellite based measurements of sea surface height,
+      computed relative to the mean sea surface specified in mean_sea_surface. Data
+      have been collected from multiple satellites, and processed to maximize
+      compatibility and minimize bias between satellites. They are intended for use
+      in studies and applications requiring climate-quality observations without
+      additional adjustments or filtering.
+    id: "10.5067/NSREF-SG0V11"
+    processing_level: "Level 3"
+    product_short_name: "NASA_SSH_REF_SIMPLE_GRID_V11"
+    references: "https://doi.org/10.5067/NSREF-AT0V1"
+    source_url: "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v11"
+
+  # Has never produced a distributed file; used for internal validation only
+  # (tools/compute_source_offset.py). Placeholder identity for the same reason as
+  # along_track_high_latitude.
   simple_grid_high_latitude:
     version: "v1_1"
     filename_template: "{source}_alt_hilat_simple_grid_{version}_{YYYYMMDD}.nc"
+    title: "NASA-SSH Simple Gridded Sea Surface Height from High-Latitude Missions Version 1.1"
+    summary: >-
+      This data set contains satellite based measurements of sea surface height at
+      high latitudes, gridded to a half-degree latitude/longitude grid and computed
+      relative to the mean sea surface specified in mean_sea_surface.
+    id: "TBD"
+    processing_level: "Level 3"
+    product_short_name: "NASA_SSH_HILAT_SIMPLE_GRID_V11"
+    references: ""
+    source_url: ""
+
+  # No identity fields: the ENSO grids carry no CF identity attributes. The
+  # gridder copies variable attrs from its input simple grid and writes no
+  # title, DOI, or short name of its own.
   enso:
     version: "v1_1"
     filename_template: "ENSO_{YYYYMMDD}.nc"

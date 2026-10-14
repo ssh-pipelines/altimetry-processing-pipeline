@@ -6,6 +6,7 @@ from utilities.source_profile import (
     CollectionConfig,
     Product,
     SourceCommon,
+    _load_products_raw,
     clear_caches,
     get_product,
     get_registered_sources,
@@ -91,6 +92,57 @@ class TestProducts(unittest.TestCase):
     def test_unknown_product_raises(self):
         with self.assertRaises(ValueError):
             get_product("does-not-exist")
+
+
+class TestProductIdentity(unittest.TestCase):
+    """The identity attrs a product writes into its own files."""
+
+    # Families whose artifacts carry CF identity. The ENSO grids do not: the
+    # gridder copies variable attrs from its input simple grid and writes no
+    # title, DOI, or short name of its own.
+    CF_FAMILIES = ("along_track_", "simple_grid_")
+
+    # Empty is legal for these two — they mirror ALLOW_EMPTY_GLOBAL_ATTRS in the
+    # daily_files schema, where the along-track path fills them per source.
+    MAY_BE_EMPTY = {"references", "source_url"}
+
+    def _cf_product_names(self) -> list[str]:
+        names = [
+            n
+            for n in _load_products_raw()["products"]
+            if n.startswith(self.CF_FAMILIES)
+        ]
+        self.assertGreater(len(names), 0)
+        return names
+
+    def test_every_cf_product_declares_its_full_identity(self):
+        """A new source's product_type must not resolve to an entry that silently
+        inherits an empty title or DOI — those attrs land in distributed files."""
+        for name in self._cf_product_names():
+            attrs = get_product(name).global_attrs()
+            for attr, value in attrs.items():
+                if attr in self.MAY_BE_EMPTY:
+                    continue
+                with self.subTest(product=name, attr=attr):
+                    self.assertTrue(value, f"{name} declares no '{attr}'")
+
+    def test_no_two_products_share_a_doi_or_short_name(self):
+        """Except the deliberate `TBD` placeholders, which mark a product as not
+        yet deliverable to PO.DAAC."""
+        for attr in ("id", "product_short_name"):
+            values = [getattr(get_product(n), attr) for n in self._cf_product_names()]
+            real = [v for v in values if v != "TBD"]
+            with self.subTest(attr=attr):
+                self.assertEqual(len(real), len(set(real)), f"duplicate '{attr}': {real}")
+
+    def test_product_version_is_derived_from_version(self):
+        p = get_product("along_track_reference")
+        self.assertEqual(p.version, "v1_1")
+        self.assertEqual(p.product_version, "V1.1")
+        self.assertEqual(p.global_attrs()["product_version"], "V1.1")
+
+    def test_enso_carries_no_cf_identity(self):
+        self.assertEqual(get_product("enso").global_attrs()["title"], "")
 
 
 class TestListSourcesForStage(unittest.TestCase):

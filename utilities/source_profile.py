@@ -27,18 +27,57 @@ class CollectionConfig:
     reference: str = ""
 
 
+# The CF global attributes a product owns. `product_version` is derived from
+# `version` rather than declared, so the filename and the in-file version cannot
+# disagree. `references` / `source_url` are product-owned on the gridded path and
+# source-filled on the along-track path, so both families declare them (empty is
+# legal for these two — see ALLOW_EMPTY_GLOBAL_ATTRS in the daily_files schema).
+PRODUCT_GLOBAL_ATTRS = (
+    "title",
+    "summary",
+    "id",
+    "processing_level",
+    "product_short_name",
+    "product_version",
+    "references",
+    "source_url",
+)
+
+
 @dataclass(frozen=True)
 class Product:
-    """A produced data artifact's wire format. Versions and filename templates
-    are owned by the product, not by individual sources — multiple sources
-    contribute to the same product and must share its naming convention.
+    """A produced data artifact's wire format. Versions, filename templates, and
+    in-file identity are owned by the product, not by individual sources —
+    multiple sources contribute to the same product and must share its naming
+    convention and its identity.
 
     Filename templates accept `{source}`, `{version}`, and `{YYYYMMDD}`
     placeholders.
+
+    The identity fields default to empty so a product whose artifacts carry no CF
+    identity (the ENSO grids) needs no declaration; every product that writes
+    them declares them all, pinned by a registry test.
     """
     name: str
     version: str
     filename_template: str
+    title: str = ""
+    summary: str = ""
+    id: str = ""
+    processing_level: str = ""
+    product_short_name: str = ""
+    references: str = ""
+    source_url: str = ""
+
+    @property
+    def product_version(self) -> str:
+        """The CF `product_version` spelling of `version`: `v1_1` → `V1.1`."""
+        return "V" + self.version.lstrip("vV").replace("_", ".")
+
+    def global_attrs(self) -> dict[str, str]:
+        """The product-owned CF global attributes, for a writer to merge over the
+        attrs shared by every NASA-SSH product."""
+        return {attr: getattr(self, attr) for attr in PRODUCT_GLOBAL_ATTRS}
 
 
 @dataclass(kw_only=True, frozen=True)

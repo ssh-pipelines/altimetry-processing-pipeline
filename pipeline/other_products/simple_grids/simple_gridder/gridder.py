@@ -14,6 +14,7 @@ from utilities.pipeline_layout import (
     s3_uri,
     simple_grid_filename,
     simple_grid_key,
+    simple_grid_product,
 )
 from utilities.source_profile import get_source_profile
 
@@ -33,6 +34,7 @@ class SimpleGridderJob:
             self.source: str = source
 
         self.profile = get_source_profile(self.source)
+        self.product = simple_grid_product(self.profile)
 
         self.filename = simple_grid_filename(self.profile, self.center_date)
         self.key = simple_grid_key(self.profile, self.center_date)
@@ -133,6 +135,7 @@ def start_job(date: str, source: str, resolution: Optional[str], bucket: str) ->
         filenames,
         df_objs,
         resolution,
+        simple_gridder_job.product,
     )
 
     ds = gridder.make_grid(simple_gridder_job.filename)

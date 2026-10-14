@@ -11,7 +11,7 @@ For each processing date, the Lambda:
 1. **Validates the source** against its `utilities/sources/{source}.yaml` profile and checks the processing date falls within the source's configured date range.
 2. **Loads bad passes** from `s3://{bucket}/bad_passes/{source}/{date}.json` (optional; returns an empty DataFrame if absent).
 3. **Downloads the P2 daily file** from `s3://{bucket}/daily_files/p2/{source}/{year}/`.
-4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold`, and `pass_flag_notes` from the source config.
+4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold` from the source config, plus `pass_flag_notes`, whose wording follows the source's **crossover type**: a `reference` source's passes are flagged against its own self crossovers, a `high_latitude` source's against the NASA-SSH reference mission. The thresholds and the `flagged_passes` carrier are described identically for both.
 5. **Applies bad-pass flags** — sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
 6. **Handles the absolute offset** — if the source offset is non-zero, removes any previously applied offset (via `absolute_offset_applied` attribute) and adds the configured one to both `ssha` and `ssha_smoothed`.
 7. **Applies the intermission-bias correction** — for `high_latitude` sources, subtracts `common.intermission_bias` from `ssha`/`ssha_smoothed` to tie the absolute level onto the reference datum (OER left this in place, fitting only orbit error). Idempotent via the `intermission_bias_applied` attribute (previous value added back before the new one is subtracted). Kept as a separate lever from `offset` — the two are distinct quantities with distinct provenance. No-op for reference sources (`intermission_bias` defaults to `0.0`).
@@ -117,7 +117,7 @@ From the repo root (after `uv sync --extra dev`):
 | `TestProcessGSFC`         | Per-source upload path, offset is zero                           |
 | `TestProcessS6`           | Offset applied, previous offset removed before applying          |
 | `TestProcessS3B`          | Intermission bias subtracted, previous bias removed, offset/bias independent |
-| `TestProcessAttributes`   | `product_generation_step`, `history`, `granule_id`, pass-flag attrs, attribute sort |
+| `TestProcessAttributes`   | `product_generation_step`, `history`, `granule_id`, pass-flag attrs (including the per-crossover-type `pass_flag_notes`), attribute sort |
 | `TestProcessWithBadPasses`| Bad passes applied during `process()`                            |
 | `TestProcessS6B`          | Per-source upload path, granule ID uses source name              |
 

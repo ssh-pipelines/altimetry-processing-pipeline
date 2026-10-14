@@ -50,8 +50,12 @@ A satellite pass flagged as anomalous because its crossover statistics exceed co
 **NASA-SSH**:
 The unified along-track product. Not a real upstream source — produced by the **unifier** stage copying P3 files from contributing sources (currently GSFC, S6) under a `NASA-SSH` prefix.
 
+**Product**:
+A produced artifact's wire format: its version, its filename template, and the in-file CF identity a consumer reads (`title`, `summary`, `id` (DOI), `processing_level`, `product_short_name`, `product_version`, `references`, `source_url`). One entry in `utilities/products.yaml` — `along_track_reference`, `along_track_high_latitude`, `simple_grid_reference`, `simple_grid_high_latitude`, `enso`. Owned by the Product, never by a contributing **Source**: two Sources on the same Product publish identical identity, and a Source on a different Product must not inherit it. A Product whose artifacts carry no CF identity (`enso`) declares none. An `id` of `TBD` marks a Product whose identity the science side has not settled, and which is therefore not deliverable to PO.DAAC.
+_Avoid_: product family (see **Product type**), dataset, wire format
+
 **Product type**:
-The product family a **Source** contributes to. Currently `reference` (TOPEX/Poseidon-baselined missions: S6, S6B, GSFC) or `high_latitude` (AVISO L2P sources: S3B, planned S3A/SARAL/HY-2B). Determines the daily-file filename family (`alt_ref_at_*` vs `alt_hilat_at_*`), the processor class, and which downstream stages apply.
+The product family a **Source** contributes to. Currently `reference` (TOPEX/Poseidon-baselined missions: S6, S6B, GSFC) or `high_latitude` (AVISO L2P sources: S3B, planned S3A/SARAL/HY-2B). Resolves the **Product** for each family the Source feeds (`along_track_{product_type}`, `simple_grid_{product_type}`) — and with it the filename family (`alt_ref_at_*` vs `alt_hilat_at_*`) and the in-file identity — plus the processor class and which downstream stages apply.
 _Avoid_: product family, mission class
 
 **L2P**:
@@ -155,7 +159,7 @@ _Avoid_: error_handler, on_failure
 
 ## Relationships
 
-- A **Source** has a **Product type**; the **Product type** determines the **Daily file**'s filename family and which processor class handles it.
+- A **Source** has a **Product type**; the **Product type** determines which processor class handles the Source and which **Product** its **Daily files** and simple grids belong to. The **Product** owns their filename family and their in-file identity, so a `high_latitude` file cannot carry the reference mission's DOI.
 - A **Source** has many **Granules** upstream; an **Enumerator** finds them.
 - A **Granule** contributes to exactly one **daily file** (date-keyed).
 - A **Daily file** progresses **P1** → **P2** → **P3**; may then be copied to **NASA-SSH** by the unifier.

@@ -3,12 +3,16 @@
 Success-path reconciliation Lambda. See [ADR 0005](../../../docs/adr/0005-job-outcome-contract-and-run-summary.md).
 
 Runs once at the top of `pipeline.asl` (replacing `Notify Success`) after the gridded
-pipeline succeeds. Given `{jobs_key, bucket, source}` it:
+pipeline succeeds. Given `{jobs_key, bucket}` it:
 
 1. resolves both manifests (along-track = `jobs_key`; gridded = `sg_jobs_key(jobs_key)`),
    reading the **Job specs** (expected dates);
 2. reads **Job outcomes** from each owned stage's `ResultWriter` SUCCEEDED files
-   (`along_track ← {finalizer, unifier}`, `gridded ← {simple_grids, enso}`);
+   (`along_track ← {finalizer, publisher_along_track}`,
+   `gridded ← {simple_grids, publisher_simple_grid, enso}`). One `publisher` Lambda serves
+   both tiers, so each tier's promotion writes under its own `results/publisher_{family}/`
+   prefix — the `stage` in `PRODUCT_PIPELINES` is that ResultWriter segment, not the Job
+   outcome's own `stage` field;
 3. reads `pipeline_init`'s `run_params.json` sidecar (absent ⇒ `{}` ⇒ "scheduled defaults")
    so the notification can report how the run was invoked;
 4. reads the diagnostic **bad_pass** stage's results (`results/bad_pass/` ResultWriter)
@@ -24,18 +28,20 @@ Each owned stage's Map invoke task must unwrap the Lambda result with
 `Output: {% $states.result.Payload %}`, so the `ResultWriter` persists the **Job outcome**
 itself (not the raw Lambda invoke envelope). `_outcome_from_entry` also **defensively unwraps**
 a `{"Payload": {…}}` envelope when the outcome's `status` key is absent — a regression guard
-after the unifier Map originally omitted that unwrap and was reported as `produced: 0` despite
-unification succeeding.
+after the promotion Map originally omitted that unwrap and was reported as `produced: 0` despite
+the copies succeeding.
 
 ## Notification
 
 The rendered email:
 
 - shows invocation params (`start`/`end`/`force_update`, or "scheduled defaults");
-- **folds the unifier's `nasa_ssh_p3` into the finalizer's `daily_file_p3` line** as a
-  unification annotation (`16 produced → all unified to NASA-SSH`, or `→ 0 of 16 unified …`
-  on a shortfall) — they are the same P3 file in two prefixes, so a separate row read as a
-  phantom failure. `summary.json` still carries both keys;
+- **folds the publisher's `published_along_track` into the finalizer's `daily_file_p3` line**
+  as a publication annotation (`16 produced → all published to NASA-SSH`, or
+  `→ 0 of 16 published …` on a shortfall) — they are the same P3 file staged and released, so
+  a separate row read as a phantom failure. `summary.json` still carries both keys.
+  Publication is unconditional, so a run that produced P3s but published nothing shows the
+  shortfall rather than omitting the row;
 - lists produced filenames (basenames) per deliverable, capped at 40 with an `… (N total)`
   overflow, alongside the `missing` dates and reasons;
 - adds a **bad passes** diagnostic line *within* the `along_track` section (bad_pass runs

@@ -22,3 +22,24 @@ reference crossovers can run.
 - **Match the high-lat df_version (p1/p2), symmetric with the self-crossover flow** —
   rejected: NASA-SSH p1/p2 are pre-finalization and may not exist; the reference must be
   the finalized baseline, not an intermediate lifecycle stage.
+
+## Addendum (2026-10-14): the same bytes, a new address
+
+The decision stands unchanged — the reference side is still the finalized,
+OER-corrected, unified reference record — but where that record lives has moved.
+It is now the **published** reference along-track product under
+`products/NASA-SSH/along_track/`, not `daily_files/p3/NASA-SSH/`, and
+`daily_files/p3/` holds only per-source internal staging (ADR 0008).
+
+Two things follow:
+
+- The phrase "NASA-SSH only exists post-unifier at P3" is now "the reference
+  product has no internal staging representation at all" — it is composed from
+  several missions, so `products/` is the only place it exists. The ordering
+  constraint is therefore unchanged in substance and sharper in statement: the
+  reference line must be *published* for the window, not merely finalized.
+- `reference_version` is gone from the xover source config. There was never a
+  version to choose — this ADR fixed it at P3 — and a published along-track file
+  is finalized by definition, so the field could only ever have been wrong. The
+  config now names a published product (`reference_product: NASA-SSH`), which is
+  a different kind of thing from a Source and is spelled that way.

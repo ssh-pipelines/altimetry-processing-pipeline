@@ -30,7 +30,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'set_sg_jobs', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'set_sg_jobs', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
         }
       ]
     },
@@ -42,8 +42,26 @@
         "Input": {
           "jobs_key": "{% $states.input.jobs_key %}",
           "bucket": "{% $states.input.bucket %}",
-          "source": "{% $states.input.source %}"
+          "published_product": "{% $states.input.published_product %}"
         }
+      },
+      "Output": "{% $states.input %}",
+      "Next": "Publish Simple Grids",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'simple_grids', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
+        }
+      ]
+    },
+    "Publish Simple Grids": {
+      "Type": "Task",
+      "Comment": "Promote the staged grids. The staged copy stays — ENSO and indicators read it, so promotion is a copy rather than a move.",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-publisher-sm",
+        "Input": "{% $merge([$states.input, { 'family': 'simple_grid' }]) %}"
       },
       "Output": "{% $states.input %}",
       "Next": "ENSO Execution",
@@ -51,7 +69,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'simple_grids', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'publisher_simple_grid', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
         }
       ]
     },
@@ -63,7 +81,7 @@
         "Input": {
           "jobs_key": "{% $states.input.jobs_key %}",
           "bucket": "{% $states.input.bucket %}",
-          "source": "{% $states.input.source %}"
+          "published_product": "{% $states.input.published_product %}"
         }
       },
       "Output": "{% $states.input %}",
@@ -72,7 +90,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'enso', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'enso', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
         }
       ]
     },
@@ -101,7 +119,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'indicators', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'indicators', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
         }
       ],
       "End": true

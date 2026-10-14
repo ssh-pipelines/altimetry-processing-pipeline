@@ -7,15 +7,19 @@ from indicators.compute_indicators import IndicatorProcessor
 
 from utilities.errors import PipelineError
 from utilities.pipeline_layout import s3_uri, simple_grid_key
-from utilities.source_profile import get_source_profile
 
 s3 = boto3.client("s3")
 
 
-def build_sg_key(date_str: str, bucket: str, source: str) -> str:
-    """Construct the deterministic S3 URI for a simple grid file."""
+def build_sg_key(date_str: str, bucket: str, published_product: str) -> str:
+    """Construct the deterministic S3 URI for a staged simple grid file.
+
+    Reads the internal staging copy rather than the published one: the grid has
+    to be staged for ENSO anyway, so there is no reason for indicators to take
+    the long way round through `products/`.
+    """
     date = datetime.strptime(date_str, "%Y-%m-%d")
-    return s3_uri(bucket, simple_grid_key(get_source_profile(source), date))
+    return s3_uri(bucket, simple_grid_key(published_product, date))
 
 
 def handler(event, context):
@@ -28,7 +32,7 @@ def handler(event, context):
 
     bucket = event["bucket"]
     jobs_key = event["jobs_key"]
-    source = event["source"]
+    published_product = event["published_product"]
 
     # Read jobs from S3 manifest
     resp = s3.get_object(Bucket=bucket, Key=jobs_key)
@@ -38,11 +42,13 @@ def handler(event, context):
         logging.info("No jobs to process, returning early.")
         return {"status": "success"}
 
-    sg_keys = [build_sg_key(j["date"], bucket, source) for j in jobs]
-    logging.info(f"{len(sg_keys)} simple grids to process for source={source}")
+    sg_keys = [build_sg_key(j["date"], bucket, published_product) for j in jobs]
+    logging.info(
+        f"{len(sg_keys)} simple grids to process for published_product={published_product}"
+    )
 
     try:
-        IndicatorProcessor(sg_keys, source).run(bucket)
+        IndicatorProcessor(sg_keys, published_product).run(bucket)
         return {"status": "success"}
     except Exception as e:
         error_response = {

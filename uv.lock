@@ -1375,6 +1375,9 @@ pipeline-runtime = [
     { name = "scipy" },
     { name = "xarray" },
 ]
+publisher = [
+    { name = "boto3" },
+]
 run-summary = [
     { name = "boto3" },
 ]
@@ -1383,9 +1386,6 @@ simple-grids = [
     { name = "geopandas" },
     { name = "pyproj" },
     { name = "pyresample" },
-]
-unifier = [
-    { name = "boto3" },
 ]
 xover = [
     { name = "dask" },
@@ -1401,8 +1401,8 @@ dev = [
 requires-dist = [
     { name = "boto3" },
     { name = "boto3", marker = "extra == 'pipeline-init'", specifier = "==1.28.84" },
+    { name = "boto3", marker = "extra == 'publisher'", specifier = "==1.28.84" },
     { name = "boto3", marker = "extra == 'run-summary'", specifier = "==1.28.84" },
-    { name = "boto3", marker = "extra == 'unifier'", specifier = "==1.28.84" },
     { name = "cartopy", marker = "extra == 'enso'", specifier = "==0.24.1" },
     { name = "contourpy", marker = "extra == 'enso'", specifier = "==1.3.2" },
     { name = "dask", marker = "extra == 'finalizer'", specifier = "==2025.5.1" },
@@ -1434,10 +1434,10 @@ requires-dist = [
     { name = "s3fs" },
     { name = "scipy", marker = "extra == 'pipeline-runtime'", specifier = "==1.15.3" },
     { name = "shapely", marker = "extra == 'daily-files'" },
-    { name = "utilities", extras = ["pipeline-runtime", "daily-files", "finalizer", "oer", "pipeline-init", "unifier", "xover", "enso", "indicators", "simple-grids", "run-summary"], marker = "extra == 'dev'" },
+    { name = "utilities", extras = ["pipeline-runtime", "daily-files", "finalizer", "oer", "pipeline-init", "publisher", "xover", "enso", "indicators", "simple-grids", "run-summary"], marker = "extra == 'dev'" },
     { name = "xarray", marker = "extra == 'pipeline-runtime'", specifier = "==2025.4.0" },
 ]
-provides-extras = ["pipeline-runtime", "bad-pass", "daily-files", "finalizer", "oer", "xover", "pipeline-init", "unifier", "run-summary", "enso", "indicators", "simple-grids", "dev"]
+provides-extras = ["pipeline-runtime", "bad-pass", "daily-files", "finalizer", "oer", "xover", "pipeline-init", "publisher", "run-summary", "enso", "indicators", "simple-grids", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-cov", specifier = ">=7.1.0" }]

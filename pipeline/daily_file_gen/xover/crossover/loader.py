@@ -15,7 +15,7 @@ import xarray as xr
 from crossover.track_window import TrackWindow
 
 from utilities.aws_utils import aws_manager
-from utilities.pipeline_layout import daily_file_key, s3_uri
+from utilities.pipeline_layout import daily_file_key, published_along_track_key, s3_uri
 from utilities.source_profile import SourceCommon
 
 # Variables the crossover compute never reads — dropped at decode time.
@@ -29,17 +29,13 @@ DROP_VARIABLES = [
 ]
 
 
-def stream_files(
-    profile: SourceCommon,
+def _stream_window(
+    key_for_date,
     window_start: np.datetime64,
     window_end: np.datetime64,
-    df_version: str,
-    bucket: str,
 ) -> list:
-    """Return open streams for every existing daily file in the inclusive window.
+    """Open streams for every key in the inclusive window that exists.
 
-    ``profile`` is any source-identity profile (a ``SourceConfig`` for the
-    high-lat/self source, or a bare ``SourceCommon`` for the reference mission).
     Missing daily files are logged and skipped (an incomplete window still
     produces a valid, possibly-empty crossover file).
     """
@@ -47,7 +43,7 @@ def stream_files(
     date = window_start
     while date <= window_end:
         date_dt = date.astype("datetime64[D]").astype(object)
-        key = s3_uri(bucket, daily_file_key(profile, date_dt, df_version))
+        key = key_for_date(date_dt)
 
         if aws_manager.key_exists(key):
             streams.append(aws_manager.stream_obj(key))
@@ -57,6 +53,42 @@ def stream_files(
         date += np.timedelta64(1, "D")
 
     return streams
+
+
+def stream_files(
+    profile: SourceCommon,
+    window_start: np.datetime64,
+    window_end: np.datetime64,
+    df_version: str,
+    bucket: str,
+) -> list:
+    """Stream a Source's own internal daily files over the inclusive window."""
+    return _stream_window(
+        lambda d: s3_uri(bucket, daily_file_key(profile, d, df_version)),
+        window_start,
+        window_end,
+    )
+
+
+def stream_published_files(
+    identity: str,
+    window_start: np.datetime64,
+    window_end: np.datetime64,
+    bucket: str,
+) -> list:
+    """Stream a **published** along-track product over the inclusive window.
+
+    The reference mission a high-lat source crosses against is a published
+    product, not a source: it is composed from several missions and has no
+    internal staging representation, so it is read from `products/`. There is no
+    `df_version` — a published along-track file is finalized by definition
+    (ADR-0006).
+    """
+    return _stream_window(
+        lambda d: s3_uri(bucket, published_along_track_key(identity, d)),
+        window_start,
+        window_end,
+    )
 
 
 def load_track_window(

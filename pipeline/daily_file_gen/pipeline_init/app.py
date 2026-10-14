@@ -5,6 +5,8 @@ from datetime import date
 from config.source_config import get_available_sources, get_source_config
 from planning import daily_file_end_date, plan_jobs, write_manifest
 
+from utilities.products import published_identity
+
 
 def _parse_date_range(event: dict, start_default: date, end_default: date) -> tuple[date, date]:
     raw_start = event.get("start")
@@ -83,10 +85,13 @@ def handler(event, context):
 
     jobs_key = write_manifest(bucket, source, jobs, run_params)
 
+    # `published_product` rather than a publish gate: every source publishes, and
+    # which line it publishes to follows from its product_type. The orchestrator
+    # needs it on the wire because ASL cannot read the source registry.
     return {
         "jobs_key": jobs_key,
         "bucket": bucket,
         "source": source,
-        "unify": config.unify,
+        "published_product": published_identity(config),
         "job_count": len(jobs),
     }

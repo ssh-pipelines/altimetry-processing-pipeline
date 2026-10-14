@@ -12,22 +12,39 @@ class TestSimpleGridsHandlerOutcome(unittest.TestCase):
     def test_success_declares_simple_grid_output(self, mock_start_job):
         from app import handler
 
-        mock_start_job.return_value = "simple_grids/S6/2025/S6_alt_ref_simple_grid_v1_1_20250107.nc"
+        key = "simple_grids/NASA-SSH/2025/NASA-SSH_alt_ref_simple_grid_v1_1_20250107.nc"
+        mock_start_job.return_value = key
 
-        event = {"bucket": "b", "date": "2025-01-07", "source": "S6", "resolution": None}
+        event = {
+            "bucket": "b",
+            "date": "2025-01-07",
+            "contributors": ["NASA-SSH"],
+            "publish_as": "NASA-SSH",
+            "resolution": None,
+        }
         result = handler(event, None)
 
         self.assertEqual(result["stage"], "simple_grids")
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["date"], "2025-01-07")
-        self.assertEqual(result["source"], "S6")
-        self.assertEqual(
-            result["outputs"],
-            [{
-                "key": "simple_grids/S6/2025/S6_alt_ref_simple_grid_v1_1_20250107.nc",
-                "kind": "simple_grid",
-            }],
-        )
+        self.assertEqual(result["source"], "NASA-SSH")
+        self.assertEqual(result["outputs"], [{"key": key, "kind": "simple_grid"}])
+        self.assertEqual(result["metadata"]["contributors"], ["NASA-SSH"])
+
+    @patch("app.start_job")
+    def test_development_grid_outcome_is_not_keyed_on_a_product(self, mock_start_job):
+        from app import handler
+
+        mock_start_job.return_value = "simple_grids/development/x/2025/x.nc"
+        event = {
+            "bucket": "b",
+            "date": "2025-01-07",
+            "contributors": ["NASA-SSH"],
+            "publish_as": None,
+            "resolution": None,
+        }
+        result = handler(event, None)
+        self.assertEqual(result["source"], "development")
 
     @patch("app.start_job")
     def test_skip_returns_skipped_outcome(self, mock_start_job):
@@ -35,53 +52,119 @@ class TestSimpleGridsHandlerOutcome(unittest.TestCase):
 
         mock_start_job.return_value = None
 
-        event = {"bucket": "b", "date": "2025-03-10", "source": "S6", "resolution": None}
+        event = {
+            "bucket": "b",
+            "date": "2025-03-10",
+            "contributors": ["NASA-SSH"],
+            "publish_as": "NASA-SSH",
+            "resolution": None,
+        }
         result = handler(event, None)
 
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["outputs"], [])
         self.assertIn("skip_reason", result["metadata"])
 
+    def test_omitted_publish_as_raises(self):
+        """Absent and null are different: a null publish_as is the deliberate
+        'development output' choice, so it cannot be defaulted."""
+        from app import handler
+
+        event = {
+            "bucket": "b",
+            "date": "2025-01-07",
+            "contributors": ["NASA-SSH"],
+            "resolution": None,
+        }
+        with self.assertRaises(ValueError):
+            handler(event, None)
+
+    def test_no_contributors_raises(self):
+        from app import handler
+
+        event = {
+            "bucket": "b",
+            "date": "2025-01-07",
+            "contributors": [],
+            "publish_as": "NASA-SSH",
+            "resolution": None,
+        }
+        with self.assertRaises(ValueError):
+            handler(event, None)
+
 
 class TestSimpleGridderKey(unittest.TestCase):
+    """`publish_as` decides both the output identity and whether the grid is a
+    product at all. The contributor set never does."""
 
-    def test_key_for_default_resolution(self):
+    def test_production_grid_keeps_the_existing_staged_address(self):
         from simple_gridder.gridder import SimpleGridderJob
 
-        job = SimpleGridderJob("2025-01-07", "b", "S6", None)
+        job = SimpleGridderJob("2025-01-07", "b", ["NASA-SSH"], "NASA-SSH", None)
         self.assertEqual(
             job.key,
-            "simple_grids/S6/2025/S6_alt_ref_simple_grid_v1_1_20250107.nc",
+            "simple_grids/NASA-SSH/2025/NASA-SSH_alt_ref_simple_grid_v1_1_20250107.nc",
         )
+        self.assertEqual(job.product.name, "simple_grid_reference")
+        self.assertEqual(job.filename, job.key.rsplit("/", 1)[-1])
+
+    def test_development_grid_over_the_real_reference_is_still_development(self):
+        """The defect this guards: deriving the identity from the contributors
+        would write the real reference DOI into a throwaway grid."""
+        from simple_gridder.gridder import SimpleGridderJob
+
+        job = SimpleGridderJob("2025-01-07", "b", ["NASA-SSH"], None, None)
+        self.assertEqual(job.product.name, "simple_grid_development")
+        self.assertEqual(job.product.id, "TBD")
+        self.assertTrue(job.key.startswith("simple_grids/development/NASA-SSH/"))
+        self.assertIn("_dev_", job.key)
+
+    def test_development_grid_identity_names_its_contributors(self):
+        from simple_gridder.gridder import SimpleGridderJob
+
+        job = SimpleGridderJob(
+            "2025-01-07", "b", ["NASA-SSH", "NASA-SSH_S3B"], None, None
+        )
+        self.assertTrue(
+            job.key.startswith("simple_grids/development/NASA-SSH_NASA-SSH_S3B/")
+        )
+
+    def test_high_latitude_line_cannot_be_published_as_a_grid(self):
+        """Each high-latitude satellite publishes along-track only; there is at
+        most one high-latitude grid and it is deferred."""
+        from simple_gridder.gridder import SimpleGridderJob
+
+        with self.assertRaises(ValueError):
+            SimpleGridderJob("2025-01-07", "b", ["NASA-SSH_S3B"], "NASA-SSH_S3B", None)
 
     def test_quart_resolution_key_under_quart_deg(self):
         from simple_gridder.gridder import SimpleGridderJob
 
-        job = SimpleGridderJob("2025-01-07", "b", "S6", "quart")
-        self.assertTrue(job.key.startswith("simple_grids/quart_deg/S6/2025/"))
+        job = SimpleGridderJob("2025-01-07", "b", ["NASA-SSH"], "NASA-SSH", "quart")
+        self.assertTrue(job.key.startswith("simple_grids/quart_deg/NASA-SSH/2025/"))
+        self.assertIn("simple_grid_quart_v1_1", job.filename)
         # dst stays consistent with the key
         self.assertTrue(job.dst.endswith(job.key))
 
-    def test_high_latitude_source_uses_hilat_filename(self):
-        """A high_latitude source (S3B) resolves the simple_grid_high_latitude
-        product; previously this raised ValueError because that product was not
-        registered. The filename mirrors the along-track _alt_hilat_ convention."""
+    def test_empty_contributors_raises(self):
         from simple_gridder.gridder import SimpleGridderJob
 
-        job = SimpleGridderJob("2025-01-07", "b", "S3B", None)
-        self.assertEqual(
-            job.key,
-            "simple_grids/S3B/2025/S3B_alt_hilat_simple_grid_v1_1_20250107.nc",
-        )
+        with self.assertRaises(ValueError):
+            SimpleGridderJob("2025-01-07", "b", [], "NASA-SSH", None)
 
 
 class TestGenerateKeys(unittest.TestCase):
-    """Date windowing + P3 key generation (the 10-day [center-5, center+4] window)."""
+    """Date windowing + published-key generation (the 10-day [center-5, center+4]
+    window). Contributors are published products, so the gridder reads `products/`
+    and never internal staging."""
 
-    def _job(self, date="2025-01-07", source="S6", resolution=None):
+    def _job(self, date="2025-01-07", contributors=None, publish_as="NASA-SSH",
+             resolution=None):
         from simple_gridder.gridder import SimpleGridderJob
 
-        return SimpleGridderJob(date, "b", source, resolution)
+        return SimpleGridderJob(
+            date, "b", contributors or ["NASA-SSH"], publish_as, resolution
+        )
 
     def test_window_bounds(self):
         job = self._job()
@@ -96,27 +179,50 @@ class TestGenerateKeys(unittest.TestCase):
 
     def test_key_endpoints_and_prefix(self):
         keys = self._job().generate_keys()
-        # inclusive of both window ends; reads the P3 lifecycle version
+        # inclusive of both window ends; reads the published along-track product
         self.assertEqual(
-            keys[0], "s3://b/daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250102.nc"
+            keys[0],
+            "s3://b/products/NASA-SSH/along_track/2025/"
+            "NASA-SSH_alt_ref_at_v1_1_20250102.nc",
         )
         self.assertEqual(
-            keys[-1], "s3://b/daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250111.nc"
+            keys[-1],
+            "s3://b/products/NASA-SSH/along_track/2025/"
+            "NASA-SSH_alt_ref_at_v1_1_20250111.nc",
         )
+
+    def test_reads_nothing_from_internal_staging(self):
+        for key in self._job().generate_keys():
+            with self.subTest(key=key):
+                self.assertNotIn("/daily_files/", key)
 
     def test_window_spans_year_and_month_boundaries(self):
         # center Jan 3 → window Dec 29 .. Jan 7, so keys cross into 2024/12
         keys = self._job(date="2025-01-03").generate_keys()
         self.assertEqual(len(keys), 10)
-        self.assertIn("daily_files/p3/S6/2024/S6_alt_ref_at_v1_1_20241229.nc", keys[0])
-        self.assertIn("daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250107.nc", keys[-1])
-
-    def test_high_latitude_source_reads_hilat_daily_files(self):
-        keys = self._job(source="S3B").generate_keys()
-        self.assertTrue(
-            all("S3B_alt_hilat_at_v1_1_" in k for k in keys),
-            "high_latitude source must read _alt_hilat_ P3 daily files",
+        self.assertIn(
+            "products/NASA-SSH/along_track/2024/NASA-SSH_alt_ref_at_v1_1_20241229.nc",
+            keys[0],
         )
+        self.assertIn(
+            "products/NASA-SSH/along_track/2025/NASA-SSH_alt_ref_at_v1_1_20250107.nc",
+            keys[-1],
+        )
+
+    def test_high_latitude_contributor_reads_its_hilat_product(self):
+        keys = self._job(contributors=["NASA-SSH_S3B"], publish_as=None).generate_keys()
+        self.assertTrue(
+            all("NASA-SSH_S3B_alt_hilat_at_v1_1_" in k for k in keys),
+            "a high-latitude contributor must read its _alt_hilat_ published files",
+        )
+
+    def test_every_contributor_is_read_on_every_date(self):
+        keys = self._job(
+            contributors=["NASA-SSH", "NASA-SSH_S3B"], publish_as=None
+        ).generate_keys()
+        self.assertEqual(len(keys), 20)
+        self.assertEqual(len([k for k in keys if "/NASA-SSH/along_track/" in k]), 10)
+        self.assertEqual(len([k for k in keys if "/NASA-SSH_S3B/along_track/" in k]), 10)
 
 
 class TestDsEncoding(unittest.TestCase):
@@ -125,7 +231,7 @@ class TestDsEncoding(unittest.TestCase):
     def _encoding(self):
         from simple_gridder.gridder import SimpleGridderJob
 
-        job = SimpleGridderJob("2025-01-07", "b", "S6", None)
+        job = SimpleGridderJob("2025-01-07", "b", ["NASA-SSH"], "NASA-SSH", None)
         ds = xr.Dataset(
             {
                 "ssha": (("latitude", "longitude"), np.zeros((2, 2))),
@@ -409,21 +515,38 @@ class TestHighLatitudeGridIdentity(unittest.TestCase):
         self.assertEqual(self.attrs["source_url"], "")
 
 
-class TestGridIdentityComesFromTheSource(unittest.TestCase):
-    """The stage resolves the grid product from the source's product_type, so the
-    Lambda's own event is enough to get the identity right."""
+class TestDevelopmentGridIdentity(unittest.TestCase):
+    """A development grid must declare in-file that it is not a product. The
+    title says so and the DOI is the `TBD` placeholder."""
 
-    def test_reference_source_resolves_reference_grid_product(self):
-        from simple_gridder.gridder import SimpleGridderJob
+    @classmethod
+    def setUpClass(cls):
+        from simple_gridder.gridding import Gridder
 
-        job = SimpleGridderJob("2025-01-07", "b", "S6", None)
-        self.assertEqual(job.product.name, "simple_grid_reference")
+        from utilities.source_profile import get_product
 
-    def test_high_latitude_source_resolves_hilat_grid_product(self):
-        from simple_gridder.gridder import SimpleGridderJob
+        gridder = Gridder(
+            datetime(2025, 1, 7),
+            datetime(2025, 1, 2),
+            datetime(2025, 1, 11),
+            ["f.nc"],
+            [],
+            None,
+            get_product("simple_grid_development"),
+        )
+        ds = gridder.make_grid("out.nc")
+        cls.attrs = dict(ds.attrs)
+        ds.close()
 
-        job = SimpleGridderJob("2025-01-07", "b", "S3B", None)
-        self.assertEqual(job.product.name, "simple_grid_high_latitude")
+    def test_does_not_claim_the_reference_identity(self):
+        self.assertNotEqual(self.attrs["id"], "10.5067/NSREF-SG0V11")
+        self.assertEqual(self.attrs["id"], "TBD")
+        self.assertNotEqual(
+            self.attrs["product_short_name"], "NASA_SSH_REF_SIMPLE_GRID_V11"
+        )
+
+    def test_title_says_it_is_not_a_product(self):
+        self.assertIn("not a product", self.attrs["title"])
 
 
 if __name__ == "__main__":

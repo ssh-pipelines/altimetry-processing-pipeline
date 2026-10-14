@@ -1,6 +1,6 @@
 """Job-outcome contract for the altimetry pipeline's deliverable stages.
 
-A **deliverable stage** (`finalizer`, `unifier`, `simple_grids`, `enso`) returns a
+A **deliverable stage** (`finalizer`, `publisher`, `simple_grids`, `enso`) returns a
 ``JobOutcome`` from its Lambda handler instead of a thin ``{status, data}`` dict. The
 Distributed Map's ``ResultWriter`` persists each return verbatim into ``SUCCEEDED_n.json``,
 so a Job outcome is the success-side analog of the structured ``FAILED_n.json`` entry

@@ -4,19 +4,20 @@
   "States": {
     "Map": {
       "Type": "Map",
+      "Comment": "Promote one product family over one manifest. Invoked once per tier with a different `family`; the ResultWriter segment carries the family so the two tiers' Job outcomes never share a prefix.",
       "ItemProcessor": {
         "ProcessorConfig": {
           "Mode": "DISTRIBUTED",
           "ExecutionType": "STANDARD"
         },
-        "StartAt": "Invoke Unifier",
+        "StartAt": "Invoke Publisher",
         "States": {
-          "Invoke Unifier": {
+          "Invoke Publisher": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Output": "{% $states.result.Payload %}",
             "Arguments": {
-              "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-unifier:$LATEST",
+              "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-publisher:$LATEST",
               "Payload": "{% $states.input %}"
             },
             "Retry": [
@@ -47,43 +48,16 @@
           "Key": "{% $states.input.jobs_key %}"
         }
       },
+      "ItemSelector": "{% { 'date': $states.context.Map.Item.Value.date, 'bucket': $states.input.bucket, 'family': $states.input.family, 'publish_as': $states.input.published_product, 'contributors': $states.input.family = 'along_track' ? [$states.context.Map.Item.Value.source] : [] } %}",
       "ResultWriter": {
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {
           "Bucket": "{% $states.input.bucket %}",
-          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/unifier') %}"
+          "Prefix": "{% ($p := $split($states.input.jobs_key, '/'); $p[0] & '/' & $p[1] & '/' & $p[2] & '/results/publisher_' & $states.input.family) %}"
         }
       },
       "MaxConcurrency": 500,
-      "Label": "Unifier",
-      "Next": "Rewrite Manifest"
-    },
-    "Rewrite Manifest": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Arguments": {
-        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-rewrite_manifest:$LATEST",
-        "Payload": {
-          "jobs_key": "{% $states.context.Execution.Input.jobs_key %}",
-          "bucket": "{% $states.context.Execution.Input.bucket %}",
-          "new_source": "NASA-SSH"
-        }
-      },
-      "Output": "{% $states.result.Payload %}",
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException"
-          ],
-          "IntervalSeconds": 10,
-          "MaxAttempts": 5,
-          "BackoffRate": 2,
-          "JitterStrategy": "FULL"
-        }
-      ],
+      "Label": "Publisher",
       "End": true
     }
   }

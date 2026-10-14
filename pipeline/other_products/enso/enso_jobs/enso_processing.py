@@ -14,20 +14,23 @@ from utilities.pipeline_layout import (
     s3_uri,
     simple_grid_key,
 )
-from utilities.source_profile import get_source_profile
 
 aws_manager = AWSManager()
 
 
-def start_job(date: datetime, bucket: str, source: str) -> str:
+def start_job(date: datetime, bucket: str, published_product: str) -> str:
     """Process the ENSO grid (and maps) for a date. Returns the bucket-relative key of
-    the ENSO grid written."""
-    logging.info(f"Processing {source} grid for {date.date()}")
+    the ENSO grid written.
 
-    profile = get_source_profile(source)
+    Keyed on a **published product**, not a Source: ENSO derives from the
+    reference-mission grid only, and that grid is composed from several missions.
+    It reads the grid's internal staging copy — the ENSO grids and maps are
+    website assets, so they stay in the internal layout and are not promoted.
+    """
+    logging.info(f"Processing {published_product} grid for {date.date()}")
 
-    # Stream simple grid from bucket based on date and source
-    key = s3_uri(bucket, simple_grid_key(profile, date))
+    # Stream the staged simple grid for this published product and date
+    key = s3_uri(bucket, simple_grid_key(published_product, date))
     try:
         streamed_data = aws_manager.stream_obj(key)
         ds = xr.open_dataset(streamed_data, engine="h5netcdf")
@@ -49,7 +52,7 @@ def start_job(date: datetime, bucket: str, source: str) -> str:
 
         filename = enso_filename(date)
         src = f"/tmp/{filename}"
-        grid_key = enso_grid_key(source, date)
+        grid_key = enso_grid_key(published_product, date)
         aws_manager.upload_obj(src, s3_uri(bucket, grid_key))
         os.remove(src)
 
@@ -58,7 +61,7 @@ def start_job(date: datetime, bucket: str, source: str) -> str:
         logging.info("Map making complete")
 
         for kind in ("ortho", "plate"):
-            map_key = enso_map_key(source, date, kind)
+            map_key = enso_map_key(published_product, date, kind)
             filename = map_key.rsplit("/", 1)[-1]
             src = f"/tmp/{filename}"
             aws_manager.upload_obj(src, s3_uri(bucket, map_key))

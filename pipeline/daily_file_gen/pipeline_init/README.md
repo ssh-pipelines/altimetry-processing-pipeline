@@ -17,7 +17,7 @@ For each invocation, the Lambda:
 
    A granule-less date is only filled when it falls *before* the last date that has granules, i.e. when upstream coverage resumes after it. Granule-less dates at the trailing edge are skipped: upstream products land well behind real time, so their emptiness usually means "not published yet", and writing empty files there would churn the weekly simple grids and ENSO products until the data arrives. If nothing at all is enumerated for the range, nothing is planned — so **backfilling a known gap requires a range that extends past it**, far enough that real granules bound the gap on the late side.
 6. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording how the run was invoked (the given `start`/`end`/`force_update` overrides, a `defaults_used` flag, and the `resolved_start`/`resolved_end`). The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (Distributed Maps, `rewrite_manifest`, `set_sg_jobs`) depend on; `run_summary` reads the sidecar to report invocation parameters in the success notification (see ADR 0005).
-7. **Returns** `jobs_key`, `bucket`, `source`, and `unify` — these fields are threaded through all downstream Step Function states.
+7. **Returns** `jobs_key`, `bucket`, `source`, `published_product`, and `job_count` — these fields are threaded through all downstream Step Function states. `published_product` is derived from the source's `product_type` and is what the publisher and the gridded tier key on; ASL cannot read the source registry, so it has to be resolved here.
 
 ## Lambda input
 
@@ -43,7 +43,8 @@ For each invocation, the Lambda:
   "jobs_key": "pipeline_runs/S6/20250219T120000/jobs.json",
   "bucket": "my-bucket",
   "source": "S6",
-  "unify": true
+  "published_product": "NASA-SSH",
+  "job_count": 12
 }
 ```
 

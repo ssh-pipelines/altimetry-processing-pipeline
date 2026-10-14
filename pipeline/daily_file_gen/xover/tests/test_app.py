@@ -35,11 +35,13 @@ class GetProcessorTestCase(unittest.TestCase):
 
     def test_reference_processor_has_centered_window(self):
         # Reference windows are centered on the day (±), unlike the self path's
-        # forward-only window, and carry the reference mission's profile.
+        # forward-only window, and name the published product they cross against
+        # (an identity, not a source profile — the reference product has no
+        # internal representation to carry a profile for).
         proc = get_processor(self.DAY, "S3B", self.DF_VERSION)
         self.assertLess(proc.window_start, self.DAY)
         self.assertGreater(proc.window_end, self.DAY)
-        self.assertEqual(proc.reference_profile.source, "NASA-SSH")
+        self.assertEqual(proc.config.reference_product, "NASA-SSH")
 
     def test_unknown_source_raises(self):
         with self.assertRaises(ValueError):

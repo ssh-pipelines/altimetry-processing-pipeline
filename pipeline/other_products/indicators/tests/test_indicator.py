@@ -13,16 +13,19 @@ class TestBuildSgKey(unittest.TestCase):
             "NASA-SSH_alt_ref_simple_grid_v1_1_20240315.nc",
         )
 
-    def test_different_source(self):
-        key = build_sg_key("2025-01-06", "prod-bucket", "S6")
-        self.assertEqual(
-            key,
-            "s3://prod-bucket/simple_grids/S6/2025/"
-            "S6_alt_ref_simple_grid_v1_1_20250106.nc",
-        )
+    def test_reads_the_staged_grid_not_the_published_one(self):
+        """The grid is staged for ENSO anyway, so indicators take the short path."""
+        key = build_sg_key("2024-03-15", "my-bucket", "NASA-SSH")
+        self.assertNotIn("/products/", key)
+
+    def test_a_source_is_not_a_published_product(self):
+        """Indicators are keyed on a published product. A Source name has no
+        published-product entry and must not silently resolve to one."""
+        with self.assertRaises(ValueError):
+            build_sg_key("2025-01-06", "prod-bucket", "S6")
 
     def test_year_boundary(self):
-        key = build_sg_key("1993-01-01", "b", "GSFC")
+        key = build_sg_key("1993-01-01", "b", "NASA-SSH")
         self.assertIn("/1993/", key)
         self.assertIn("19930101", key)
 
@@ -88,7 +91,7 @@ class TestGenerateDs(unittest.TestCase):
     def _make_processor():
         """Create an IndicatorProcessor without triggering file-dependent __init__."""
         proc = object.__new__(IndicatorProcessor)
-        proc.source = "TEST"
+        proc.published_product = "NASA-SSH"
         return proc
 
     def _make_records(self, times, raw_gmsl_values):

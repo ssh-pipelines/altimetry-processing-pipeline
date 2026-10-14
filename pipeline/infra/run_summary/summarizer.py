@@ -30,20 +30,36 @@ logger = logging.getLogger(__name__)
 
 # A deliverable the run summary reconciles. `anchor` deliverables define a Product
 # pipeline's `missing` set (one manifest date -> one expected anchor output).
-# `conditional` deliverables are reported only when they actually ran (the unifier
-# runs only on a unified run), so a non-unified run does not show them as all-missing.
+# `conditional` deliverables are reported only when they actually ran, so a run
+# that legitimately skips one does not show it as all-missing. Nothing is
+# conditional today: every source publishes, so the publisher always runs.
+#
+# `stage` is the ResultWriter segment, not the Job outcome's own `stage` field.
+# One publisher Lambda serves both tiers, so each tier's promotion lands under
+# its own `publisher_{family}` segment — the same shape as `xover_{df_version}`.
 PRODUCT_PIPELINES = {
     "along_track": {
         "manifest": lambda jobs_key: jobs_key,
         "deliverables": [
             {"kind": "daily_file_p3", "stage": "finalizer", "anchor": True, "conditional": False},
-            {"kind": "nasa_ssh_p3", "stage": "unifier", "anchor": False, "conditional": True},
+            {
+                "kind": "published_along_track",
+                "stage": "publisher_along_track",
+                "anchor": False,
+                "conditional": False,
+            },
         ],
     },
     "gridded": {
         "manifest": lambda jobs_key: sg_jobs_key(jobs_key),
         "deliverables": [
             {"kind": "simple_grid", "stage": "simple_grids", "anchor": True, "conditional": False},
+            {
+                "kind": "published_simple_grid",
+                "stage": "publisher_simple_grid",
+                "anchor": False,
+                "conditional": False,
+            },
             {"kind": "enso", "stage": "enso", "anchor": False, "conditional": False},
         ],
     },
@@ -58,7 +74,7 @@ def manifest_dates(job_specs: list[dict]) -> list[str]:
 def _provenance_incomplete(successes: list[dict]) -> int:
     """Count outcomes whose metadata explicitly declares incomplete lineage.
 
-    A *missing* `provenance_complete` (older emitters / the unifier byte-copy / legacy
+    A *missing* `provenance_complete` (older emitters / the publisher byte-copy / legacy
     files) is "unknown", not incomplete — it is never counted here, so absence never
     inflates the incomplete tally (the backward-compat contract of ADR 0005).
     """
@@ -83,7 +99,7 @@ def reconcile_pipeline(
     for spec in deliverable_specs:
         outcomes = outcomes_by_stage.get(spec["stage"], [])
         if not outcomes and spec["conditional"]:
-            # e.g. the unifier on a non-unified run — not a deliverable of this run.
+            # A stage that legitimately did not run this time — not a deliverable.
             continue
 
         successes = [o for o in outcomes if o.get("status") == SUCCESS]
@@ -169,7 +185,7 @@ def build_summary(
     passed in (already loaded) so this stays pure and testable.
     """
     source, run_id = jobs_key_identity(jobs_key)
-    unified_source = _unified_source(jobs_key)
+    published_product = _published_product(jobs_key)
     completed_at = completed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     product_pipelines = {}
@@ -186,7 +202,7 @@ def build_summary(
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "source": source,
-        "unified_source": unified_source,
+        "published_product": published_product,
         "completed_at": completed_at,
         "parameters": run_params or {},
         "product_pipelines": product_pipelines,
@@ -194,11 +210,13 @@ def build_summary(
     }
 
 
-def _unified_source(jobs_key: str) -> str | None:
-    """The unified product segment of a jobs key, or None.
+def _published_product(jobs_key: str) -> str | None:
+    """The published-product segment of a jobs key, or None.
 
-    A unified run's manifest lives at ``pipeline_runs/{orig}/{run_id}/{unified}/jobs.json``
-    (5 segments); a plain run at ``pipeline_runs/{orig}/{run_id}/jobs.json`` (4).
+    The gridded tier's manifest lives at
+    ``pipeline_runs/{source}/{run_id}/{published_product}/jobs.json`` (5 segments);
+    the along-track tier's at ``pipeline_runs/{source}/{run_id}/jobs.json`` (4).
+    Goes away once the product tier gets its own run path.
     """
     parts = jobs_key.split("/")
     return parts[3] if len(parts) >= 5 else None
@@ -261,7 +279,7 @@ def _outcome_from_entry(entry: dict) -> dict | None:
         return None
     # Defensive: a Map whose invoke task omits `Output: {% $states.result.Payload %}`
     # writes the raw Lambda invoke envelope ({Payload, StatusCode, ...}) instead of the
-    # Job outcome (this once silently zeroed the unifier deliverable). Unwrap it so
+    # Job outcome (this once silently zeroed the promotion deliverable). Unwrap it so
     # reconciliation still sees the outcome even if a stage's ASL regresses.
     if "status" not in output and isinstance(output.get("Payload"), dict):
         output = output["Payload"]
@@ -309,12 +327,14 @@ def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict, list[dict]
 
 # ─── SNS rendering ────────────────────────────────────────────────────────
 
-# Human-friendly deliverable names for the notification. `nasa_ssh_p3` has no entry
-# because it is folded into the `daily_file_p3` line as a unification annotation (the
-# two are the same P3 file in two locations — see `_along_track_lines`).
+# Human-friendly deliverable names for the notification. `published_along_track`
+# has no entry because it is folded into the `daily_file_p3` line as a publication
+# annotation (the two are the same P3 file, staged and released — see
+# `_along_track_lines`).
 _DELIVERABLE_LABELS = {
     "daily_file_p3": "p3 daily files",
     "simple_grid": "simple grids",
+    "published_simple_grid": "published simple grids",
     "enso": "ENSO grids",
 }
 
@@ -362,24 +382,25 @@ def _deliverable_lines(label: str, d: dict, *, suffix: str = "") -> list[str]:
     return lines
 
 
-def _along_track_lines(deliverables: dict, unified_source: str | None) -> list[str]:
-    """Render the along-track deliverables, folding the unifier's `nasa_ssh_p3` into the
-    finalizer's `daily_file_p3` line — they are the same P3 file, in the source prefix and
-    (when unified) the NASA-SSH prefix. The fold surfaces a unification shortfall instead of
-    hiding it as a separate, confusing '0 produced' row."""
+def _along_track_lines(deliverables: dict, published_product: str | None) -> list[str]:
+    """Render the along-track deliverables, folding the publisher's
+    `published_along_track` into the finalizer's `daily_file_p3` line — they are the
+    same P3 file, staged under its source prefix and released under `products/`.
+    The fold surfaces a publication shortfall instead of hiding it as a separate,
+    confusing '0 produced' row."""
     p3 = deliverables.get("daily_file_p3")
-    unified = deliverables.get("nasa_ssh_p3")
+    published = deliverables.get("published_along_track")
 
     suffix = ""
-    if p3 is not None and unified is not None:
-        dest = unified_source or "NASA-SSH"
-        uc = unified["produced"]
-        suffix = f" → all unified to {dest}" if uc == p3["produced"] \
-            else f" → {uc} of {p3['produced']} unified to {dest}"
+    if p3 is not None and published is not None:
+        dest = published_product or "its published product"
+        pc = published["produced"]
+        suffix = f" → all published to {dest}" if pc == p3["produced"] \
+            else f" → {pc} of {p3['produced']} published to {dest}"
 
     lines: list[str] = []
     for kind, d in deliverables.items():
-        if kind == "nasa_ssh_p3":
+        if kind == "published_along_track":
             continue  # folded into the daily_file_p3 line
         label = _DELIVERABLE_LABELS.get(kind, kind)
         lines += _deliverable_lines(label, d, suffix=suffix if kind == "daily_file_p3" else "")
@@ -420,10 +441,10 @@ def _bad_pass_lines(bp: dict) -> list[str]:
 def render_notification(summary: dict) -> tuple[str, str]:
     """(subject, body) for the success SNS, rendered from the Run summary artifact."""
     source = summary["source"]
-    unified = summary.get("unified_source")
+    published = summary.get("published_product")
     run_id = summary["run_id"]
 
-    source_line = f"Source: {source} → {unified}" if unified else f"Source: {source}"
+    source_line = f"Source: {source} → {published}" if published else f"Source: {source}"
     lines = [
         source_line,
         f"Run ID: {run_id}",
@@ -435,7 +456,7 @@ def render_notification(summary: dict) -> tuple[str, str]:
     for name, section in summary["product_pipelines"].items():
         lines.append(f"{name} (expected {section['expected']}):")
         if name == "along_track":
-            lines += _along_track_lines(section["deliverables"], unified)
+            lines += _along_track_lines(section["deliverables"], published)
             # bad_pass runs inside the along-track chain (between xover_p2 and the
             # finalizer); its diagnostic counts belong under this section, not as a
             # trailing block.

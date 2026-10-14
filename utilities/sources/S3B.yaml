@@ -1,7 +1,10 @@
 common:
   product_type: high_latitude
   discovery_type: thredds
-  unify: false
+  # High-latitude metadata values (title, summary, DOI) are still placeholders,
+  # and the gridded pipeline is per-source until product-keyed orchestration
+  # lands, so a run today would attempt a per-satellite grid.
+  enabled: false
   start_date: "2018-11-24"
   end_date: "2026-04-10"
   ground_speed: 6.6943   # km/s, median 1 Hz ground speed over 179 long passes (tools/compute_ground_speed.py)
@@ -35,8 +38,9 @@ finalizer:
 
 xover:
   crossover_type: reference
-  reference_source: NASA-SSH
-  reference_version: p3
+  # The published reference along-track product, not a source: there is one
+  # released along-track line per identity, so there is no version to choose.
+  reference_product: NASA-SSH
   cycle_length: 9.9156
   # window_size/window_padding are interpreted as a CENTERED window for
   # reference crossovers (±): the reference mission repeats its ground track

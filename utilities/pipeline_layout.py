@@ -5,6 +5,13 @@ Returns bucket-relative keys; callers prepend `s3://{bucket}/` via `s3_uri()`
 when they need a full URI (boto3 SDK calls take bucket+key separately;
 xarray / aws_manager paths often want the URI form).
 
+Two areas of the bucket, and the split is the point. `daily_files/`,
+`crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`, `enso_grids/`, `maps/`
+and `pipeline_runs/` are **internal staging** — working state, keyed on Source.
+`products/` holds the released artifacts, keyed on **Published product**, and
+every key under it comes from one `published_*` function here, so a later move
+to a separate products bucket is this one module plus a config value.
+
 Each path family owns its date format:
     Daily files: YYYYMMDD
     Crossovers, OER, bad_pass: ISO YYYY-MM-DD
@@ -16,34 +23,43 @@ from datetime import date as date_type
 from datetime import datetime
 from typing import Literal
 
+from utilities.products import (
+    along_track_product,
+    published_along_track_product,
+    published_simple_grid_product,
+)
 from utilities.source_profile import Product, SourceCommon, get_product
 
 DailyFileVersion = Literal["p1", "p2", "p3"]
 CrossoverVersion = Literal["p1", "p2"]
 EnsoMapKind = Literal["ortho", "plate"]
 
+DEVELOPMENT_GRID_PRODUCT = "simple_grid_development"
+
 
 def _to_date(d: date_type | datetime) -> date_type:
     return d.date() if isinstance(d, datetime) else d
 
 
-def _along_track_product_name(product_type: str) -> str:
-    return f"along_track_{product_type}"
+def _internal_filename(product: Product, source: str, d: date_type | datetime) -> str:
+    return product.filename_template.format(
+        source=source,
+        version=product.version,
+        YYYYMMDD=_to_date(d).strftime("%Y%m%d"),
+    )
 
 
-def _simple_grid_product_name(product_type: str) -> str:
-    return f"simple_grid_{product_type}"
-
-
-def along_track_product(profile: SourceCommon) -> Product:
-    """The Product a Source's along-track daily files belong to. Writers need it
-    for the in-file identity attrs, not only for the filename."""
-    return get_product(_along_track_product_name(profile.product_type))
-
-
-def simple_grid_product(profile: SourceCommon) -> Product:
-    """The Product a Source's simple grids belong to."""
-    return get_product(_simple_grid_product_name(profile.product_type))
+def _published_filename(product: Product, identity: str, d: date_type | datetime) -> str:
+    if not product.published_filename_template:
+        raise ValueError(
+            f"Product '{product.name}' declares no published_filename_template, "
+            f"so it cannot be published under products/."
+        )
+    return product.published_filename_template.format(
+        published_name=identity,
+        version=product.version,
+        YYYYMMDD=_to_date(d).strftime("%Y%m%d"),
+    )
 
 
 # ─── Along-track daily files ──────────────────────────────────────────────
@@ -51,13 +67,7 @@ def simple_grid_product(profile: SourceCommon) -> Product:
 def daily_file_filename(profile: SourceCommon, d: date_type | datetime) -> str:
     """Just the filename (no prefix). Used by callers that already have a
     directory and only need the leaf name."""
-    d = _to_date(d)
-    product = along_track_product(profile)
-    return product.filename_template.format(
-        source=profile.source,
-        version=product.version,
-        YYYYMMDD=d.strftime("%Y%m%d"),
-    )
+    return _internal_filename(along_track_product(profile), profile.source, d)
 
 
 def daily_file_key(
@@ -152,8 +162,8 @@ def jobs_manifest_key(source: str, run_id: str) -> str:
 def jobs_key_identity(jobs_key: str) -> tuple[str, str]:
     """The ``(source, run_id)`` embedded in a jobs manifest key.
 
-    ``source`` is the *original* source segment (e.g. ``S6``) even for a unified
-    run whose manifest lives under a further ``{unified}/`` segment — it is always
+    ``source`` is the *original* source segment (e.g. ``S6``) even for a gridded-tier
+    manifest living under a further ``{published_product}/`` segment — it is always
     ``parts[1]``, matching ``stage_results_prefix``'s first-three-segments rule.
 
     Example: jobs_key_identity("pipeline_runs/S6/20250528T120000/jobs.json")
@@ -201,10 +211,10 @@ def stage_results_prefix(jobs_key: str, stage: str) -> str:
 
     Mirrors the JSONata used by every leaf ASL's ResultWriter:
         $p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/
-    Must take `jobs_key` rather than (source, run_id) because post-unifier the
-    SM-input `source` is the unified product (e.g. "NASA-SSH") while jobs_key
+    Must take `jobs_key` rather than (source, run_id) because in the gridded tier
+    the SM input is keyed on the published product (e.g. "NASA-SSH") while jobs_key
     still embeds the original source (e.g. "S6") — and the ResultWriter wrote
-    under the original-source path. Listing by the unified source would miss
+    under the original-source path. Listing by the published product would miss
     everything.
 
     The actual on-disk layout under this prefix is `{MapRunArn}/{FAILED,SUCCEEDED,...}_n.json`;
@@ -221,40 +231,54 @@ def stage_results_prefix(jobs_key: str, stage: str) -> str:
     return f"{parts[0]}/{parts[1]}/{parts[2]}/results/{stage}/"
 
 
-# ─── Simple grids ─────────────────────────────────────────────────────────
+# ─── Simple grids (internal staging) ──────────────────────────────────────
+#
+# Keyed on the grid's own identity, not on a Source: a grid is composed from a
+# contributor list and the output identity is an independent fact. ENSO and
+# indicators read these staged grids, which is why promotion to `products/` is a
+# copy rather than a move.
 
-def simple_grid_filename(profile: SourceCommon, d: date_type | datetime) -> str:
-    """Simple-grid output filename (no prefix)."""
+def simple_grid_key(publish_as: str, d: date_type | datetime) -> str:
+    """Bucket-relative key for a published-destined simple grid's staged copy.
+
+    Example: simple_grids/NASA-SSH/2025/NASA-SSH_alt_ref_simple_grid_v1_1_20250107.nc
+    """
     d = _to_date(d)
-    product = simple_grid_product(profile)
-    return product.filename_template.format(
-        source=profile.source,
-        version=product.version,
-        YYYYMMDD=d.strftime("%Y%m%d"),
+    product = published_simple_grid_product(publish_as)
+    return (
+        f"simple_grids/{publish_as}/{d.year}/"
+        f"{_internal_filename(product, publish_as, d)}"
     )
 
 
-def simple_grid_key(profile: SourceCommon, d: date_type | datetime) -> str:
-    """Bucket-relative key for a simple-grid output.
+def development_simple_grid_key(identity: str, d: date_type | datetime) -> str:
+    """Bucket-relative key for a grid run with no `publish_as`.
 
-    Example: simple_grids/S6/2025/S6_alt_ref_simple_grid_v1_1_20250107.nc
+    Its own prefix segment and its own `_dev_` filename family, so a development
+    grid can be mistaken for a product in neither the path nor the file.
+
+    Example: simple_grids/development/NASA-SSH_S3B/2025/NASA-SSH_S3B_dev_simple_grid_v1_1_20250107.nc
     """
     d = _to_date(d)
-    return f"simple_grids/{profile.source}/{d.year}/{simple_grid_filename(profile, d)}"
+    product = get_product(DEVELOPMENT_GRID_PRODUCT)
+    return (
+        f"simple_grids/development/{identity}/{d.year}/"
+        f"{_internal_filename(product, identity, d)}"
+    )
 
 
-def simple_grid_prefix(source: str, year: int) -> str:
-    """Listing prefix for a source/year of simple grids.
+def simple_grid_prefix(identity: str, year: int) -> str:
+    """Listing prefix for a grid identity's year of staged simple grids.
 
-    Example: simple_grids/S6/2025/
+    Example: simple_grids/NASA-SSH/2025/
     """
-    return f"simple_grids/{source}/{year}/"
+    return f"simple_grids/{identity}/{year}/"
 
 
-# ─── ENSO ─────────────────────────────────────────────────────────────────
+# ─── ENSO (internal: website assets, not a released product) ──────────────
 
 def enso_filename(d: date_type | datetime) -> str:
-    """ENSO grid filename (no prefix). ENSO is a global product (no source)."""
+    """ENSO grid filename (no prefix). ENSO carries no per-product identity."""
     d = _to_date(d)
     product = get_product("enso")
     return product.filename_template.format(
@@ -263,41 +287,85 @@ def enso_filename(d: date_type | datetime) -> str:
     )
 
 
-def enso_grid_key(source: str, d: date_type | datetime) -> str:
-    """Bucket-relative key for an ENSO grid output. Layout encodes the
-    upstream simple-grid source even though ENSO itself is a global product.
+def enso_grid_key(identity: str, d: date_type | datetime) -> str:
+    """Bucket-relative key for an ENSO grid output. The segment is the published
+    product the upstream simple grid belongs to — ENSO derives from the reference
+    line only.
 
-    Example: enso_grids/S6/ENSO_20250107.nc
+    Example: enso_grids/NASA-SSH/ENSO_20250107.nc
     """
-    return f"enso_grids/{source}/{enso_filename(d)}"
+    return f"enso_grids/{identity}/{enso_filename(d)}"
 
 
-def enso_map_key(source: str, d: date_type | datetime, kind: EnsoMapKind) -> str:
+def enso_map_key(identity: str, d: date_type | datetime, kind: EnsoMapKind) -> str:
     """Bucket-relative key for an ENSO map (PNG).
 
-    Example: maps/enso_maps/S6/ortho/ENSO_ortho_20250107.png
+    Example: maps/enso_maps/NASA-SSH/ortho/ENSO_ortho_20250107.png
     """
     date_str = _to_date(d).strftime("%Y%m%d")
-    return f"maps/enso_maps/{source}/{kind}/ENSO_{kind}_{date_str}.png"
+    return f"maps/enso_maps/{identity}/{kind}/ENSO_{kind}_{date_str}.png"
 
 
-# ─── Indicators ───────────────────────────────────────────────────────────
+# ─── Published products ───────────────────────────────────────────────────
+#
+# Product-first, so everything about one released line groups together. Every
+# key under `products/` comes from here.
 
-def indicators_key(source: str) -> str:
-    """Bucket-relative key for the indicators artifact. Currently a static
-    filename per source.
+def published_along_track_filename(identity: str, d: date_type | datetime) -> str:
+    """Published along-track filename (no prefix).
 
-    Example: indicators/S6/indicators.nc
+    Example: NASA-SSH_S3B_alt_hilat_at_v1_1_20250107.nc
     """
-    return f"indicators/{source}/indicators.nc"
+    return _published_filename(published_along_track_product(identity), identity, d)
 
 
-def indicators_prefix(source: str) -> str:
-    """Listing prefix for a source's indicators directory.
+def published_along_track_key(identity: str, d: date_type | datetime) -> str:
+    """Bucket-relative key for a released along-track daily file.
 
-    Example: indicators/S6/
+    Example: products/NASA-SSH/along_track/2025/NASA-SSH_alt_ref_at_v1_1_20250107.nc
     """
-    return f"indicators/{source}/"
+    d = _to_date(d)
+    return (
+        f"products/{identity}/along_track/{d.year}/"
+        f"{published_along_track_filename(identity, d)}"
+    )
+
+
+def published_simple_grid_filename(identity: str, d: date_type | datetime) -> str:
+    """Published simple-grid filename (no prefix)."""
+    return _published_filename(published_simple_grid_product(identity), identity, d)
+
+
+def published_simple_grid_key(identity: str, d: date_type | datetime) -> str:
+    """Bucket-relative key for a released simple grid.
+
+    Example: products/NASA-SSH/simple_grid/2025/NASA-SSH_alt_ref_simple_grid_v1_1_20250107.nc
+    """
+    d = _to_date(d)
+    return (
+        f"products/{identity}/simple_grid/{d.year}/"
+        f"{published_simple_grid_filename(identity, d)}"
+    )
+
+
+def published_indicators_key(identity: str) -> str:
+    """Bucket-relative key for the indicators artifact. Indicators write through
+    to `products/` rather than being promoted — nothing outside the stage reads
+    them, and `indicators.nc` is self-read as a cache, so the published copy *is*
+    the cache. Static filename per published product.
+
+    Example: products/NASA-SSH/indicators/indicators.nc
+    """
+    return f"{published_indicators_prefix(identity)}indicators.nc"
+
+
+def published_indicators_prefix(identity: str) -> str:
+    """Prefix holding a published product's indicators: the `.nc` cache, the
+    PO.DAAC-facing `.txt`/`.mp` pairs, and their `archive/`.
+
+    Example: products/NASA-SSH/indicators/
+    """
+    return f"products/{identity}/indicators/"
 
 
 # ─── Convenience: full s3:// URI ──────────────────────────────────────────

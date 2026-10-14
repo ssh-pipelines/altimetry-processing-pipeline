@@ -7,6 +7,7 @@ from finalization.finalizer import Finalizer
 
 from utilities.errors import PipelineError
 from utilities.job_outcome import JobOutcome, Output
+from utilities.products import published_identity
 from utilities.provenance import processing_complete
 
 
@@ -46,7 +47,8 @@ def handler(event, context):
                 "processing_history": result.processing_history,
                 "provenance_complete": processing_complete(result.processing_history, 3),
                 "product_type": config.product_type,
-                "unify": config.unify,
+                # Provenance, not a gate: which released line this P3 feeds.
+                "published_product": published_identity(config),
             },
         ).to_dict()
     except Exception as e:

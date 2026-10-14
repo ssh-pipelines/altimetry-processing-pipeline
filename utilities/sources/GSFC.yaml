@@ -1,7 +1,7 @@
 common:
   product_type: reference
   discovery_type: cmr
-  unify: true
+  enabled: true
   start_date: "1992-10-25"
   end_date: "2025-12-31"
   ground_speed: 5.7582   # km/s, median 1 Hz ground speed over 1915 long passes
@@ -38,7 +38,6 @@ finalizer:
     mean_threshold: 0.1
     rms_threshold: 0.27
 
-unifier: {}
 
 xover:
   crossover_type: self

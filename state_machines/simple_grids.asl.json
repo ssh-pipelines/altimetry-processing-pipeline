@@ -47,6 +47,7 @@
           "Key": "{% $states.input.jobs_key %}"
         }
       },
+      "ItemSelector": "{% { 'date': $states.context.Map.Item.Value.date, 'bucket': $states.input.bucket, 'contributors': [$states.input.published_product], 'publish_as': $states.input.published_product } %}",
       "ResultWriter": {
         "Resource": "arn:aws:states:::s3:putObject",
         "Arguments": {

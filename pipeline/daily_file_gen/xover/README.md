@@ -59,10 +59,12 @@ in the type-specific load / search / to_dataset steps. Everything else is shared
    `load_track_window()` concatenates them, drops NaN SSH rows, and builds arrays for
    time, lon, lat, SSH and track IDs (`cycle * 10000 + pass`) plus a per-track index.
    - `SelfSpec` loads **one** window: day through day + `window_size` + `window_padding`.
-   - `ReferenceSpec` loads **two**: the high-lat source over `[D-1, D+1]` (neighbor days
-     so passes straddling midnight reassemble), and the reference mission over a window
-     *centered* on the day, always at `reference_version` regardless of the high-lat
-     `df_version` ([ADR 0006](../../../docs/adr/0006-reference-crossovers-against-nasa-ssh-p3.md)).
+   - `ReferenceSpec` loads **two**: the high-lat source's own staged daily files over
+     `[D-1, D+1]` (neighbor days so passes straddling midnight reassemble) via
+     `stream_files()`, and the **published** reference along-track product over a window
+     *centered* on the day via `stream_published_files()`. The reference side is read from
+     `products/` regardless of the high-lat `df_version` — a published along-track file is
+     finalized by definition ([ADR 0006](../../../docs/adr/0006-reference-crossovers-against-nasa-ssh-p3.md)).
 2. **`spec.search()`** — For each track starting on the processing day, finds candidate
    crossing tracks and calls `xover_ssh()` per pair. `find_self_crossovers()` pairs a
    source against itself (different cycle, opposite pass direction, within one orbital
@@ -91,13 +93,17 @@ Orbital parameters live in the `xover:` section of `utilities/sources/{source}.y
 | `window_size`    | Days of data to load. Forward-looking for `self`; reinterpreted as a **centered ±** window for `reference` |
 | `window_padding` | Extra days to pad the window                           |
 | `max_pass_number`| Maximum pass number for the satellite                  |
-| `reference_source` | *(`reference` only, required)* The reference mission to cross against — `NASA-SSH` |
-| `reference_version` | *(`reference` only, required)* Reference daily-file version to load — always `p3` ([ADR 0006](../../../docs/adr/0006-reference-crossovers-against-nasa-ssh-p3.md)) |
+| `reference_product` | *(`reference` only)* The **published product** to cross against. Defaults to `NASA-SSH`, which is the only published along-track line today |
 
 `crossover_type` follows from the source's `product_type`: a `reference` product type
-uses `self` crossovers, a `high_latitude` source uses `reference` crossovers. The two
-`reference_*` fields are optional on the shared dataclass but validated as required in
-`__post_init__` when the type is `reference`.
+uses `self` crossovers, a `high_latitude` source uses `reference` crossovers.
+
+`reference_product` names a published product, not a **Source** — the reference record
+is composed from several missions and has no staging representation of its own, so
+`products/` is the only place it exists. There is no version to pick, which is why the
+former `reference_version` field is gone: one published along-track line per identity,
+always finalized. The default means adding a high-latitude source needs no reference
+wiring; `__post_init__` still rejects a blank value when the type is `reference`.
 
 Current sources:
 

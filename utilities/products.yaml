@@ -1,14 +1,22 @@
 # The wire format of every artifact the pipeline produces: version, filename
-# template, and the in-file CF identity a consumer reads. All of it belongs to
+# templates, and the in-file CF identity a consumer reads. All of it belongs to
 # the product rather than to a contributing source — sources sharing a product
 # must publish the same identity, and a source contributing to a different
 # product must not inherit it. `references` and `source_url` are declared here
 # but left empty on the along-track path, where each source fills them from its
 # own collection metadata (`DailyFile.set_source_attrs`).
+#
+# Two filename templates per publishable product, deliberately distinct, so a
+# staging artifact and a released one are never mistaken for each other:
+# `filename_template` takes `{source}` and names the internal file,
+# `published_filename_template` takes `{published_name}` and names the file
+# under `products/`. A product with no `published_filename_template` cannot be
+# published.
 products:
   along_track_reference:
     version: "v1_1"
     filename_template: "{source}_alt_ref_at_{version}_{YYYYMMDD}.nc"
+    published_filename_template: "{published_name}_alt_ref_at_{version}_{YYYYMMDD}.nc"
     title: "NASA-SSH Along-Track Sea Surface Height from Standardized Reference Missions Version 1.1"
     summary: >-
       This data set contains satellite based measurements of sea surface height,
@@ -30,6 +38,7 @@ products:
   along_track_high_latitude:
     version: "v1_1"
     filename_template: "{source}_alt_hilat_at_{version}_{YYYYMMDD}.nc"
+    published_filename_template: "{published_name}_alt_hilat_at_{version}_{YYYYMMDD}.nc"
     title: "NASA-SSH Along-Track Sea Surface Height from High-Latitude Missions Version 1.1"
     summary: >-
       This data set contains satellite based measurements of sea surface height at
@@ -46,6 +55,7 @@ products:
   simple_grid_reference:
     version: "v1_1"
     filename_template: "{source}_alt_ref_simple_grid_{version}_{YYYYMMDD}.nc"
+    published_filename_template: "{published_name}_alt_ref_simple_grid_{version}_{YYYYMMDD}.nc"
     title: "NASA-SSH Simple Gridded Sea Surface Height from Standardized Reference Missions Only Version 1.1"
     summary: >-
       This data set contains satellite based measurements of sea surface height,
@@ -60,9 +70,11 @@ products:
     references: "https://doi.org/10.5067/NSREF-AT0V1"
     source_url: "https://podaac.jpl.nasa.gov/dataset/nasa_ssh_ref_alongtrack_v11"
 
-  # Has never produced a distributed file; used for internal validation only
-  # (tools/compute_source_offset.py). Placeholder identity for the same reason as
-  # along_track_high_latitude.
+  # Has never produced a file. Reserved for the deferred composite grid over the
+  # reference product plus every high-latitude product; no published identity
+  # declares it, so nothing resolves it today. No `published_filename_template`:
+  # the composite's identity string is unsettled, and `NASA-SSH_HILAT` with this
+  # template would spell "hilat" twice.
   simple_grid_high_latitude:
     version: "v1_1"
     filename_template: "{source}_alt_hilat_simple_grid_{version}_{YYYYMMDD}.nc"
@@ -77,9 +89,44 @@ products:
     references: ""
     source_url: ""
 
+  # Every grid run with no `publish_as` resolves here, whatever its contributors
+  # are. Deriving the identity from the contributors instead would write the real
+  # reference DOI into a throwaway grid over ["NASA-SSH"] — the defect the
+  # product-owned metadata work exists to remove, reintroduced through the dev
+  # path. No `published_filename_template`: a development grid is not a product.
+  simple_grid_development:
+    version: "v1_1"
+    filename_template: "{source}_dev_simple_grid_{version}_{YYYYMMDD}.nc"
+    title: "NASA-SSH Simple Gridded Sea Surface Height — development output, not a product"
+    summary: >-
+      Development output from the simple gridder over an arbitrary contributor
+      combination. Not a released product: its identity is a placeholder and its
+      contents are not validated against any product definition.
+    id: "TBD"
+    processing_level: "Level 3"
+    product_short_name: "NASA_SSH_DEV_SIMPLE_GRID"
+    references: ""
+    source_url: ""
+
   # No identity fields: the ENSO grids carry no CF identity attributes. The
   # gridder copies variable attrs from its input simple grid and writes no
   # title, DOI, or short name of its own.
   enso:
     version: "v1_1"
     filename_template: "ENSO_{YYYYMMDD}.nc"
+
+# Released artifact lines, keyed by the one underscore-separated identity string
+# used for both the `products/` directory and the filename prefix.
+#
+# This section carries only what no Source can supply. Anything `product_type`
+# already determines is derived (`utilities/products.py`), not declared —
+# otherwise 15 high-latitude satellites would each need an entry restating their
+# own product_type. So there are no `along_track:` keys and no per-satellite
+# entries: `NASA-SSH_S3B` is a valid published identity without appearing here.
+published_products:
+  NASA-SSH:
+    simple_grid: simple_grid_reference
+    indicators: true
+  # The composite high-latitude grid has no entry yet — its identity string is
+  # unresolved. Deliberately absent rather than a placeholder, so a provisional
+  # name cannot leak into dev-cluster paths and be mistaken for real.

@@ -33,7 +33,7 @@ made explicit and singular: the scientific stack lives in the
 | `indicators`   | yes                       |
 | `enso`         | yes                       |
 | `pipeline_init`| **no** — no NetCDF I/O    |
-| `unifier`      | **no** — copies P3 files only |
+| `publisher`    | **no** — server-side byte copies only |
 
 The lightweight Lambdas are deliberately excluded. Pulling them onto the
 scientific base would inflate their cold-start images from ~820 MB to over

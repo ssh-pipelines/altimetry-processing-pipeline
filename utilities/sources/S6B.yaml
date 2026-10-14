@@ -1,7 +1,11 @@
 common:
   product_type: reference
   discovery_type: cmr
-  unify: false
+  # Integration TBD, and its 2025-11-26 start overlaps GSFC's 2025-12-31 end by
+  # five weeks — both would claim the same published reference dates. Enabling it
+  # needs selection logic for contested dates first (a registry test fails if
+  # this flips to true while the ranges overlap).
+  enabled: false
   start_date: "2025-11-26"
   collections:
     - shortname: JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G

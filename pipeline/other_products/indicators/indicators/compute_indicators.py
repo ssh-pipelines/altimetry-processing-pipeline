@@ -14,7 +14,11 @@ from indicators.pattern_data import Pattern
 from indicators.utils import dec_to_dt, dt_to_dec, generate_mp, generate_txt
 
 from utilities.aws_utils import aws_manager
-from utilities.pipeline_layout import indicators_key, indicators_prefix, s3_uri
+from utilities.pipeline_layout import (
+    published_indicators_key,
+    published_indicators_prefix,
+    s3_uri,
+)
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
@@ -44,9 +48,12 @@ def running_mean(data: np.ndarray, time: np.ndarray, window=28.1) -> np.ndarray:
 
 
 class IndicatorProcessor:
-    def __init__(self, sg_keys: List[str], source: str):
+    def __init__(self, sg_keys: List[str], published_product: str):
+        """``published_product`` names the released line these indicators belong
+        to. It is both the read key for the staged grids (resolved by the caller)
+        and the write prefix under `products/`."""
         self.grid_keys = sg_keys
-        self.source = source
+        self.published_product = published_product
         self.patterns = [Pattern("enso"), Pattern("pdo"), Pattern("iod")]
         self.grid_cell_areas = self._open_grid_cell_areas()
         self.trend_ds = xr.open_dataset("ref_files/BH_offset_and_trend_v0_new_grid.nc")
@@ -147,7 +154,7 @@ class IndicatorProcessor:
         Load previously computed indicator records from the cached NetCDF on S3.
         Returns a list of dicts with keys: time, raw_gmsl, enso, pdo, iod.
         """
-        cache_key = s3_uri(bucket, indicators_key(self.source))
+        cache_key = s3_uri(bucket, published_indicators_key(self.published_product))
         if not aws_manager.key_exists(cache_key):
             logging.info("No cached indicators found — starting fresh.")
             return []
@@ -233,12 +240,14 @@ class IndicatorProcessor:
         # Convert results to xarray Dataset
         indicators_ds = self.generate_ds(computed_indicators)
 
-        prefix_uri = s3_uri(bucket, indicators_prefix(self.source))
+        prefix_uri = s3_uri(bucket, published_indicators_prefix(self.published_product))
 
         # Make and upload netcdf
         nc_path = "/tmp/indicators.nc"
         indicators_ds.to_netcdf(nc_path)
-        aws_manager.upload_obj(nc_path, s3_uri(bucket, indicators_key(self.source)))
+        aws_manager.upload_obj(
+            nc_path, s3_uri(bucket, published_indicators_key(self.published_product))
+        )
 
         first_time = int(dec_to_dt(indicators_ds["time"].values[0]).timestamp() * 1000)
         last_time = int(dec_to_dt(indicators_ds["time"].values[-1]).timestamp() * 1000)

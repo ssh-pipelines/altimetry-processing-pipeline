@@ -176,9 +176,9 @@ class TestResultsPrefixFromJobsKey(unittest.TestCase):
         )
 
     def test_sg_side_jobs_key_uses_original_source_segment(self):
-        """Post-unifier the SM input's `source` is "NASA-SSH" but the jobs_key
-        path's $p[1] is the original source. The prefix must use $p[1] to find
-        what the ResultWriter actually wrote."""
+        """In the gridded tier the SM input is keyed on the published product
+        ("NASA-SSH") but the jobs_key path's $p[1] is the original source. The
+        prefix must use $p[1] to find what the ResultWriter actually wrote."""
         self.assertEqual(
             app._results_prefix_from_jobs_key(
                 "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso"

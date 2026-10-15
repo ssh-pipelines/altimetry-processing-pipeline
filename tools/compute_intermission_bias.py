@@ -75,8 +75,8 @@ from utilities.pipeline_layout import crossover_filename  # noqa: E402
 from utilities.source_profile import SOURCES_DIR, get_source_profile  # noqa: E402
 
 
-def _reference_source(source: str) -> str:
-    """Best-effort read of ``xover.reference_source`` from the source YAML.
+def _reference_product(source: str) -> str:
+    """Best-effort read of ``xover.reference_product`` from the source YAML.
 
     Used only for plot/label text; falls back to ``"reference"`` if absent.
     """
@@ -85,7 +85,7 @@ def _reference_source(source: str) -> str:
     try:
         with open(SOURCES_DIR / f"{source}.yaml") as f:
             raw = yaml.safe_load(f) or {}
-        return (raw.get("xover") or {}).get("reference_source") or "reference"
+        return (raw.get("xover") or {}).get("reference_product") or "reference"
     except Exception:
         return "reference"
 
@@ -665,10 +665,10 @@ spline fit, and applied to the absolute ssha level in the finalizer.
 
     # Confirm the source is configured (raises a helpful error otherwise).
     get_source_profile(args.source)
-    # reference_source lives in the xover stage section, not SourceCommon, and
+    # reference_product lives in the xover stage section, not SourceCommon, and
     # its config dataclass lives in a sibling stage package that isn't importable
     # from repo root — read it straight from the YAML for plot/labels only.
-    reference = _reference_source(args.source)
+    reference = _reference_product(args.source)
 
     # Discover files
     if using_s3:

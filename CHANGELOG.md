@@ -11,6 +11,90 @@ High-latitude (S3B) support is still a work in progress and is not yet enabled i
 production. The entries below ship in the code but remain unannounced until that
 source is fully supported.
 
+### Changed
+- **Released artifacts now live under a `products/` prefix**, keyed on *published
+  product* rather than on source, and separate from the internal staging area
+  (`daily_files/`, `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`,
+  `enso_grids/`, `maps/`, `pipeline_runs/`):
+
+  ```
+  products/NASA-SSH/along_track/{year}/NASA-SSH_alt_ref_at_v1_1_{YYYYMMDD}.nc
+  products/NASA-SSH/simple_grid/{year}/NASA-SSH_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc
+  products/NASA-SSH/indicators/{...}
+  products/NASA-SSH_S3B/along_track/{year}/NASA-SSH_S3B_alt_hilat_at_v1_1_{YYYYMMDD}.nc
+  ```
+
+  Filenames are unchanged, so moving the existing history is a prefix copy with no
+  renaming and no reprocessing. The internal `indicators/{source}/` prefix is gone
+  entirely — indicators write through to `products/`, since `indicators.nc` is
+  self-read as a cache. `enso_grids/` and `maps/enso_maps/` stay internal (website
+  assets), but their path segment is now the published product rather than a source.
+  See ADR 0008.
+
+  **Copy the existing `indicators/NASA-SSH/` contents to
+  `products/NASA-SSH/indicators/` before the first run.** `load_cached_indicators`
+  reads a missing key as "starting fresh", so against an empty prefix the first run
+  computes only the current manifest's Mondays, silently skips the 1993
+  normalization, and writes a valid-looking GMSL product missing thirty years to a
+  PO.DAAC-facing filename — from a successful run.
+- **The `unifier` stage is now `publisher`**, and every source runs it. The event is
+  `{date, bucket, family, publish_as, contributors}`, with `family` selecting
+  along-track or simple-grid promotion, so one Lambda serves both tiers. Still a
+  server-side byte copy with no NetCDF engine. The AWS function `${stage}-unifier`
+  and the `unifier-sm` state machine are not deleted by the deploy scripts and must
+  be removed by hand, or they will keep writing the old addresses. See ADR 0009.
+- **`common.unify` is deleted, not renamed.** Publication is derived from
+  `product_type` (`reference` → `NASA-SSH`, `high_latitude` → `NASA-SSH_{source}`),
+  so there is nothing to gate: the `unifier:` stage section, the `Need Unification?`
+  Choice, and the `unify` field on the wire are all gone. `pipeline_init` now returns
+  `published_product` in its place, and the finalizer's Job outcome carries
+  `published_product` as provenance.
+- **`enabled: bool` added to `common`**, defaulting to `false`. Set `true` on GSFC and
+  S6; `false` on S6B, S3B and EXAMPLE_S3. This is now the only thing that decides
+  whether a source is in production, required because derived publication means a
+  product-keyed run would otherwise treat registry membership as production
+  membership. A registry test fails if two `enabled` `reference` sources have
+  overlapping date ranges, and the publisher refuses a date claimed by more than one
+  contributor.
+- **`utilities/sources/NASA-SSH.yaml` is deleted.** It was never planned or processed
+  — it existed only to lend a directory segment to `daily_file_key`. Published
+  identity is now resolved by `utilities/products.py`, and `published_products:` in
+  `utilities/products.yaml` declares the facts no source can supply.
+- **The simple gridder takes `contributors` + `publish_as` instead of `source`.**
+  Contributors are *published products*, read from `products/`; `publish_as` is the
+  published product the grid becomes, or `null` for development output. What a grid
+  reads and what it becomes are now separate facts, and officialness is declared
+  rather than inferred from the contributor set. A `null` `publish_as` resolves to a
+  new `simple_grid_development` product (`id: "TBD"`) and writes to
+  `simple_grids/development/{identity}/` with a `_dev_` filename family, regardless of
+  contributors — deriving the identity from the contributors would have written the
+  real reference DOI into a throwaway grid over `["NASA-SSH"]`. `publish_as` must be
+  present in the event; absent and `null` are different.
+- **The gridded tier is keyed on `published_product` instead of `source`** on the
+  wire. `rewrite_manifest`, `set_sg_jobs`, `simple_grids`, `enso` and `indicators`
+  all take that field, and the gridded manifest's job specs carry it in place of
+  `source`. `run_summary`'s artifact renames `unified_source` to `published_product`,
+  the `nasa_ssh_p3` deliverable becomes `published_along_track`, and a second
+  `published_simple_grid` deliverable is added; both are unconditional, and each
+  tier's promotion reconciles from its own `results/publisher_{family}/` prefix.
+- **`xover`'s `reference_source` / `reference_version` become `reference_product`**,
+  defaulting to `NASA-SSH`. The reference side is read from
+  `products/NASA-SSH/along_track/` rather than `daily_files/p3/NASA-SSH/` — the same
+  bytes at a new address. There was never a version to choose (ADR 0006 fixed it at
+  P3, and a published along-track file is finalized by definition), so the field is
+  gone, along with the `reference_version` global attribute on reference-crossover
+  files. Crossovers are an internal cache, so no distributed artifact changes.
+- `products.yaml` gains a `published_filename_template` per publishable product,
+  taking `{published_name}` where the internal `filename_template` takes `{source}`.
+  The two are deliberately distinct so a staging file and a released file can never
+  be mistaken for each other; a product with no published template cannot be
+  published.
+
+### Removed
+- `tools/manifest_generation/unifier_manifest.py`. It read a nonexistent
+  `utilities/sources.yaml` and raised `FileNotFoundError` before reaching any of its
+  logic, so it could not have been a working reference for the new layout.
+
 ### Fixed
 - High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
   product's in-file identity. `title`, `summary`, `id` (DOI), `processing_level`,

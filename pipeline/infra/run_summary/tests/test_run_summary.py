@@ -93,15 +93,15 @@ class TestReconcilePipeline(unittest.TestCase):
                 _outcome("finalizer", "2025-01-01", "daily_file_p3", "k1", provenance_complete=True),
                 _outcome("finalizer", "2025-01-02", "daily_file_p3", "k2", provenance_complete=True),
             ],
-            "unifier": [
-                _outcome("unifier", "2025-01-01", "nasa_ssh_p3", "u1"),
-                _outcome("unifier", "2025-01-02", "nasa_ssh_p3", "u2"),
+            "publisher_along_track": [
+                _outcome("publisher", "2025-01-01", "published_along_track", "u1"),
+                _outcome("publisher", "2025-01-02", "published_along_track", "u2"),
             ],
         }
         section = summarizer.reconcile_pipeline(self._specs(), expected, outcomes)
         self.assertEqual(section["expected"], 2)
         self.assertEqual(section["deliverables"]["daily_file_p3"]["produced"], 2)
-        self.assertEqual(section["deliverables"]["nasa_ssh_p3"]["produced"], 2)
+        self.assertEqual(section["deliverables"]["published_along_track"]["produced"], 2)
         self.assertEqual(section["missing"], [])
         self.assertEqual(section["deliverables"]["daily_file_p3"]["provenance_incomplete"], 0)
 
@@ -117,13 +117,15 @@ class TestReconcilePipeline(unittest.TestCase):
         self.assertEqual(missing_dates, ["2025-01-02", "2025-01-03"])
         self.assertTrue(all(m["reason"] == "no outcome" for m in section["missing"]))
 
-    def test_conditional_unifier_omitted_when_absent(self):
-        # non-unified run: no unifier outcomes -> nasa_ssh_p3 not reported at all
+    def test_publication_shortfall_is_reported_not_hidden(self):
+        """Publication is unconditional, so a run that produced P3s but published
+        nothing must show `0 produced` rather than omitting the row — the
+        conditional path would have hidden exactly this failure."""
         expected = ["2025-01-01"]
         outcomes = {"finalizer": [_outcome("finalizer", "2025-01-01", "daily_file_p3", "k1")]}
         section = summarizer.reconcile_pipeline(self._specs(), expected, outcomes)
         self.assertIn("daily_file_p3", section["deliverables"])
-        self.assertNotIn("nasa_ssh_p3", section["deliverables"])
+        self.assertEqual(section["deliverables"]["published_along_track"]["produced"], 0)
 
     def test_skip_appears_in_missing_with_reason(self):
         specs = summarizer.PRODUCT_PIPELINES["gridded"]["deliverables"]
@@ -161,7 +163,7 @@ class TestReconcilePipeline(unittest.TestCase):
 
 class TestBuildSummary(unittest.TestCase):
 
-    def test_artifact_shape_non_unified(self):
+    def test_artifact_shape_along_track_tier(self):
         jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
         manifests = {
             "along_track": [{"date": "2025-01-01"}],
@@ -178,7 +180,7 @@ class TestBuildSummary(unittest.TestCase):
         self.assertEqual(summary["schema_version"], 1)
         self.assertEqual(summary["source"], "S6")
         self.assertEqual(summary["run_id"], "20250528T120000")
-        self.assertIsNone(summary["unified_source"])
+        self.assertIsNone(summary["published_product"])
         self.assertEqual(
             summary["product_pipelines"]["along_track"]["manifest"], jobs_key
         )
@@ -187,10 +189,10 @@ class TestBuildSummary(unittest.TestCase):
             "pipeline_runs/S6/20250528T120000/sg_jobs.json",
         )
 
-    def test_unified_source_detected(self):
+    def test_published_product_detected(self):
         jobs_key = "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
         summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
-        self.assertEqual(summary["unified_source"], "NASA-SSH")
+        self.assertEqual(summary["published_product"], "NASA-SSH")
         self.assertEqual(
             summary["product_pipelines"]["gridded"]["manifest"],
             "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json",
@@ -236,16 +238,16 @@ class TestS3IO(unittest.TestCase):
     def test_read_outcomes_unwraps_lambda_envelope(self):
         """Defensive: a Map invoke task missing the `Output: $states.result.Payload`
         unwrap writes the raw Lambda envelope; reconciliation must still see the outcome
-        (regression guard for the unifier `produced: 0` bug)."""
+        (regression guard for the promotion stage's `produced: 0` bug)."""
         prefix = "p/"
-        outcome = _outcome("unifier", "2025-01-01", "nasa_ssh_p3", "u1")
+        outcome = _outcome("publisher", "2025-01-01", "published_along_track", "u1")
         envelope = {"Payload": outcome, "StatusCode": 200, "ExecutedVersion": "$LATEST"}
         body = json.dumps([{"Input": {}, "Output": envelope}]).encode()
         s3 = FakeS3({prefix + "x/SUCCEEDED_0.json": body})
         outcomes = summarizer.read_outcomes(s3, "b", prefix)
         self.assertEqual(len(outcomes), 1)
         self.assertEqual(outcomes[0]["status"], "success")
-        self.assertEqual(outcomes[0]["stage"], "unifier")
+        self.assertEqual(outcomes[0]["stage"], "publisher")
 
     def test_read_run_params_missing_is_empty(self):
         s3 = FakeS3()
@@ -254,7 +256,7 @@ class TestS3IO(unittest.TestCase):
 
     def test_read_run_params_parses_sidecar(self):
         jobs_key = "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
-        # derived from the original-source segment, not the unified one
+        # derived from the original-source segment, not the published-product one
         params_key = "pipeline_runs/S6/20250528T120000/run_params.json"
         s3 = FakeS3({params_key: json.dumps(
             {"source": "S6", "start": "2025-05-01", "end": "2025-05-31", "force_update": True}
@@ -273,7 +275,7 @@ class TestRenderNotification(unittest.TestCase):
     def test_subject_and_body(self):
         summary = {
             "source": "S6",
-            "unified_source": "NASA-SSH",
+            "published_product": "NASA-SSH",
             "run_id": "R1",
             "completed_at": "t",
             "product_pipelines": {
@@ -296,16 +298,16 @@ class TestRenderNotification(unittest.TestCase):
 
     def test_params_overrides_rendered(self):
         summary = {
-            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
             "parameters": {"start": "2025-05-01", "end": "2025-05-31", "force_update": True},
             "product_pipelines": {},
         }
         _, body = summarizer.render_notification(summary)
         self.assertIn("Parameters: start=2025-05-01, end=2025-05-31, force_update=true", body)
 
-    def test_along_track_folds_unifier_when_complete(self):
+    def test_along_track_folds_publication_when_complete(self):
         summary = {
-            "source": "S6", "unified_source": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "source": "S6", "published_product": "NASA-SSH", "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {
@@ -319,8 +321,8 @@ class TestRenderNotification(unittest.TestCase):
                                 {"key": "daily_files/p3/S6/2026/S6_x_20260202.nc", "kind": "daily_file_p3"},
                             ],
                         },
-                        "nasa_ssh_p3": {
-                            "stage": "unifier", "produced": 2, "skipped": 0,
+                        "published_along_track": {
+                            "stage": "publisher_along_track", "produced": 2, "skipped": 0,
                             "provenance_incomplete": 0, "outputs": [],
                         },
                     },
@@ -329,16 +331,16 @@ class TestRenderNotification(unittest.TestCase):
             },
         }
         _, body = summarizer.render_notification(summary)
-        self.assertIn("p3 daily files [finalizer]: 2 produced → all unified to NASA-SSH", body)
-        # the unifier is folded in, not shown as its own confusing row
-        self.assertNotIn("nasa_ssh_p3", body)
-        self.assertNotIn("[unifier]", body)
+        self.assertIn("p3 daily files [finalizer]: 2 produced → all published to NASA-SSH", body)
+        # the promotion is folded in, not shown as its own confusing row
+        self.assertNotIn("published_along_track", body)
+        self.assertNotIn("[publisher_along_track]", body)
         # filenames are listed
         self.assertIn("S6_x_20260201.nc", body)
 
-    def test_along_track_surfaces_unification_shortfall(self):
+    def test_along_track_surfaces_publication_shortfall(self):
         summary = {
-            "source": "S6", "unified_source": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "source": "S6", "published_product": "NASA-SSH", "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {
@@ -348,8 +350,8 @@ class TestRenderNotification(unittest.TestCase):
                             "stage": "finalizer", "produced": 16, "skipped": 0,
                             "provenance_incomplete": 0, "outputs": [],
                         },
-                        "nasa_ssh_p3": {
-                            "stage": "unifier", "produced": 0, "skipped": 0,
+                        "published_along_track": {
+                            "stage": "publisher_along_track", "produced": 0, "skipped": 0,
                             "provenance_incomplete": 0, "outputs": [],
                         },
                     },
@@ -358,12 +360,12 @@ class TestRenderNotification(unittest.TestCase):
             },
         }
         _, body = summarizer.render_notification(summary)
-        self.assertIn("16 produced → 0 of 16 unified to NASA-SSH", body)
+        self.assertIn("16 produced → 0 of 16 published to NASA-SSH", body)
 
     def test_filenames_capped(self):
         outputs = [{"key": f"d/f_{i}.nc", "kind": "simple_grid"} for i in range(summarizer._MAX_LISTED + 5)]
         summary = {
-            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "gridded": {
@@ -465,7 +467,7 @@ class TestRenderBadPasses(unittest.TestCase):
         # bad_pass lines render *within* the along_track section, so the summary
         # must carry one (mirrors the real artifact from build_summary).
         return {
-            "source": "S6", "unified_source": None, "run_id": "R1", "completed_at": "t",
+            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {

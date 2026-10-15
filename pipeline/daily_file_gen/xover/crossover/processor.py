@@ -19,7 +19,7 @@ from typing import Protocol
 import numpy as np
 import xarray as xr
 from crossover.config.source_config import SourceConfig, get_source_config
-from crossover.loader import load_track_window, stream_files
+from crossover.loader import load_track_window, stream_files, stream_published_files
 from crossover.results import (
     build_reference_dataset,
     build_self_dataset,
@@ -35,7 +35,6 @@ from crossover.search import (
 
 from utilities.aws_utils import aws_manager
 from utilities.pipeline_layout import crossover_key, s3_uri
-from utilities.source_profile import get_source_profile
 
 
 class CrossoverSpec(Protocol):
@@ -91,13 +90,16 @@ class SelfSpec:
 
 
 class ReferenceSpec:
-    """Reference-mission spec: a high-lat source crossed against NASA-SSH P3.
+    """Reference-mission spec: a high-lat source crossed against the published
+    reference along-track product.
 
-    Loads two windows: the high-lat source over ``[D-1, D+1]`` (neighbor days so
-    the loader reassembles passes straddling midnight), and the reference mission
-    over a window *centered* on the processing day (``window_size``/
-    ``window_padding`` reinterpreted as ±), always at the finalized reference
-    version regardless of the high-lat df_version (ADR-0006).
+    Loads two windows: the high-lat source's own internal daily files over
+    ``[D-1, D+1]`` (neighbor days so the loader reassembles passes straddling
+    midnight), and the published reference product over a window *centered* on
+    the processing day (``window_size``/``window_padding`` reinterpreted as ±).
+    The reference side is read from `products/` regardless of the high-lat
+    df_version, because a published along-track file is finalized by definition
+    (ADR-0006).
     """
 
     record_cls = ReferenceCrossover
@@ -115,11 +117,10 @@ class ReferenceSpec:
         half = np.timedelta64(
             processor.config.window_size // 2 + processor.config.window_padding, "D"
         )
-        ref_streams = stream_files(
-            processor.reference_profile,
+        ref_streams = stream_published_files(
+            processor.config.reference_product,
             processor.day - half,
             processor.day + half,
-            processor.config.reference_version,
             bucket,
         )
         return (load_track_window(hl_streams), load_track_window(ref_streams))
@@ -166,16 +167,15 @@ class CrossoverProcessor:
         self.config: SourceConfig = get_source_config(source)
 
         if self.config.crossover_type == "reference":
-            # Reference window is centered on the day (±); load the reference
-            # mission's identity profile for its daily-file keys.
-            self.reference_profile = get_source_profile(self.config.reference_source)
+            # Reference window is centered on the day (±). The reference side
+            # needs no profile: it is a published identity, and its keys come
+            # from `published_along_track_key`.
             half = np.timedelta64(
                 self.config.window_size // 2 + self.config.window_padding, "D"
             )
             self.window_start = day - half
             self.window_end = day + half
         else:
-            self.reference_profile = None
             self.window_start = day
             self.window_end = day + np.timedelta64(
                 self.config.window_size + self.config.window_padding, "D"

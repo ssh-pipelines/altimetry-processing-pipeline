@@ -9,7 +9,7 @@ The daily file already accrues NetCDF global attributes (``source_files``,
 is treated as an externally-constrained field. We add a pipeline-owned attribute,
 ``processing_history``: a JSON-encoded list of step records that each file-writing stage
 (``daily_files`` -> P1, ``oer`` -> P2, ``finalizer`` -> P3) **appends** to (never overwrites).
-The unifier's byte-level ``copy_object`` carries it into the NASA-SSH product untouched.
+The publisher's byte-level ``copy_object`` carries it into the released product untouched.
 
 **Backward compatibility is first-class.** Every daily file already in S3 predates this
 attribute, and reprocessing an old date reads a pre-feature upstream version. Absence is a

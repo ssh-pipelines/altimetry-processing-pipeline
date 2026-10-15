@@ -82,6 +82,12 @@ All four fields are required. Available sources are those with a `daily_files:` 
 
 Both come from `utilities.pipeline_layout`; the filename family follows the source's `product_type`.
 
+`daily_files/` is **internal staging** — per-source working state, reproducible
+from upstream. The released artifact is the `publisher`'s copy of the P3 under
+`products/{published product}/along_track/`, which carries a different filename
+precisely so the two are never confused
+([ADR 0008](../../../docs/adr/0008-published-products-prefix.md)).
+
 ## Source configuration
 
 One file per source, `utilities/sources/{source}.yaml`, holding a `common:` block plus one section per stage. `get_source_config` merges `common` with the `daily_files:` section into a `SourceConfig`.

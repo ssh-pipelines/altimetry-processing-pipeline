@@ -29,7 +29,7 @@ class TestLoadSourceCommon(unittest.TestCase):
         self.assertEqual(profile.source, "GSFC")
         self.assertEqual(profile.product_type, "reference")
         self.assertEqual(profile.discovery_type, "cmr")
-        self.assertTrue(profile.unify)
+        self.assertTrue(profile.enabled)
         self.assertEqual(profile.start_date, date(1992, 10, 25))
         self.assertEqual(profile.end_date, date(2025, 12, 31))
 
@@ -145,25 +145,84 @@ class TestProductIdentity(unittest.TestCase):
         self.assertEqual(get_product("enso").global_attrs()["title"], "")
 
 
+class TestPublishedFilenameTemplates(unittest.TestCase):
+    """The two templates are deliberately distinct so a staged artifact and a
+    released one are never mistaken for each other."""
+
+    PUBLISHABLE = (
+        "along_track_reference",
+        "along_track_high_latitude",
+        "simple_grid_reference",
+    )
+    # Never published: a development grid is not a product, and the composite
+    # grid's identity string is unsettled.
+    UNPUBLISHABLE = ("simple_grid_development", "simple_grid_high_latitude", "enso")
+
+    def test_publishable_products_take_the_published_name(self):
+        for name in self.PUBLISHABLE:
+            template = get_product(name).published_filename_template
+            with self.subTest(product=name):
+                self.assertIn("{published_name}", template)
+                self.assertNotIn("{source}", template)
+
+    def test_unpublishable_products_declare_no_published_template(self):
+        for name in self.UNPUBLISHABLE:
+            with self.subTest(product=name):
+                self.assertEqual(get_product(name).published_filename_template, "")
+
+    def test_internal_templates_still_take_the_source(self):
+        for name in self.PUBLISHABLE:
+            with self.subTest(product=name):
+                self.assertIn("{source}", get_product(name).filename_template)
+
+    def test_development_grid_is_a_distinct_filename_family(self):
+        """Its own `_dev_` infix, so a development grid cannot be read as either
+        product family."""
+        template = get_product("simple_grid_development").filename_template
+        self.assertIn("_dev_", template)
+        self.assertNotIn("_alt_ref_", template)
+        self.assertNotIn("_alt_hilat_", template)
+
+
+class TestEnabled(unittest.TestCase):
+    """`enabled` is declared, not derived: registry membership is not production
+    membership, which matters because a product-keyed run fans out over every
+    source resolving to the named line."""
+
+    def test_defaults_to_false(self):
+        self.assertFalse(
+            SourceCommon(
+                source="X", product_type="reference", start_date=date(2020, 1, 1)
+            ).enabled
+        )
+
+    def test_production_sources_are_enabled(self):
+        for source in ("GSFC", "S6"):
+            with self.subTest(source=source):
+                self.assertTrue(get_source_profile(source).enabled)
+
+    def test_staged_sources_are_not(self):
+        for source in ("S6B", "S3B", "EXAMPLE_S3"):
+            with self.subTest(source=source):
+                self.assertFalse(get_source_profile(source).enabled)
+
+
 class TestListSourcesForStage(unittest.TestCase):
-    def test_pipeline_init_excludes_nasa_ssh(self):
+    def test_pipeline_init_lists_real_sources(self):
         sources = list_sources_for_stage("pipeline_init")
         self.assertIn("GSFC", sources)
         self.assertIn("S6", sources)
-        # NASA-SSH has no pipeline_init: section
-        self.assertNotIn("NASA-SSH", sources)
-
-    def test_unifier_excludes_s6b(self):
-        sources = list_sources_for_stage("unifier")
-        self.assertIn("GSFC", sources)
-        self.assertIn("S6", sources)
-        self.assertNotIn("S6B", sources)
 
     def test_none_returns_all_sources(self):
         sources = list_sources_for_stage(None)
         # All known sources should appear
-        for expected in ["GSFC", "S6", "S6B", "S3B", "EXAMPLE_S3", "NASA-SSH"]:
+        for expected in ["GSFC", "S6", "S6B", "S3B", "EXAMPLE_S3"]:
             self.assertIn(expected, sources)
+
+    def test_no_pseudo_source_in_the_registry(self):
+        """The registry holds Sources. A published product is a different kind of
+        thing and has no entry here, even though one used to."""
+        self.assertNotIn("NASA-SSH", list_sources_for_stage(None))
 
     def test_get_registered_sources(self):
         self.assertEqual(get_registered_sources(), list_sources_for_stage(None))

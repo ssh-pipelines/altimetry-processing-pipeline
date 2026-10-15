@@ -51,8 +51,12 @@ class Product:
     multiple sources contribute to the same product and must share its naming
     convention and its identity.
 
-    Filename templates accept `{source}`, `{version}`, and `{YYYYMMDD}`
-    placeholders.
+    `filename_template` names the internal artifact and accepts `{source}`,
+    `{version}`, and `{YYYYMMDD}`. `published_filename_template` names the
+    released artifact under `products/` and accepts `{published_name}` in place
+    of `{source}`; it is empty for a product that is never published (the
+    development grid, the deferred composite, the ENSO grids), and
+    `published_filename` raises rather than guessing one.
 
     The identity fields default to empty so a product whose artifacts carry no CF
     identity (the ENSO grids) needs no declaration; every product that writes
@@ -61,6 +65,7 @@ class Product:
     name: str
     version: str
     filename_template: str
+    published_filename_template: str = ""
     title: str = ""
     summary: str = ""
     id: str = ""
@@ -80,13 +85,38 @@ class Product:
         return {attr: getattr(self, attr) for attr in PRODUCT_GLOBAL_ATTRS}
 
 
+@dataclass(frozen=True)
+class PublishedProduct:
+    """A released artifact line, identified by one underscore-separated string
+    used for both its `products/` directory and its filename prefix.
+
+    One entry in `published_products:`. It declares only what no Source can
+    supply: which **Product** its gridded output belongs to (a composite grid is
+    named after no source, so nothing derives its family) and whether indicators
+    are produced for it. Along-track identity is derived from the contributing
+    Source's `product_type` instead — see `utilities/products.py`.
+
+    `simple_grid is None` means this line publishes no grid, which is the normal
+    case for a single high-latitude satellite.
+    """
+    name: str
+    simple_grid: str | None = None
+    indicators: bool = False
+
+
 @dataclass(kw_only=True, frozen=True)
 class SourceCommon:
     """Source-identity fields. Every stage's config inherits from this."""
     source: str
     product_type: str
     discovery_type: str = "cmr"
-    unify: bool = False
+    # The one declared production fact. Registry membership is not production
+    # membership: a product-keyed trigger fans out to every Source resolving to
+    # the named published product, so a staged-but-unintegrated Source would
+    # otherwise be pulled into a run by the act of existing. Defaults to false so
+    # the high-latitude YAMLs (and S6B) can be configured ahead of their
+    # schedules.
+    enabled: bool = False
     start_date: date_type
     end_date: date_type | None = None
     collections: list[CollectionConfig] = field(default_factory=list)
@@ -116,6 +146,28 @@ def get_product(name: str) -> Product:
             f"Product '{name}' not configured. Available: {sorted(products)}"
         )
     return Product(name=name, **products[name])
+
+
+@lru_cache(maxsize=None)
+def get_published_product(name: str) -> PublishedProduct:
+    raw = _load_products_raw()
+    published = raw.get("published_products", {}) or {}
+    if name not in published:
+        raise ValueError(
+            f"Published product '{name}' not configured. "
+            f"Available: {sorted(published)}"
+        )
+    return PublishedProduct(name=name, **(published[name] or {}))
+
+
+def list_published_products() -> list[str]:
+    """Every published identity with an entry in `published_products:`.
+
+    Not every published identity appears there — an along-track-only line like
+    `NASA-SSH_S3B` is derived from its contributing Source and is deliberately
+    absent (see `utilities/products.py`).
+    """
+    return sorted((_load_products_raw().get("published_products") or {}))
 
 
 @lru_cache(maxsize=None)
@@ -191,3 +243,4 @@ def clear_caches() -> None:
     _load_yaml.cache_clear()
     _load_products_raw.cache_clear()
     get_product.cache_clear()
+    get_published_product.cache_clear()

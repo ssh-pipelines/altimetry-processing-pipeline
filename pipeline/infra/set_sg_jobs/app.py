@@ -29,7 +29,7 @@ def surrounding_mondays(d: date) -> Tuple[date, date]:
 def lambda_handler(event, context):
     bucket = event["bucket"]
     jobs_key = event["jobs_key"]
-    source = event["source"]
+    published_product = event["published_product"]
 
     # Read manifest from S3
     resp = s3.get_object(Bucket=bucket, Key=jobs_key)
@@ -59,7 +59,10 @@ def lambda_handler(event, context):
             and m - timedelta(days=5) <= max_job_date
         }
 
-    filtered_jobs = [{"date": d.isoformat(), "bucket": bucket, "source": source} for d in sorted(sg_jobs)]
+    filtered_jobs = [
+        {"date": d.isoformat(), "bucket": bucket, "published_product": published_product}
+        for d in sorted(sg_jobs)
+    ]
 
     # Write filtered manifest to S3
     new_key = jobs_key.replace("/jobs.json", "/sg_jobs.json")
@@ -70,4 +73,8 @@ def lambda_handler(event, context):
         ContentType="application/json",
     )
 
-    return {"jobs_key": new_key, "bucket": bucket, "source": source}
+    return {
+        "jobs_key": new_key,
+        "bucket": bucket,
+        "published_product": published_product,
+    }

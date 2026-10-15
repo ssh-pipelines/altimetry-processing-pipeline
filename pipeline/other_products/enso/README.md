@@ -8,7 +8,7 @@ Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON
 
 For each processing date, the Lambda:
 
-1. **Streams the simple grid** from S3 based on the source and date.
+1. **Streams the staged simple grid** from S3 for the published product and date.
 2. **Smooths the SSHA field** using an iterative diffusion-based smoother that fills NaN gaps with basin-connected neighbourhood averaging (`smoother.py`).
 3. **Removes the seasonal cycle and trend** — interpolates the seasonal SSH reference to the current decimal year, subtracts the seasonal cycle and linear trend from the smoothed data (`ensogridder.py`).
 4. **Pads longitudes** to handle wraparound at the 0/360 boundary for clean interpolation.
@@ -44,11 +44,13 @@ The Lambda receives one item from the jobs manifest per invocation:
 {
   "bucket": "my-bucket",
   "date": "2025-01-15",
-  "source": "S6"
+  "published_product": "NASA-SSH"
 }
 ```
 
-All three fields are required.
+All three fields are required. ENSO is keyed on a **published product**, not a
+**Source**: it derives from the reference-mission grid only, and that grid is
+composed from several missions.
 
 ## Lambda output
 
@@ -76,10 +78,16 @@ containing `status`, `errorType`, `errorMessage`, and the original `input`.
 
 | Path | Description |
 |------|-------------|
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Input simple grid (read) |
-| `enso_grids/{source}/ENSO_{YYYYMMDD}.nc` | Output ENSO grid (write) |
-| `maps/enso_maps/{source}/ortho/ENSO_ortho_{YYYYMMDD}.png` | Output orthographic map (write) |
-| `maps/enso_maps/{source}/plate/ENSO_plate_{YYYYMMDD}.png` | Output plate-carree map (write) |
+| `simple_grids/{published_product}/{year}/*_simple_grid_v1_1_{YYYYMMDD}.nc` | Input simple grid (read — the staged copy) |
+| `enso_grids/{published_product}/ENSO_{YYYYMMDD}.nc` | Output ENSO grid (write) |
+| `maps/enso_maps/{published_product}/ortho/ENSO_ortho_{YYYYMMDD}.png` | Output orthographic map (write) |
+| `maps/enso_maps/{published_product}/plate/ENSO_plate_{YYYYMMDD}.png` | Output plate-carree map (write) |
+
+All of these stay in **internal staging**, and deliberately: the ENSO grids and
+the PNGs are website assets rather than released products, so they are not
+promoted to `products/` (see
+[ADR 0008](../../../docs/adr/0008-published-products-prefix.md)). The path segment
+is the published product the input grid belongs to, not a source.
 
 ## Step Function
 

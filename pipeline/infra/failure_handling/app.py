@@ -30,7 +30,7 @@ RUNTIME_ERROR_TYPES = {"States.Timeout"}
 # Mirrors the JSONata in every leaf ASL's ResultWriter:
 #   "$p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/"
 # We must derive the prefix from jobs_key (not from the event's `source` field)
-# because post-unifier the SM input carries the unified source (e.g. "NASA-SSH")
+# because in the gridded tier the SM input carries the published product (e.g. "NASA-SSH")
 # while the original-source segment of jobs_key (e.g. "S6") is what was used
 # when the ResultWriter wrote FAILED_*.json. Duplicated here rather than imported
 # because failure_handling is an infra Lambda that doesn't ship `utilities`.
@@ -43,7 +43,7 @@ def _results_prefix_from_jobs_key(jobs_key: str, stage: str) -> str | None:
 
 def _run_id_from_jobs_key(jobs_key: str) -> str:
     # jobs_key shape (AT-side): pipeline_runs/{source}/{run_id}/jobs.json
-    # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{unified}/sg_jobs.json
+    # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{published_product}/sg_jobs.json
     parts = jobs_key.split("/")
     return parts[2] if len(parts) >= 3 else "unknown"
 

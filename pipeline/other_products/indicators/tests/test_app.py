@@ -28,7 +28,11 @@ class TestIndicatorsHandler(unittest.TestCase):
         mock_s3.get_object.return_value = _s3_body(
             [{"date": "2024-03-15"}, {"date": "2024-03-22"}]
         )
-        event = {"bucket": "my-bucket", "jobs_key": "jobs.json", "source": "NASA-SSH"}
+        event = {
+            "bucket": "my-bucket",
+            "jobs_key": "jobs.json",
+            "published_product": "NASA-SSH",
+        }
 
         result = handler(event, None)
 
@@ -44,7 +48,11 @@ class TestIndicatorsHandler(unittest.TestCase):
     @patch("app.s3")
     def test_empty_manifest_returns_early(self, mock_s3, mock_proc):
         mock_s3.get_object.return_value = _s3_body([])
-        event = {"bucket": "my-bucket", "jobs_key": "jobs.json", "source": "NASA-SSH"}
+        event = {
+            "bucket": "my-bucket",
+            "jobs_key": "jobs.json",
+            "published_product": "NASA-SSH",
+        }
 
         result = handler(event, None)
 
@@ -56,7 +64,11 @@ class TestIndicatorsHandler(unittest.TestCase):
     def test_processor_failure_wrapped_in_pipeline_error(self, mock_s3, mock_proc):
         mock_s3.get_object.return_value = _s3_body([{"date": "2024-03-15"}])
         mock_proc.return_value.run.side_effect = RuntimeError("boom")
-        event = {"bucket": "my-bucket", "jobs_key": "jobs.json", "source": "NASA-SSH"}
+        event = {
+            "bucket": "my-bucket",
+            "jobs_key": "jobs.json",
+            "published_product": "NASA-SSH",
+        }
 
         with self.assertRaises(PipelineError) as ctx:
             handler(event, None)

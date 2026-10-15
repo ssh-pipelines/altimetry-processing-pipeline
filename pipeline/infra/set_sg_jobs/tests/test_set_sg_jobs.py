@@ -38,7 +38,7 @@ def _event(jobs, jobs_key="pipeline_runs/S6/20260624T201021/NASA-SSH/jobs.json")
     return {
         "bucket": "nasa-ssh-staging-dev",
         "jobs_key": jobs_key,
-        "source": "NASA-SSH",
+        "published_product": "NASA-SSH",
     }, {jobs_key: json.dumps(jobs).encode()}
 
 
@@ -65,21 +65,22 @@ class TestSetSgJobs(unittest.TestCase):
 
         self.assertEqual(result["jobs_key"],
                          "pipeline_runs/S6/20260624T201021/NASA-SSH/sg_jobs.json")
-        self.assertEqual(result["source"], "NASA-SSH")
+        self.assertEqual(result["published_product"], "NASA-SSH")
         self.assertEqual(written, [])
 
     def test_nonempty_manifest_emits_mondays(self):
         # Pin "latest available Monday" so the overlap filter is deterministic.
         app.last_sg_date = lambda: date(2026, 2, 16)
         _result, written = self._run([
-            {"date": "2026-02-09", "bucket": "b", "source": "NASA-SSH"},
-            {"date": "2026-02-16", "bucket": "b", "source": "NASA-SSH"},
+            {"date": "2026-02-09", "bucket": "b", "published_product": "NASA-SSH"},
+            {"date": "2026-02-16", "bucket": "b", "published_product": "NASA-SSH"},
         ])
 
         dates = sorted(j["date"] for j in written)
         self.assertEqual(dates, ["2026-02-09", "2026-02-16"])
         for j in written:
-            self.assertEqual(j["source"], "NASA-SSH")
+            self.assertEqual(j["published_product"], "NASA-SSH")
+            self.assertNotIn("source", j)
 
 
 if __name__ == "__main__":

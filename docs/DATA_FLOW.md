@@ -5,10 +5,17 @@
 
 The along-track stages (`daily_files` → `xover` → `oer` → `xover` → `bad_pass` →
 `finalizer`) are generic — *every* source runs its own independent instance of
-them. Reference-mission sources continue into the **unifier**, which exists to 
-assemble the reference-mission record; high-latitude sources never enter it. So the
-two families end differently: many reference-mission sources collapse into one
-stitched product, while each high-latitude satellite publishes its own.
+them, writing into **internal staging** under `daily_files/{p1,p2,p3}/{source}/`.
+Every source then runs the **publisher**, which promotes its finalized daily file
+to the released address under `products/{published product}/`. Which published
+product a source feeds follows from its **Product type**, so the two families
+differ only in the shape of that mapping: many reference-mission sources collapse
+into the one `NASA-SSH` line, while each high-latitude satellite publishes its own
+`NASA-SSH_{source}` line.
+
+The gridded products hang off the reference line only. They read the *published*
+reference along-track product, not any source's staging files
+([ADR 0008](adr/0008-published-products-prefix.md)).
 
 
 ```mermaid
@@ -31,7 +38,7 @@ flowchart TB
         ENVI["<b>Envisat</b><br/>TBD → TBD"]
         ERS2["<b>ERS-2</b><br/>TBD → TBD"]
         ERS1["<b>ERS-1</b><br/>TBD → TBD"]
-        NSSHREF[/"NASA-SSH reference-mission along-track product<br/><i>required for crossovers</i>"/]
+        NSSHREF[/"NASA-SSH reference-mission along-track product<br/><code>products/NASA-SSH/along_track/</code><br/><i>required for crossovers</i>"/]
 
         HY2B ~~~ SARAL
         SARAL ~~~ ENVI
@@ -50,7 +57,7 @@ flowchart TB
     UP --> AT
     UA --> AT
 
-    subgraph AT["Along-track product pipeline — one independent run per source"]
+    subgraph AT["Along-track product pipeline — one independent run per source, in internal staging"]
         direction TB
 
         DF["<i>daily file generation</i><br/>MSS swapped, ssha smoothed, nasa_ssh flag derivation"]
@@ -70,31 +77,30 @@ flowchart TB
         BP -->|"which passes to flag"| FIN
     end
 
-    subgraph HILAT["High-latitude product lines; not yet in production"]
+    PUB["<i>publisher</i><br/>promote P3 to its released address"]
+    P3 ==> PUB
+
+    subgraph PRODAT["Released along-track products — <code>products/{published product}/along_track/</code>"]
         direction TB
-        HLP[/"NASA-SSH high-latitude along-track product<br/><i>one per source</i>"/]
+        NSSH[/"<b>NASA-SSH</b><br/>reference-mission along-track product<br/><i>all reference sources → one line</i>"/]
+        HLP[/"<b>NASA-SSH_{source}</b><br/>high-latitude along-track products<br/><i>one line per satellite</i>"/]
     end
 
-    subgraph REF["Reference-mission product line"]
-        direction TB
-        UNIF["<i>unifier</i><br/>reference-mission product selection"]
-        UNIF ==> NSSH[/"NASA-SSH reference-mission along-track product"/]
-    end
+    PUB -->|"<code>reference</code>"| NSSH
+    PUB -.->|"<code>high_latitude</code>"| HLP
 
-    P3 -.->|"high-latitude sources"| HILAT
-    P3 -->|"reference-mission sources"| REF
-
-    subgraph SG["Gridded product pipeline"]
+    subgraph SG["Gridded product pipeline — reference line only"]
         direction TB
 
         SGS["<i>simple grids</i><br/>basin-aware Gaussian resample to 0.5°"]
-        SGS ==> SGP[/"NASA-SSH reference-mission simple grid product"/]
+        SGS ==> SGSTAGE[/"staged simple grid"/]
+        SGSTAGE ==>|"<i>publisher</i>"| SGP[/"<b>NASA-SSH</b> reference-mission<br/>simple grid product"/]
 
-        SGP --> ENSO["<i>enso grids</i><br/>smooth, deseason, detrend, → 0.25°"]
-        ENSO ==> EM[/"ENSO maps<br/>ortho + plate PNGs for websites"/]
+        SGSTAGE --> ENSO["<i>enso grids</i><br/>smooth, deseason, detrend, → 0.25°"]
+        ENSO ==> EM[/"ENSO grids + maps<br/>ortho + plate PNGs for websites"/]
 
-        SGP --> IND["<i>indicators</i><br/>GMSL, ENSO, PDO, IOD"]
-        IND ==> INDP[/"NASA-SSH indicators products"/]
+        SGSTAGE --> IND["<i>indicators</i><br/>GMSL, ENSO, PDO, IOD"]
+        IND ==> INDP[/"<b>NASA-SSH</b> indicators products"/]
     end
 
     NSSH --> SG
@@ -107,9 +113,9 @@ flowchart TB
     classDef published_disabled fill:#eaf5ee,stroke:#8cc4a5,stroke-width:2px,stroke-dasharray:5 3,color:#3f4b45
 
     class GSFC,S6A upstream
-    class DF,OER,FIN,X1,X2,BP,UNIF,SGS,ENSO,IND stage
-    class P1,P2,XO1,XO2,P3 internal
-    class NSSH,NSSHREF,SGP,EM,INDP published
+    class DF,OER,FIN,X1,X2,BP,PUB,SGS,ENSO,IND stage
+    class P1,P2,XO1,XO2,P3,SGSTAGE,EM internal
+    class NSSH,NSSHREF,SGP,INDP published
 
     %% Not enabled yet. Sources drain to grey — safe, since every grey node
     %% elsewhere is a parallelogram. HLP keeps a faded green instead: a grey
@@ -118,22 +124,37 @@ flowchart TB
     class HLP published_disabled
 ```
 
-**Reading the diagram.** Blue = a processing stage; gray = an intermediate file;
-green = a published product; orange = upstream granules. Rectangles are stages,
-parallelograms are files; the boxes are grouping only.
+**Reading the diagram.** Blue = a processing stage; gray = internal staging;
+green = a released product under `products/`; orange = upstream granules.
+Rectangles are stages, parallelograms are files; the boxes are grouping only.
+
+Gray and green are the staging/released split, not a quality judgement. The ENSO
+grids and PNGs are gray because they are website assets rather than released
+products — they stay in the internal layout and are never promoted. The staged
+simple grid is gray *and* has a green copy: it is promoted, and the staged copy
+stays because ENSO and indicators read it. Indicators are the one exception to
+promotion — they write straight into `products/`, because `indicators.nc` is
+self-read as a cache, so the published copy *is* the cache.
 
 A **dashed border means not enabled yet**, and a dashed edge marks a branch that
 is not live. Color still carries the role, so the inactive high-latitude product
-stays green — faded, but a product rather than an intermediate file. GSFC and S6
-are the only sources enabled today, which is why the entire high-latitude branch
+stays green — faded, but a product rather than staging. GSFC and S6 are the only
+sources with `enabled: true` today, which is why the entire high-latitude branch
 is dashed.
+
+The publisher runs for *every* source, on both branches; which line a source
+publishes to is derived from its **Product type** rather than configured
+([ADR 0009](adr/0009-publisher-stage-and-enabled.md)). The reference line has no
+staging representation of its own — it is composed from several missions, so
+`products/` is the only place it exists.
 
 The two **runs** boxes at the top group inputs by which family consumes them, which
 is why one input is green: a high-latitude run needs the pipeline's own
 reference-mission product, already published, to compute its crossovers against — it
 has no same-mission passes of its own to cross (see
 [ADR-0006](adr/0006-reference-crossovers-against-nasa-ssh-p3.md)). That product
-therefore appears twice: as an input at the top, as an output below.
+therefore appears twice, at the same address both times: as an input at the top,
+as an output below.
 
 In the along-track pipeline, the bold chain is the daily file as each stage
 rewrites it. The side branches compute the statistics that drive those rewrites —

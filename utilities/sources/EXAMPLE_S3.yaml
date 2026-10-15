@@ -1,7 +1,13 @@
 common:
+  # Which published product this source contributes to follows from product_type:
+  # `reference` -> NASA-SSH, `high_latitude` -> NASA-SSH_{source}. There is no
+  # per-source published-name field and no publish gate — every source publishes.
   product_type: reference
   discovery_type: s3_bucket
-  unify: false
+  # Whether this source is in production. Declared, not derived: a source in the
+  # registry is not thereby in a run. Defaults to false, so a source can be
+  # staged in config ahead of its schedule.
+  enabled: false
   start_date: "2020-01-01"
   ground_speed: 5.7582   # km/s, median 1 Hz ground speed
   source_bucket: "example-source-bucket"

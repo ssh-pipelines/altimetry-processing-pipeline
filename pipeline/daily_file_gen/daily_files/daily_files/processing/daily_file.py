@@ -12,7 +12,7 @@ from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
 from daily_files.ingestion.ingest import IngestedData
 from daily_files.processing.smoothing import ssha_smoothing
-from utilities.pipeline_layout import along_track_product
+from utilities.products import along_track_product
 from utilities.source_profile import Product
 
 

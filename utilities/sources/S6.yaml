@@ -1,7 +1,7 @@
 common:
   product_type: reference
   discovery_type: cmr
-  unify: true
+  enabled: true
   start_date: "2026-01-01"
   ground_speed: 5.7529
   collections:
@@ -41,7 +41,6 @@ finalizer:
     mean_threshold: 0.1
     rms_threshold: 0.27
 
-unifier: {}
 
 xover:
   crossover_type: self

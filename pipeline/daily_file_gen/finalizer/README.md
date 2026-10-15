@@ -11,7 +11,7 @@ For each processing date, the Lambda:
 1. **Validates the source** against its `utilities/sources/{source}.yaml` profile and checks the processing date falls within the source's configured date range.
 2. **Loads bad passes** from `s3://{bucket}/bad_passes/{source}/{date}.json` (optional; returns an empty DataFrame if absent).
 3. **Downloads the P2 daily file** from `s3://{bucket}/daily_files/p2/{source}/{year}/`.
-4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold` from the source config, plus `pass_flag_notes`, whose wording follows the source's **crossover type**: a `reference` source's passes are flagged against its own self crossovers, a `high_latitude` source's against the NASA-SSH reference mission. The thresholds and the `flagged_passes` carrier are described identically for both.
+4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold` from the source config, plus `pass_flag_notes`, whose wording follows the source's **crossover type**: a `reference` source's passes are flagged against its own self crossovers, a `high_latitude` source's against the published NASA-SSH reference along-track product. The thresholds and the `flagged_passes` carrier are described identically for both.
 5. **Applies bad-pass flags** — sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
 6. **Handles the absolute offset** — if the source offset is non-zero, removes any previously applied offset (via `absolute_offset_applied` attribute) and adds the configured one to both `ssha` and `ssha_smoothed`.
 7. **Applies the intermission-bias correction** — for `high_latitude` sources, subtracts `common.intermission_bias` from `ssha`/`ssha_smoothed` to tie the absolute level onto the reference datum (OER left this in place, fitting only orbit error). Idempotent via the `intermission_bias_applied` attribute (previous value added back before the new one is subtracted). Kept as a separate lever from `offset` — the two are distinct quantities with distinct provenance. No-op for reference sources (`intermission_bias` defaults to `0.0`).
@@ -19,7 +19,7 @@ For each processing date, the Lambda:
 9. **Appends a `processing_history` step** (generation step 3) recording the bad-pass/offset/intermission-bias application — see [`utilities/provenance.py`](../../../utilities/provenance.py) and ADR 0005.
 10. **Uploads** the finalized P3 file to S3 and removes the local temp copy.
 
-As a **deliverable stage** the handler returns a **Job outcome** (`utilities.job_outcome.JobOutcome`) declaring the P3 key it wrote — the success-side analog of the structured failure entry (ADR 0005). The Distributed Map's `ResultWriter` persists it to `SUCCEEDED_n.json`, and the `run_summary` Lambda reconciles it against the jobs manifest. The outcome's `metadata` carries the file's `processing_history`, a `provenance_complete` flag, and the `product_type`/`unify` source-config fields. An upload failure now **raises** (previously returned silently) so the failure path records it.
+As a **deliverable stage** the handler returns a **Job outcome** (`utilities.job_outcome.JobOutcome`) declaring the P3 key it wrote — the success-side analog of the structured failure entry (ADR 0005). The Distributed Map's `ResultWriter` persists it to `SUCCEEDED_n.json`, and the `run_summary` Lambda reconciles it against the jobs manifest. The outcome's `metadata` carries the file's `processing_history`, a `provenance_complete` flag, the source's `product_type`, and the `published_product` this P3 feeds. The last is provenance only — it replaces the former `unify` flag, which used to gate the stage after it; publication is now derived and unconditional ([ADR 0009](../../../docs/adr/0009-publisher-stage-and-enabled.md)). An upload failure now **raises** (previously returned silently) so the failure path records it.
 
 ## Lambda input
 
@@ -53,7 +53,7 @@ A **Job outcome** (`JobOutcome.to_dict()`):
     "processing_history": [ ... ],
     "provenance_complete": true,
     "product_type": "reference",
-    "unify": true
+    "published_product": "NASA-SSH"
   }
 }
 ```
@@ -72,7 +72,7 @@ Filename prefix is determined by the global source registry (`utilities/source_p
 
 Each source is configured in a single profile at `utilities/sources/{source}.yaml`, split into two levels within that file:
 
-**`common` block** — source-identity fields inherited by every stage (`utilities/source_profile.py`): `product_type`, `unify`, `start_date`, `end_date`, `intermission_bias`, etc.
+**`common` block** — source-identity fields inherited by every stage (`utilities/source_profile.py`): `product_type`, `enabled`, `start_date`, `end_date`, `intermission_bias`, etc.
 
 **`finalizer:` section** — finalizer-specific fields, merged over `common` by `finalization/config/source_config.py`:
 

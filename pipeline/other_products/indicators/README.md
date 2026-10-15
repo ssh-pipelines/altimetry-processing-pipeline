@@ -8,7 +8,7 @@ Runs as an AWS Lambda (see `Dockerfile`), invoked by a Step Function with a JSON
 
 The Lambda reads a jobs manifest from S3, constructs S3 keys for each simple grid, then:
 
-1. **Loads cached indicators** from `s3://{bucket}/indicators/{source}/indicators.nc` (if present). Supports legacy `gmsl` field renamed to `raw_gmsl`.
+1. **Loads cached indicators** from `s3://{bucket}/products/{published_product}/indicators/indicators.nc` (if present). Supports legacy `gmsl` field renamed to `raw_gmsl`.
 2. **Processes each simple grid** (skipping dates before 1993 and grids with <90% data coverage):
    - **Computes raw GMSL** — area-weighted mean of SSHA within ±66 latitude, converted to cm.
    - **Detrends and deseasons** — removes a linear trend (BH offset + slope) and monthly seasonal cycle from the grid.
@@ -46,12 +46,14 @@ Unlike the other stages in this pipeline, indicators receives the entire jobs ma
 ```json
 {
   "bucket": "my-bucket",
-  "jobs_key": "pipeline_runs/run_id/source/sg_jobs.json",
-  "source": "S6"
+  "jobs_key": "pipeline_runs/S6/20250115T120000/NASA-SSH/sg_jobs.json",
+  "published_product": "NASA-SSH"
 }
 ```
 
-All three fields are required. The manifest at `jobs_key` is a JSON array of objects, each containing at least a `date` field:
+All three fields are required. Indicators are keyed on a **published product**,
+not a **Source**: they derive from the reference-mission grid, which several
+missions contribute to. The manifest at `jobs_key` is a JSON array of objects, each containing at least a `date` field:
 
 ```json
 [
@@ -75,12 +77,33 @@ On error, raises an exception with a JSON body containing `status`, `errorType`,
 | Path | Description |
 |------|-------------|
 | `{jobs_key}` | Jobs manifest (read) |
-| `simple_grids/{source}/{year}/{source}_alt_ref_simple_grid_v1_1_{YYYYMMDD}.nc` | Input simple grids (read) |
-| `indicators/{source}/indicators.nc` | Cached/output indicator NetCDF (read + write) |
-| `indicators/{source}/NASA_SSH_{INDICATOR}_INDICATOR.txt` | Latest indicator text file (write) |
-| `indicators/{source}/NASA_SSH_{INDICATOR}_INDICATOR.mp` | Latest metadata file (write) |
-| `indicators/{source}/archive/{INDICATOR}/NASA_SSH_{INDICATOR}_INDICATOR_{YYYYMMDD}.txt` | Archival text file (write) |
-| `indicators/{source}/archive/{INDICATOR}/NASA_SSH_{INDICATOR}_INDICATOR_{YYYYMMDD}.mp` | Archival metadata file (write) |
+| `simple_grids/{published_product}/{year}/*_simple_grid_v1_1_{YYYYMMDD}.nc` | Input simple grids (read — the staged copy, see below) |
+| `products/{published_product}/indicators/indicators.nc` | Cached/output indicator NetCDF (read + write) |
+| `products/{published_product}/indicators/NASA_SSH_{INDICATOR}_INDICATOR.txt` | Latest indicator text file (write) |
+| `products/{published_product}/indicators/NASA_SSH_{INDICATOR}_INDICATOR.mp` | Latest metadata file (write) |
+| `products/{published_product}/indicators/archive/{INDICATOR}/NASA_SSH_{INDICATOR}_INDICATOR_{YYYYMMDD}.txt` | Archival text file (write) |
+| `products/{published_product}/indicators/archive/{INDICATOR}/NASA_SSH_{INDICATOR}_INDICATOR_{YYYYMMDD}.mp` | Archival metadata file (write) |
+
+**Indicators write through to `products/` rather than being promoted.** Nothing
+outside this stage reads them, and `indicators.nc` is self-read as a cache — so
+the published copy *is* the cache, and a staged copy plus a promotion step would
+buy nothing. This is the one stage for which the published area is read-write
+(see [ADR 0008](../../../docs/adr/0008-published-products-prefix.md)).
+
+The input grids are read from **staging**, not from `products/`: the grid has to
+be staged for ENSO anyway, so there is no reason to take the long way round.
+
+The `.txt` and `.mp` filenames are externally fixed. `generate_mp` emits a
+PO.DAAC ingest sidecar whose `collection` shortname is derived from the filename,
+so indicators can *move* prefix — they cannot be renamed without coordinating
+with PO.DAAC.
+
+**Seeding note.** `load_cached_indicators` treats a missing key as "starting
+fresh", so against an empty published prefix the first run would compute only the
+Mondays in the current manifest, silently skip the 1993 normalization, and write
+a valid-looking GMSL product missing thirty years to a PO.DAAC-facing filename —
+from a *successful* run. Copying the existing indicators history into the new
+prefix before the first run is mandatory, not tidiness.
 
 ## Step Function
 
@@ -98,7 +121,7 @@ From the repo root (after `uv sync --extra dev`):
 
 | Test class | What it tests |
 |------------|---------------|
-| `TestBuildSgKey` | S3 key construction for different sources, dates, and year boundaries |
+| `TestBuildSgKey` | S3 key construction for the staged grid, year boundaries, and the refusal to resolve a Source name as a published product |
 | `TestMergeIndicators` | Empty cache/new, overwrite at same time point, append new times, sorted output |
 | `TestGenerateDs` | 1993 GMSL normalization, raw_gmsl preservation, missing-1993 guard, smoothed_gmsl presence, time sorting |
 

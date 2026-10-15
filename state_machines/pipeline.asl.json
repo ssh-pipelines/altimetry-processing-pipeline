@@ -21,7 +21,7 @@
       "Type": "Choice",
       "Choices": [
         {
-          "Next": "Need Unification?",
+          "Next": "Publish Along Track",
           "Condition": "{% $states.input.Output.job_count > 0 %}"
         }
       ],
@@ -29,33 +29,57 @@
     },
     "No Jobs Summary": {
       "Type": "Pass",
-      "Comment": "Fast exit: the along-track run found no dates to process. Skip unification and the SG pipeline; unwrap the execution result to the bare run identity Run Summary expects, then summarize (empty manifests reconcile to expected 0 / produced 0).",
+      "Comment": "Fast exit: the along-track run found no dates to process. Skip publication and the SG pipeline; unwrap the execution result to the bare run identity Run Summary expects, then summarize (empty manifests reconcile to expected 0 / produced 0).",
       "Output": "{% $states.input.Output %}",
       "Next": "Run Summary"
     },
-    "Need Unification?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Next": "Unifier Execution",
-          "Condition": "{% $states.input.Output.unify = true %}"
-        }
-      ],
-      "Default": "SG Execution"
-    },
-    "Unifier Execution": {
+    "Publish Along Track": {
       "Type": "Task",
+      "Comment": "Unconditional: every source publishes, and which line it publishes to is derived from its product_type rather than gated by config.",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Arguments": {
-        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-unifier-sm",
-        "Input": "{% $states.input.Output %}"
+        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-publisher-sm",
+        "Input": "{% $merge([$states.input.Output, { 'family': 'along_track' }]) %}"
       },
+      "Output": "{% $states.input.Output %}",
+      "Next": "Rewrite Manifest",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'publisher_along_track', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.Output.jobs_key, 'bucket': $states.input.Output.bucket, 'source': $states.input.Output.source } %}"
+        }
+      ]
+    },
+    "Rewrite Manifest": {
+      "Type": "Task",
+      "Comment": "Rekey the along-track manifest onto the published product the gridded tier works on. Becomes a merge of several source manifests once the parent is product-keyed.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-rewrite_manifest:$LATEST",
+        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'published_product': $states.input.published_product } %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 5,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
       "Next": "SG Execution",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'unifier', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.Output.jobs_key, 'bucket': $states.input.Output.bucket, 'source': $states.input.Output.source } %}"
+          "Output": "{% { 'stage': 'rewrite_manifest', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
         }
       ]
     },
@@ -64,9 +88,9 @@
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Arguments": {
         "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-sg_pipeline-sm",
-        "Input": "{% $states.input.Output %}"
+        "Input": "{% $states.input %}"
       },
-      "Output": "{% $states.input.Output %}",
+      "Output": "{% $states.input %}",
       "Next": "Run Summary",
       "Catch": [
         {
@@ -80,7 +104,7 @@
       "Resource": "arn:aws:states:::lambda:invoke",
       "Arguments": {
         "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-run_summary:$LATEST",
-        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket } %}"
       },
       "Retry": [
         {

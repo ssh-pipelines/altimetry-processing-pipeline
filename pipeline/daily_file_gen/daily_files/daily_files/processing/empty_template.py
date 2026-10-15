@@ -7,7 +7,7 @@ import xarray as xr
 from daily_files.config.paths import REF_FILES_DIR
 from daily_files.config.source_config import SourceConfig
 from daily_files.processing.daily_file import get_base_global_attrs, get_var_attrs
-from utilities.pipeline_layout import along_track_product
+from utilities.products import along_track_product
 
 # Source-flag configuration per processor class name.
 # Update these when flag column definitions change in the corresponding DailyFile subclass.

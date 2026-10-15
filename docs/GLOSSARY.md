@@ -7,7 +7,7 @@ rejected, usually because they are ambiguous or already mean something else here
 ## Domain
 
 **Source**:
-A satellite mission or product provider whose granules are ingested as input (e.g. S6, S6B, GSFC, NASA-SSH, S3B). Identified by name throughout configuration.
+A satellite mission or product provider whose granules are ingested as input (e.g. S6, S6B, GSFC, S3B). One YAML in `utilities/sources/`. Identified by name throughout configuration. Distinct from a **Published product**, which is what a Source's output is released as.
 _Avoid_: mission, provider, dataset
 
 **Granule**:
@@ -39,7 +39,8 @@ A **Crossover** between a `high_latitude` Source pass and the **reference missio
 _Avoid_: high-latitude crossover (names the satellite, not what it crosses)
 
 **Reference mission**:
-The calibration baseline a `high_latitude` Source is compared against: the finalized, unified **NASA-SSH** along-track product at **P3**.
+The calibration baseline a `high_latitude` Source is compared against: the released **NASA-SSH** along-track **Published product**, read from `products/NASA-SSH/along_track/`. Named in xover config as `reference_product` — a Published product, not a **Source**. It has no internal **Staging** representation, being composed from several missions, so `products/` is the only place it exists. See [ADR 0006](adr/0006-reference-crossovers-against-nasa-ssh-p3.md) and its addendum.
+_Avoid_: reference source, NASA-SSH P3 (the address it used to have)
 
 **OER**:
 Ocean Error Reduction — a polygon-based correction fit from crossover statistics, applied to P1 to produce P2. The stage handles both **Crossover types**, dispatched from the Source's **Product type** (`_CROSSOVER_TYPE_BY_PRODUCT_TYPE` in `oer/oer.py`): a `reference` Product type takes the `self` OER path (both crossover sides stacked with opposite sign, keyed by both trackids, backward-looking 10-day window), a `high_latitude` Source takes the `reference` OER path (single `dssh = ssh1 − ssh2` per crossover keyed by the high-lat trackid, no sign-flip, centered window). Both fit the same `oerfit` cubic spline, whose knot placement uses the Source's canonical `common.ground_speed` (km/s, shared with daily-file smoothing).
@@ -48,11 +49,28 @@ Ocean Error Reduction — a polygon-based correction fit from crossover statisti
 A satellite pass flagged as anomalous because its crossover statistics exceed configured thresholds. Set as `nasa_flag=1` for matching cycle/pass rows during finalization.
 
 **NASA-SSH**:
-The unified along-track product. Not a real upstream source — produced by the **unifier** stage copying P3 files from contributing sources (currently GSFC, S6) under a `NASA-SSH` prefix.
+The reference-mission **Published product** line: the released along-track record, its simple grid, and its indicators. Many reference-mission Sources (currently GSFC and S6) contribute to it — the **publisher** promotes each contributor's P3 to the one `products/NASA-SSH/` line. Also the project name, written into every product's `project` attribute.
+_Avoid_: NASA-SSH source (it is not one, and no longer has a registry entry)
 
 **Product**:
-A produced artifact's wire format: its version, its filename template, and the in-file CF identity a consumer reads (`title`, `summary`, `id` (DOI), `processing_level`, `product_short_name`, `product_version`, `references`, `source_url`). One entry in `utilities/products.yaml` — `along_track_reference`, `along_track_high_latitude`, `simple_grid_reference`, `simple_grid_high_latitude`, `enso`. Owned by the Product, never by a contributing **Source**: two Sources on the same Product publish identical identity, and a Source on a different Product must not inherit it. A Product whose artifacts carry no CF identity (`enso`) declares none. An `id` of `TBD` marks a Product whose identity the science side has not settled, and which is therefore not deliverable to PO.DAAC.
+A produced artifact's wire format: its version, its filename templates, and the in-file CF identity a consumer reads (`title`, `summary`, `id` (DOI), `processing_level`, `product_short_name`, `product_version`, `references`, `source_url`). One entry in `utilities/products.yaml` — `along_track_reference`, `along_track_high_latitude`, `simple_grid_reference`, `simple_grid_high_latitude`, `simple_grid_development`, `enso`. Owned by the Product, never by a contributing **Source**: two Sources on the same Product publish identical identity, and a Source on a different Product must not inherit it. A Product whose artifacts carry no CF identity (`enso`) declares none. Two filename templates, deliberately distinct so a **Staging** artifact and a released one are never mistaken for each other: `filename_template` takes `{source}`, `published_filename_template` takes `{published_name}`. A Product with no `published_filename_template` cannot be published. An `id` of `TBD` marks a Product whose identity the science side has not settled, and which is therefore not deliverable to PO.DAAC.
 _Avoid_: product family (see **Product type**), dataset, wire format
+
+**Published product**:
+A released artifact line, identified by one underscore-separated string used for both its `products/` directory and its filename prefix (`NASA-SSH`, `NASA-SSH_S3B`). Names a **Product** for each family it publishes. Distinct from a **Source**: many Sources may contribute to one Published product, and a Published product may have no Source at all. Along-track identity is *derived* from the contributing Source's **Product type** (`reference` → `NASA-SSH`, `high_latitude` → `NASA-SSH_{source}`); only the facts no Source can supply are declared, in `published_products:` in `utilities/products.yaml`. Living under `products/` asserts release *shape* — final filename, final layout, product-owned identity — not PO.DAAC ingestion.
+_Avoid_: released product, official product, public product
+
+**Staging**:
+The internal area of the bucket: per-**Source** working state under `daily_files/{p1,p2,p3}/`, plus `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`, `enso_grids/`, `maps/` and `pipeline_runs/`. Effectively a cache — reproducible from upstream via `force_update`, and never an address a consumer is pointed at. The complement of `products/` ([ADR 0008](adr/0008-published-products-prefix.md)).
+_Avoid_: intermediate (fine for one file, wrong for the area), working bucket, scratch
+
+**Contributor**:
+A **Published product** read as gridding input. The simple gridder takes a contributor *list* and an independent `publish_as`, so what a grid reads and what it becomes are separate facts. Contributors are always published products, never **Staging** files. The word is also used for the Sources feeding one published along-track line, where the sense is the same: an input to a composition that is not itself the composition.
+_Avoid_: source (the whole point is that these are different kinds of thing), input product
+
+**Enabled**:
+The declared production fact: `enabled: true` in a **Source**'s `common` section. Registry membership is not production membership — a product-keyed run fans out over every Source resolving to the named **Published product**, so a staged-but-unintegrated Source would otherwise be pulled in by the act of existing. Defaults to `false`.
+_Avoid_: active, live, on
 
 **Product type**:
 The product family a **Source** contributes to. Currently `reference` (TOPEX/Poseidon-baselined missions: S6, S6B, GSFC) or `high_latitude` (AVISO L2P sources: S3B, planned S3A/SARAL/HY-2B). Resolves the **Product** for each family the Source feeds (`along_track_{product_type}`, `simple_grid_{product_type}`) — and with it the filename family (`alt_ref_at_*` vs `alt_hilat_at_*`) and the in-file identity — plus the processor class and which downstream stages apply.
@@ -88,8 +106,12 @@ One entry in the manifest. Shape: `{date, source, bucket, granules: [uri, ...]}`
 ## Results & reconciliation
 
 **Product pipeline**:
-A processing track within the top-level **pipeline** that owns one **manifest** and produces a coherent family of deliverables, reconciled independently. Two today: the *along-track product pipeline* (`at_pipeline` → P3 daily files, plus the NASA-SSH unified P3 via the unifier) and the *gridded product pipeline* (`sg_pipeline` → simple grids, ENSO, indicators). The unifier is currently wired at the top tier rather than inside `at_pipeline` (see [ADR 0003](adr/0003-failure-surfacing.md)); the along-track Run summary claims its outcomes via a stage→product-pipeline ownership mapping regardless.
+A processing track within the top-level **pipeline** that owns one **manifest** and produces a coherent family of deliverables, reconciled independently. Two today: the *along-track product pipeline* (`at_pipeline` → P3 daily files, plus their promotion by the **publisher**) and the *gridded product pipeline* (`sg_pipeline` → simple grids and their promotion, ENSO, indicators). The publisher is wired at the top tier rather than inside `at_pipeline` (see [ADR 0003](adr/0003-failure-surfacing.md)); the along-track Run summary claims its outcomes via a stage→product-pipeline ownership mapping regardless. Partitions the pipeline along a different axis from **Source tier** / **Product tier**: a Product pipeline is a *manifest* boundary, a tier is a *keying* boundary.
 _Avoid_: sub-pipeline, parent SM, stage group.
+
+**Source tier** / **Product tier**:
+The two keying regimes a run passes through. The *source tier* is keyed on a **Source** — planning, the along-track chain, and the promotion of each contributor's P3 — and its manifest lives at `pipeline_runs/{source}/{run_id}/jobs.json`. The *product tier* is keyed on a **Published product** — simple grids, their promotion, ENSO, indicators — and its manifest is the one `rewrite_manifest` writes under a further `{published_product}/` segment. The boundary is where `source` stops being the right key, because several Sources feed one line.
+_Avoid_: phase, stage group, upstream/downstream
 
 **Job outcome**:
 The produced-side counterpart of a **Job spec** — what a deliverable **stage** declares after processing one item. Shape: `{schema_version, stage, status, date, source, outputs: [...], metadata: {...}}`. Returned by the handler and persisted per item in the Distributed Map's `ResultWriter` `SUCCEEDED_n.json`; the success-path analog of the structured `FAILED_n.json` entry ([ADR 0003](adr/0003-failure-surfacing.md)).
@@ -104,13 +126,13 @@ The per-**Product pipeline** reconciliation of expected vs produced — **Job sp
 _Avoid_: report, status (overloaded), manifest.
 
 **processing_history**:
-A daily-file NetCDF global attribute the pipeline owns, distinct from the externally-constrained `history` field. Each file-writing **stage** (`daily_files`→P1, `oer`→P2, `finalizer`→P3) *appends* a machine-readable step rather than overwriting, so the full lineage survives to P3 and — via the unifier's byte-copy — into the NASA-SSH product. The provenance carrier a deliverable stage reads back into a **Job outcome**'s `metadata`. Absent on any product written before this attribute existed (or reprocessed from a pre-feature version); consumers treat absence as *unknown/legacy* lineage — never an error — and distinguish it from complete lineage via the per-step `product_generation_step` (gap detection → `provenance_complete`).
+A daily-file NetCDF global attribute the pipeline owns, distinct from the externally-constrained `history` field. Each file-writing **stage** (`daily_files`→P1, `oer`→P2, `finalizer`→P3) *appends* a machine-readable step rather than overwriting, so the full lineage survives to P3 and — via the **publisher**'s byte-copy — into the released **Published product**. The provenance carrier a deliverable stage reads back into a **Job outcome**'s `metadata`. Absent on any product written before this attribute existed (or reprocessed from a pre-feature version); consumers treat absence as *unknown/legacy* lineage — never an error — and distinguish it from complete lineage via the per-step `product_generation_step` (gap detection → `provenance_complete`).
 _Avoid_: history (the CF/external field), provenance log.
 
 ## Runtime
 
 **pipeline_runtime**:
-The shared Docker image (and parallel `pip install` layer for stage venvs) that pins the scientific-stack versions used by every stage that reads or writes a **daily file** — currently `numpy`, `xarray`, `netCDF4`, `h5py`, `h5netcdf`, `s3fs`, `pyyaml`, `boto3`. Load-bearing: the daily-file NetCDF encoding requires the writer/reader libraries to agree across stages, so this is the single contract that enforces it. Stage Dockerfiles `FROM` this image and add only their per-stage extras (e.g. `geopandas`, `cartopy`). The lightweight stages (`pipeline_init`, `unifier`) deliberately do **not** consume pipeline_runtime — they touch no NetCDF and stay on `lambda/python` directly to keep their cold-start small. See [ADR 0001](adr/0001-pipeline-runtime.md).
+The shared Docker image (and parallel `pip install` layer for stage venvs) that pins the scientific-stack versions used by every stage that reads or writes a **daily file** — currently `numpy`, `xarray`, `netCDF4`, `h5py`, `h5netcdf`, `s3fs`, `pyyaml`, `boto3`. Load-bearing: the daily-file NetCDF encoding requires the writer/reader libraries to agree across stages, so this is the single contract that enforces it. Stage Dockerfiles `FROM` this image and add only their per-stage extras (e.g. `geopandas`, `cartopy`). The lightweight stages (`pipeline_init`, `publisher`) deliberately do **not** consume pipeline_runtime — they touch no NetCDF and stay on `lambda/python` directly to keep their cold-start small. See [ADR 0001](adr/0001-pipeline-runtime.md).
 
 ## Build & deploy
 
@@ -126,7 +148,7 @@ A **Target** with `container` packaging — a buildable Docker artifact. Carries
 _Avoid_: container
 
 **Heavy** (image/stage):
-An Image whose Dockerfile parameterizes its base via `ARG BASE_IMAGE` / `FROM ${BASE_IMAGE}`, so the build can override it to the matching `pipeline_runtime` tag. The 8 daily-file + downstream-product stages are heavy; `pipeline_init` and `unifier` are lightweight (literal `FROM lambda/python`); `pipeline_runtime` is the base itself; `zip` targets are never heavy. A heavy Image depends on `pipeline_runtime` at build time.
+An Image whose Dockerfile parameterizes its base via `ARG BASE_IMAGE` / `FROM ${BASE_IMAGE}`, so the build can override it to the matching `pipeline_runtime` tag. The 8 daily-file + downstream-product stages are heavy; `pipeline_init` and `publisher` are lightweight (literal `FROM lambda/python`); `pipeline_runtime` is the base itself; `zip` targets are never heavy. A heavy Image depends on `pipeline_runtime` at build time.
 _Avoid_: scientific stage, big image
 
 **Deploy target**:
@@ -162,14 +184,15 @@ _Avoid_: error_handler, on_failure
 - A **Source** has a **Product type**; the **Product type** determines which processor class handles the Source and which **Product** its **Daily files** and simple grids belong to. The **Product** owns their filename family and their in-file identity, so a `high_latitude` file cannot carry the reference mission's DOI.
 - A **Source** has many **Granules** upstream; an **Enumerator** finds them.
 - A **Granule** contributes to exactly one **daily file** (date-keyed).
-- A **Daily file** progresses **P1** → **P2** → **P3**; may then be copied to **NASA-SSH** by the unifier.
+- A **Daily file** progresses **P1** → **P2** → **P3** in **Staging**; the **publisher** then copies it to its **Published product**'s released address.
 - The **Manifest** carries one **Job spec** per (source, date) needing processing; each **Job spec** lists the **Granule** URIs that compose that day's daily file.
 - **Crossover** statistics drive both **OER** (which produces P2) and **bad pass** flagging (consumed during finalization to produce P3).
-- A **Source**'s **Crossover type** follows from its **Product type**: a `reference` Source uses **Self-crossovers**; a `high_latitude` Source uses **Reference-mission crossovers** against the **reference mission** (NASA-SSH P3).
+- A **Source**'s **Crossover type** follows from its **Product type**: a `reference` Source uses **Self-crossovers**; a `high_latitude` Source uses **Reference-mission crossovers** against the **reference mission** (the released NASA-SSH along-track product).
+- A **Source** publishes to exactly one **Published product**, derived from its **Product type**; a **Published product** has one or more **Contributors**. Whether a Source is in a run is decided by **Enabled** alone.
 - A pipeline-run failure is classified as a **Code failure**, **Runtime failure**, or **Auth failure**; **failure_handling** groups failed items by this classification in the SNS notification.
 - The top-level **pipeline** is composed of **Product pipelines**; each owns one **manifest** and yields a deliverable family.
 - A deliverable **stage** declares one **Job outcome** per processed item (naming its **Outputs**), persisted in `ResultWriter`; a **Product pipeline**'s **Run summary** reconciles those **Job outcomes** against its **manifest**'s **Job specs**.
-- Provenance rides in the daily file's **processing_history** attribute P1→P2→P3 and survives the unifier's byte-copy into NASA-SSH; a deliverable **stage** snapshots it into the **Job outcome**'s `metadata`.
+- Provenance rides in the daily file's **processing_history** attribute P1→P2→P3 and survives the **publisher**'s byte-copy into the **Published product**; a deliverable **stage** snapshots it into the **Job outcome**'s `metadata`.
 
 ## See also
 

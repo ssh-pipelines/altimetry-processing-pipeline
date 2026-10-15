@@ -124,14 +124,13 @@ def build_reference_dataset(
         attrs={
             "title": f"{source} reference-mission crossovers {day}",
             "crossover_type": "reference",
-            "reference_source": config.reference_source,
-            "reference_version": config.reference_version,
+            "reference_product": config.reference_product,
             "window_length": f"{(window_end - window_start).astype('int32')} days "
             f"(nominal: {config.window_size} days centered "
             f"+ {config.window_padding} days padding)",
             "created_on": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
             "input_product_generation_steps": df_version[-1],
-            "satellite_names": f"{source}, {config.reference_source}",
+            "satellite_names": f"{source}, {config.reference_product}",
         },
     )
     ds["lon"].attrs = {"units": "degrees", "long_name": "Crossover longitude"}

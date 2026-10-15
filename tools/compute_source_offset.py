@@ -8,10 +8,14 @@ area-weighted global mean difference. That difference is the offset value to
 configure in the finalizer so the new source is brought into alignment with
 the reference.
 
+`--source` and `--reference` are *grid identity* segments under `simple_grids/`,
+not source names: a production grid lives at `simple_grids/{published product}/`
+and a development grid at `simple_grids/development/{contributors joined by _}/`.
+
 Usage (S3 mode):
     python tools/compute_source_offset.py \\
-        --source S6B \\
-        --reference GSFC \\
+        --source development/NASA-SSH_S3B \\
+        --reference NASA-SSH \\
         --bucket your-bucket-name \\
         --duration 6
 
@@ -83,7 +87,10 @@ def _parse_grid_date(filename: str) -> Optional[date]:
 
 
 def list_s3_grids(s3_client, bucket: str, source: str) -> dict[date, str]:
-    """Return {date: s3_key} for all half-degree simple grids for source in bucket."""
+    """Return {date: s3_key} for all half-degree simple grids under a grid identity.
+
+    ``source`` is the ``simple_grids/`` path segment — a published product
+    (``NASA-SSH``) or a development grid (``development/NASA-SSH_S3B``)."""
     keys: dict[date, str] = {}
     paginator = s3_client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=f"simple_grids/{source}/"):
@@ -276,12 +283,13 @@ Enter the result under the `finalizer:` section of:
     parser.add_argument(
         "--source",
         required=True,
-        help="New source name (e.g. S6B)",
+        help="Grid identity of the new source's grids (e.g. development/NASA-SSH_S3B)",
     )
     parser.add_argument(
         "--reference",
         required=True,
-        help="Reference source name (e.g. GSFC); in S3 mode this is the simple_grids/ prefix",
+        help="Grid identity of the reference grids (e.g. NASA-SSH); in S3 mode this is "
+             "the simple_grids/ path segment",
     )
     parser.add_argument(
         "--duration",

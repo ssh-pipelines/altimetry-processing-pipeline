@@ -11,10 +11,15 @@ Pipeline consists of:
 
 Daily files -> Crossover -> OER -> Crossover -> Bad pass flagging -> Finalization
 
-Every source runs its own independent instance of this sequence. Reference-mission
-sources (`unify: true`) then have their finalized daily files copied into the
-unified NASA-SSH reference-mission product by the unifier; high-latitude sources
-produce a sibling `alt_hilat_at_*` family and do not pass through it.
+Every source runs its own independent instance of this sequence, writing into
+internal staging under `daily_files/{p1,p2,p3}/{source}/`. Every source then runs
+the **publisher**, which promotes its finalized daily file to the released address
+under `products/{published product}/`. Which published product a source feeds is
+derived from its `product_type` — `reference` sources all collapse into the one
+`NASA-SSH` line, each `high_latitude` satellite publishes its own
+`NASA-SSH_{source}` line — so there is no publish gate to configure
+([ADR 0008](docs/adr/0008-published-products-prefix.md),
+[ADR 0009](docs/adr/0009-publisher-stage-and-enabled.md)).
 
 ### Additional product generation
 
@@ -26,8 +31,8 @@ Simple grids -> ENSO grids & imagery -> Indicators
   which upstream collections are ingested from where, and what is published at each
   level.
 - **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — the vocabulary this repo is written in
-  (source, granule, daily file, P1/P2/P3, crossover type, product type, run
-  summary). Worth skimming before a first PR.
+  (source, granule, daily file, P1/P2/P3, crossover type, product, published
+  product, staging, contributor, run summary). Worth skimming before a first PR.
 - **[docs/adr/](docs/adr/)** — architecture decision records: why the scientific
   stack is pinned in one image, why AVISO L2P skips the MSS swap, how failures are
   surfaced, and more.
@@ -56,28 +61,33 @@ pipeline.asl.json
 │   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p2)
 │   ├── bad_pass.asl.json (Distributed Map → bad_pass Lambda)
 │   └── finalizer.asl.json (Distributed Map → finalizer Lambda)
-├── unifier.asl.json (conditional — runs if source has unify=true)
-│   ├── Distributed Map → unifier Lambda
-│   └── rewrite_manifest (Lambda — rewrites jobs manifest with NASA-SSH source)
+├── publisher.asl.json (family=along_track — promotes each P3 to products/)
+│   └── Distributed Map → publisher Lambda
+├── rewrite_manifest (Lambda — rekeys the manifest onto the published product)
 ├── sg_pipeline.asl.json
 │   ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
 │   ├── simple_grids.asl.json (Distributed Map → simple_grids Lambda)
+│   ├── publisher.asl.json (family=simple_grid — promotes each grid to products/)
 │   ├── enso.asl.json (Distributed Map → enso Lambda)
 │   └── indicators (Lambda)
 └── run_summary (Lambda — reconciles expected vs produced, per product pipeline)
 ```
 
-An along-track run that finds no dates to process short-circuits past unification
+An along-track run that finds no dates to process short-circuits past publication
 and the gridded pipeline straight to the summary, which reconciles to an empty run
 rather than a failure.
+
+`rewrite_manifest` is where the run changes key: everything above it is keyed on a
+**Source**, everything below on the **Published product** that Source feeds.
 
 ### Key patterns
 
 - **Jobs manifest**: `pipeline_init` writes a `jobs.json` to S3 listing dates that need processing. All downstream Distributed Maps read from this manifest via `ItemReader`.
 - **Distributed Map**: Most processing stages use Distributed Map (mode `DISTRIBUTED`, max concurrency 100) to process each date independently. Results are written to S3 via `ResultWriter`.
-- **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` to pass the original input (`jobs_key`, `bucket`, `source`) through to the next state, since child state machine outputs aren't needed upstream.
+- **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` to pass the original input (`jobs_key`, `bucket`, `source`, `published_product`) through to the next state, since child state machine outputs aren't needed upstream.
 - **Two crossover passes**: The xover state machine is invoked twice — once with `df_version=p1` (before OER) and once with `df_version=p2` (after OER).
-- **Conditional unification**: Sources with `unify=true` (GSFC, S6) get their finalized daily files copied to a unified `NASA-SSH` prefix by the unifier. The `rewrite_manifest` Lambda then produces a new jobs manifest under the NASA-SSH source for downstream simple grid processing.
+- **Unconditional publication**: every source's finalized daily file is promoted to `products/{published product}/along_track/` by the publisher, and every staged simple grid to `products/{published product}/simple_grid/`. One publisher Lambda serves both, with `family` as an argument; its ResultWriter prefix carries the family so the two tiers' outcomes stay separate. `rewrite_manifest` then rekeys the manifest onto the published product for the gridded tier.
+- **Staging vs `products/`**: `daily_files/`, `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`, `enso_grids/`, `maps/` and `pipeline_runs/` are internal working state, reproducible from upstream. `products/` holds the released artifacts, and every key under it comes from one `published_*` function family in `pipeline_layout` so a later move to a separate bucket is one module plus a config value.
 - **Declared outcomes, not inferred ones**: each deliverable stage returns a Job outcome naming the S3 keys it wrote, persisted per item by `ResultWriter`. `run_summary` reconciles those against the manifest's job specs rather than listing S3 and matching date tokens ([ADR 0005](docs/adr/0005-job-outcome-contract-and-run-summary.md)). Failures take the mirrored path through `failure_handling` ([ADR 0003](docs/adr/0003-failure-surfacing.md)).
 
 The authoritative reference for every S3 key each stage reads and writes is
@@ -100,7 +110,9 @@ Source-identity metadata used by multiple stages:
   filename family (`alt_ref_at_*` vs `alt_hilat_at_*`) and which downstream
   stages apply
 - `discovery_type` — how pipeline_init finds upstream granules (`cmr`, `thredds`, …)
-- `unify` — whether the source participates in NASA-SSH unification
+- `enabled` — whether the source is in production. Declared, not derived: registry
+  membership is not production membership. Defaults to `false`, so a source can be
+  staged in config ahead of its schedule
 - `start_date` — first date with available data
 - `end_date` (optional) — last date with available data; omit for ongoing collections
 - `collections` — the upstream collection descriptors discovery reads
@@ -116,20 +128,20 @@ The `xover:` section selects the **crossover type**:
   crossed against its own passes over a forward window. Fields: `cycle_length`,
   `window_size`, `window_padding`, `max_pass_number`.
 - `crossover_type: reference` — a `high_latitude` source (S3B) crossed against
-  the finalized NASA-SSH **P3** reference mission over a window *centered* on the
-  processing day. Adds `reference_source` and `reference_version` (see ADR-0006).
+  the published NASA-SSH reference along-track product over a window *centered* on
+  the processing day. Optionally overrides `reference_product` (see ADR-0006).
 
 Example (`utilities/sources/S3B.yaml`, abbreviated):
 ```yaml
 common:
   product_type: high_latitude
   discovery_type: thredds
+  enabled: false
   start_date: "2018-04-25"
 
 xover:
   crossover_type: reference
-  reference_source: NASA-SSH
-  reference_version: p3
+  reference_product: NASA-SSH
   cycle_length: 9.9156
   window_size: 12      # interpreted as a ±centered window for reference crossovers
   window_padding: 2

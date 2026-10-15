@@ -824,6 +824,26 @@ class TestFinalizerHandlerOutcome(unittest.TestCase):
         result = handler(event, None)
         self.assertFalse(result["metadata"]["provenance_complete"])
 
+    @patch("app.Finalizer")
+    def test_outcome_records_the_published_product_as_provenance(self, mock_finalizer_cls):
+        """Which released line this P3 feeds. Provenance only — it replaces the
+        `unify` flag, which used to gate the stage after it; nothing reads this to
+        decide whether to publish."""
+        from app import handler
+        from finalization.finalizer import FinalizerResult
+
+        mock_finalizer_cls.return_value.process.return_value = FinalizerResult(
+            key="x.nc", processing_history=[]
+        )
+
+        for source, expected in (("S6", "NASA-SSH"), ("S3B", "NASA-SSH_S3B")):
+            with self.subTest(source=source):
+                result = handler(
+                    {"bucket": "b", "date": "2025-02-10", "source": source}, None
+                )
+                self.assertEqual(result["metadata"]["published_product"], expected)
+                self.assertNotIn("unify", result["metadata"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -72,7 +72,10 @@ class ReferenceRealDataTestCase(unittest.TestCase):
             if m:
                 cls.ref_by_date[m.group(1)] = os.path.join(REF_GRANULE_DIR, name)
 
+        cls.requested_keys = []
+
         def fake_key_exists(key):
+            cls.requested_keys.append(key)
             m = re.search(r"(\d{8})", key)
             if not m:
                 return False
@@ -173,10 +176,28 @@ class ReferenceRealDataTestCase(unittest.TestCase):
     def test_attrs_name_both_missions(self):
         self.assertIn("S3B", self.ds.attrs["satellite_names"])
         self.assertIn("NASA-SSH", self.ds.attrs["satellite_names"])
-        self.assertEqual(self.ds.attrs["reference_version"], "p3")
+        # The reference side is a published product, so there is no lifecycle
+        # version to record: a published along-track file is finalized.
+        self.assertEqual(self.ds.attrs["reference_product"], "NASA-SSH")
+        self.assertNotIn("reference_version", self.ds.attrs)
 
     def test_crossover_type_attr(self):
         self.assertEqual(self.ds.attrs["crossover_type"], "reference")
+
+    def test_reads_the_reference_from_the_published_area(self):
+        """The reference mission has no internal staging representation — it is
+        composed from several missions — so the only place to read it is
+        `products/`. The high-lat side still reads its own staged daily files."""
+        ref_keys = [k for k in self.requested_keys if "NASA-SSH" in k]
+        hl_keys = [k for k in self.requested_keys if "S3B_alt_hilat" in k]
+        self.assertGreater(len(ref_keys), 0)
+        self.assertGreater(len(hl_keys), 0)
+        for key in ref_keys:
+            with self.subTest(key=key):
+                self.assertIn("/products/NASA-SSH/along_track/", key)
+        for key in hl_keys:
+            with self.subTest(key=key):
+                self.assertIn("/daily_files/p1/S3B/", key)
 
 
 if __name__ == "__main__":

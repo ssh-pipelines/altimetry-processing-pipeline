@@ -42,6 +42,38 @@ def _event(jobs, jobs_key="pipeline_runs/NASA-SSH/20260624T201021/jobs.json"):
     }, {jobs_key: json.dumps(jobs).encode()}
 
 
+class _FixedToday(date):
+    """A ``date`` whose ``today()`` is pinned. Subclassing keeps arithmetic and
+    ``fromisoformat`` working for the rest of the module."""
+
+    @classmethod
+    def today(cls):
+        return date(2026, 3, 12)
+
+
+class TestLastSgDate(unittest.TestCase):
+    def setUp(self):
+        self._real_date = app.date
+
+    def tearDown(self):
+        app.date = self._real_date
+
+    def test_today_is_resolved_per_call(self):
+        """A warm Lambda container imports the module once and may serve
+        invocations for days, so "today" has to be read when the function runs.
+        Binding it as a default argument pinned the window to whenever the
+        container happened to start, and the staleness grew silently: a
+        fortnight-old container plans grids two Mondays behind."""
+        app.date = _FixedToday
+
+        # 2026-03-12 is a Thursday; the Monday before it (03-09) still has four
+        # days of its window in the future, so the newest complete one is 03-02.
+        self.assertEqual(app.last_sg_date(), date(2026, 3, 2))
+
+    def test_explicit_today_wins(self):
+        self.assertEqual(app.last_sg_date(date(2026, 3, 12)), date(2026, 3, 2))
+
+
 class TestSetSgJobs(unittest.TestCase):
     """Reads the product-tier manifest and writes its sibling. Unchanged by the
     tier split except for the address: the manifest moved out from under the

@@ -19,6 +19,22 @@ For each invocation, the Lambda:
 6. **Writes the jobs manifest** to `s3://{bucket}/pipeline_runs/{source}/{run_id}/jobs.json` containing one entry per date that needs processing, plus a sibling `run_params.json` recording the `resolved_start`/`resolved_end` this source capped to (and the overrides it was given). The `run_id` is **not** minted here — `start_run` mints one per run and hands it to every contributor, so the source tier's manifests and the product tier's share an identity; `merge_manifests` reads each contributor's manifest at exactly this address. The params are a *separate* sidecar so `jobs.json` stays the bare list its iterators (the Distributed Maps, `merge_manifests`) depend on. Two sidecars exist per run and answer different questions: `start_run`'s records how the run was *invoked* and is the one `run_summary` reports, while this one records what the window *resolved to* for this source, which differs per contributor.
 7. **Returns** `jobs_key`, `bucket`, `source`, `run_id`, `published_product`, and `job_count` — these fields are threaded through the rest of this contributor's branch. `published_product` is derived from the source's `product_type` and is what the publisher keys on; it is echoed back although the parent already knows it, so a mismatch surfaces as a publication shortfall rather than a wrong destination.
 
+## The default window is the source's whole span
+
+With no `start`/`end`, the range is the source's `start_date` through the most
+recent processable date — its full configured span, not a recent lookback. For a
+source already in production that is cheap, because step 2 prunes it to the few
+dates whose granules are newer than their daily file. For a source that has never
+run, nothing prunes: every date in the span needs processing. Enabling S3B and
+triggering its line without a window plans all of 2018-11-24 through 2026-04-10,
+roughly 2,700 dates, each one a full along-track chain whose crossover step reads
+the published reference product over a two-week bracket. Give a newly enabled
+source an explicit window.
+
+`start` and `end` are honored only as a pair. Supplying one without the other
+falls through to *both* defaults rather than raising, so a half-written window is
+indistinguishable from none.
+
 ## Lambda input
 
 ```json

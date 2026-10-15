@@ -182,6 +182,10 @@ source is fully supported.
   the NASA-SSH reference mission, from each pass's own crossovers, collected over a
   5-day window centered on the processing day. The `reference`-source wording is
   byte-identical to what is already distributed.
+- `set_sg_jobs` resolves "today" per invocation. It was bound as a default argument
+  and therefore evaluated at module import, so a warm Lambda container kept planning
+  simple grids against the date it started on — a container alive for two weeks
+  planned two Mondays behind, and dropped the Mondays it had grown past.
 
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed

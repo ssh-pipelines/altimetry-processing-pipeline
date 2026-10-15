@@ -62,7 +62,7 @@ enso = [
     # wheels; the Lambda base image is glibc 2.26, so newer pillow falls back to
     # a source build (no compiler in the image). 11.3.0 is the last release with
     # a manylinux_2_17 wheel that installs on 2.26.
-    "pillow==11.3.0",
+    "pillow==12.3.0",
 ]
 indicators = [
     "pyresample==1.34.1",

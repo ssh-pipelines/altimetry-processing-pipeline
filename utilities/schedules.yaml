@@ -1,0 +1,37 @@
+# The EventBridge schedules that invoke the pipeline state machine, one per
+# **Published product**. Hand-maintained: nothing in this repo creates, updates,
+# or deletes them, so this file is a reviewable *mirror* of what exists in AWS,
+# not a deployment source.
+#
+# It exists because product-keyed orchestration changed the trigger input from
+# `{source: "S6"}` to `{published_product: "NASA-SSH"}`, and that is the one part
+# of the change with no reviewable diff anywhere else — the schedules are the
+# only place the old input shape still lives. Sixteen hand-maintained rules
+# (the reference line plus one per high-latitude satellite) is also more than
+# anyone can hold in their head while deciding whether a Source is actually
+# running.
+#
+# `enabled` here mirrors the rule's own state in AWS and is independent of a
+# Source's `enabled`: a Source says it *may* contribute, a schedule says when
+# anything runs at all. A test pairs them, because the two failure modes are
+# silent in opposite directions — an enabled Source with no schedule never runs,
+# and an enabled schedule with no enabled contributor runs and does nothing.
+#
+# `cron: TBD` marks a rule that does not exist in AWS yet. The reference rule
+# predates this file and its expression has to be read back off the console
+# before it can be recorded here; inventing one that looks authoritative is
+# worse than naming it unknown.
+schedules:
+  nasa-ssh-reference:
+    cron: "TBD"
+    enabled: true
+    input:
+      published_product: NASA-SSH
+
+  # Staged, not created. Blocked on the high-latitude metadata values, not on
+  # anything in the orchestration (see the plan's Deferred section).
+  nasa-ssh-s3b:
+    cron: "TBD"
+    enabled: false
+    input:
+      published_product: NASA-SSH_S3B

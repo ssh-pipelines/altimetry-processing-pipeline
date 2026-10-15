@@ -29,11 +29,11 @@ RUNTIME_ERROR_TYPES = {"States.Timeout"}
 
 # Mirrors the JSONata in every leaf ASL's ResultWriter:
 #   "$p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/"
-# We must derive the prefix from jobs_key (not from the event's `source` field)
-# because in the gridded tier the SM input carries the published product (e.g. "NASA-SSH")
-# while the original-source segment of jobs_key (e.g. "S6") is what was used
-# when the ResultWriter wrote FAILED_*.json. Duplicated here rather than imported
-# because failure_handling is an infra Lambda that doesn't ship `utilities`.
+# Derived from jobs_key rather than from the event's `source` field, which carries
+# a Source on the source tier and a Published product on the product tier — the
+# manifest key is the one input that is right on both. Duplicated here rather than
+# imported because failure_handling is an infra Lambda that doesn't ship
+# `utilities`; the canonical version is pipeline_layout.stage_results_prefix.
 def _results_prefix_from_jobs_key(jobs_key: str, stage: str) -> str | None:
     parts = jobs_key.split("/")
     if len(parts) < 3:
@@ -42,8 +42,9 @@ def _results_prefix_from_jobs_key(jobs_key: str, stage: str) -> str | None:
 
 
 def _run_id_from_jobs_key(jobs_key: str) -> str:
-    # jobs_key shape (AT-side): pipeline_runs/{source}/{run_id}/jobs.json
-    # jobs_key shape (SG-side): pipeline_runs/{source}/{run_id}/{published_product}/sg_jobs.json
+    # Each tier keys its run path on whatever it is keyed on, at one depth:
+    #   source tier:  pipeline_runs/{source}/{run_id}/jobs.json
+    #   product tier: pipeline_runs/{published_product}/{run_id}/sg_jobs.json
     parts = jobs_key.split("/")
     return parts[2] if len(parts) >= 3 else "unknown"
 

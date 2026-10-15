@@ -39,11 +39,12 @@
     },
     "No Jobs": {
       "Type": "Pass",
-      "Comment": "Fast exit: pipeline_init found no dates to process. Skip the daily_file→finalizer chain and hand the unchanged run identity back to the orchestrator, which skips publication/SG and goes straight to Run Summary.",
+      "Comment": "Fast exit: pipeline_init found no dates to process. Skip the daily_file→finalizer chain and hand the unchanged run identity back to the orchestrator, which skips this contributor's publication.",
       "Output": {
         "jobs_key": "{% $states.input.jobs_key %}",
         "bucket": "{% $states.input.bucket %}",
         "source": "{% $states.input.source %}",
+        "run_id": "{% $states.input.run_id %}",
         "published_product": "{% $states.input.published_product %}",
         "job_count": "{% $states.input.job_count %}"
       },
@@ -172,6 +173,7 @@
         "jobs_key": "{% $states.input.jobs_key %}",
         "bucket": "{% $states.input.bucket %}",
         "source": "{% $states.input.source %}",
+        "run_id": "{% $states.input.run_id %}",
         "published_product": "{% $states.input.published_product %}",
         "job_count": "{% $states.input.job_count %}"
       },

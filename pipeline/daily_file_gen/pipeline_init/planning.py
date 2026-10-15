@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 import boto3
 from config.source_config import PipelineInitSourceConfig
@@ -134,15 +134,22 @@ def scan_existing_p3_mod_times(
     return results
 
 
-def write_manifest(bucket: str, source: str, jobs: list[dict], run_params: dict) -> str:
-    """Write the jobs manifest and a sibling ``run_params.json`` for the same run_id.
+def write_manifest(
+    bucket: str, source: str, run_id: str, jobs: list[dict], run_params: dict
+) -> str:
+    """Write the jobs manifest and a sibling ``run_params.json`` under this
+    Source's leg of the run.
 
-    The params sidecar records how the run was invoked (overrides or resolved defaults)
-    so the Run summary can report it; it is deliberately separate from ``jobs.json`` to
-    keep the manifest a bare list its iterators (Distributed Maps, rewrite_manifest,
-    set_sg_jobs) already depend on.
+    ``run_id`` is minted by ``start_run`` and handed down, not generated here:
+    one product-keyed run fans out over several Sources, and each minting its own
+    would leave the product tier with no shared identity to join them on.
+
+    The params sidecar records what the window *resolved to* for this Source
+    after capping to its date range — which differs per contributor, and is why
+    it survives alongside the product-tier sidecar the Run summary reports from.
+    It is deliberately separate from ``jobs.json`` to keep the manifest a bare
+    list its iterators (Distributed Maps, merge_manifests) already depend on.
     """
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     key = jobs_manifest_key(source, run_id)
     _s3.put_object(
         Bucket=bucket,

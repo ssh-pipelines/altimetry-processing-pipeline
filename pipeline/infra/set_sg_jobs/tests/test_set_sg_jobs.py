@@ -34,7 +34,7 @@ class FakeS3:
             kwargs["Body"], str) else kwargs["Body"]
 
 
-def _event(jobs, jobs_key="pipeline_runs/S6/20260624T201021/NASA-SSH/jobs.json"):
+def _event(jobs, jobs_key="pipeline_runs/NASA-SSH/20260624T201021/jobs.json"):
     return {
         "bucket": "nasa-ssh-staging-dev",
         "jobs_key": jobs_key,
@@ -43,6 +43,10 @@ def _event(jobs, jobs_key="pipeline_runs/S6/20260624T201021/NASA-SSH/jobs.json")
 
 
 class TestSetSgJobs(unittest.TestCase):
+    """Reads the product-tier manifest and writes its sibling. Unchanged by the
+    tier split except for the address: the manifest moved out from under the
+    source run path into the published product's own."""
+
     def setUp(self):
         self._real_s3 = app.s3
         self._real_last = app.last_sg_date
@@ -64,7 +68,7 @@ class TestSetSgJobs(unittest.TestCase):
         result, written = self._run([])
 
         self.assertEqual(result["jobs_key"],
-                         "pipeline_runs/S6/20260624T201021/NASA-SSH/sg_jobs.json")
+                         "pipeline_runs/NASA-SSH/20260624T201021/sg_jobs.json")
         self.assertEqual(result["published_product"], "NASA-SSH")
         self.assertEqual(written, [])
 

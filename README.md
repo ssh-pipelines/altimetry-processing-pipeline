@@ -49,22 +49,28 @@ The pipeline is orchestrated by AWS Step Functions using JSONata query language.
 
 ### Hierarchy
 
-A top-level orchestrator (`pipeline.asl.json`) coordinates three sub-pipelines, each of which delegates per-date work to Distributed Map states that fan out to Lambda functions:
+A **trigger names a Published product**, not a Source. The top-level orchestrator
+(`pipeline.asl.json`) composes two optional tiers over it: a *source tier* Mapped
+across the contributing sources, and a *product tier* for the gridded products.
+Each tier delegates per-date work to Distributed Map states that fan out to Lambda
+functions.
 
 ```
-pipeline.asl.json
-├── at_pipeline.asl.json
-│   ├── pipeline_init (Lambda — determines which dates need processing)
-│   ├── daily_file.asl.json (Distributed Map → daily_files Lambda)
-│   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p1)
-│   ├── oer.asl.json (Distributed Map → oer Lambda)
-│   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p2)
-│   ├── bad_pass.asl.json (Distributed Map → bad_pass Lambda)
-│   └── finalizer.asl.json (Distributed Map → finalizer Lambda)
-├── publisher.asl.json (family=along_track — promotes each P3 to products/)
-│   └── Distributed Map → publisher Lambda
-├── rewrite_manifest (Lambda — rekeys the manifest onto the published product)
-├── sg_pipeline.asl.json
+pipeline.asl.json                 ← trigger: {published_product, bucket}
+├── start_run (Lambda — enabled contributors, run_id, whether there is a product tier)
+├── Source Tier (inline Map over contributors)        [keyed on Source]
+│   ├── at_pipeline.asl.json
+│   │   ├── pipeline_init (Lambda — determines which dates need processing)
+│   │   ├── daily_file.asl.json (Distributed Map → daily_files Lambda)
+│   │   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p1)
+│   │   ├── oer.asl.json (Distributed Map → oer Lambda)
+│   │   ├── xover.asl.json (Distributed Map → xover Lambda, df_version=p2)
+│   │   ├── bad_pass.asl.json (Distributed Map → bad_pass Lambda)
+│   │   └── finalizer.asl.json (Distributed Map → finalizer Lambda)
+│   └── publisher.asl.json (family=along_track — promotes each P3 to products/)
+│       └── Distributed Map → publisher Lambda
+├── merge_manifests (Lambda — unions the contributors' dates into one manifest)
+├── sg_pipeline.asl.json                              [keyed on Published product]
 │   ├── set_sg_jobs (Lambda — filters manifest to Monday dates)
 │   ├── simple_grids.asl.json (Distributed Map → simple_grids Lambda)
 │   ├── publisher.asl.json (family=simple_grid — promotes each grid to products/)
@@ -73,21 +79,33 @@ pipeline.asl.json
 └── run_summary (Lambda — reconciles expected vs produced, per product pipeline)
 ```
 
-An along-track run that finds no dates to process short-circuits past publication
-and the gridded pipeline straight to the summary, which reconciles to an empty run
-rather than a failure.
+Two live shapes. A `{published_product: "NASA-SSH"}` run resolves to the enabled
+reference sources (GSFC and S6 today), Maps the source tier across them, merges their
+manifests, and runs the product tier. A `{published_product: "NASA-SSH_S3B"}` run
+resolves to one contributor and has **no** product tier — at most one high-latitude
+grid exists and it is composed from every satellite, so ENSO and indicators are
+unreachable from a per-satellite trigger rather than merely unused. `product_type`
+drives the fan-out, so 15 high-latitude satellites are 15 schedules and no new code.
 
-`rewrite_manifest` is where the run changes key: everything above it is keyed on a
-**Source**, everything below on the **Published product** that Source feeds.
+`merge_manifests` is where the run changes key: everything above it is keyed on a
+**Source**, everything below on the **Published product** those Sources feed. Each
+tier's manifest and ResultWriter outputs live under its own run path
+(`pipeline_runs/{identity}/{run_id}/`), sharing the one `run_id` `start_run` minted,
+so a run is traceable end to end without either path nesting inside the other.
+
+A contributor whose along-track run finds no dates short-circuits past its own
+publication; a run where no contributor planned anything skips the gridded tier
+entirely and reconciles to an empty run rather than a failure.
 
 ### Key patterns
 
 - **Jobs manifest**: `pipeline_init` writes a `jobs.json` to S3 listing dates that need processing. All downstream Distributed Maps read from this manifest via `ItemReader`.
 - **Distributed Map**: Most processing stages use Distributed Map (mode `DISTRIBUTED`, max concurrency 100) to process each date independently. Results are written to S3 via `ResultWriter`.
-- **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` to pass the original input (`jobs_key`, `bucket`, `source`, `published_product`) through to the next state, since child state machine outputs aren't needed upstream.
+- **Input threading**: Orchestrator states use `Output: "{% $states.input %}"` (or `$merge` onto it) to carry the run envelope (`published_product`, `bucket`, `run_id`, `contributors`, `jobs_key`) through to the next state, since child state machine outputs aren't needed upstream.
 - **Two crossover passes**: The xover state machine is invoked twice — once with `df_version=p1` (before OER) and once with `df_version=p2` (after OER).
-- **Unconditional publication**: every source's finalized daily file is promoted to `products/{published product}/along_track/` by the publisher, and every staged simple grid to `products/{published product}/simple_grid/`. One publisher Lambda serves both, with `family` as an argument; its ResultWriter prefix carries the family so the two tiers' outcomes stay separate. `rewrite_manifest` then rekeys the manifest onto the published product for the gridded tier.
+- **Unconditional publication**: every source's finalized daily file is promoted to `products/{published product}/along_track/` by the publisher, and every staged simple grid to `products/{published product}/simple_grid/`. One publisher Lambda serves both, with `family` as an argument; its ResultWriter prefix carries the family so the two tiers' outcomes stay separate.
 - **Staging vs `products/`**: `daily_files/`, `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`, `enso_grids/`, `maps/` and `pipeline_runs/` are internal working state, reproducible from upstream. `products/` holds the released artifacts, and every key under it comes from one `published_*` function family in `pipeline_layout` so a later move to a separate bucket is one module plus a config value.
+- **Loud empty fan-outs**: a trigger naming a published product with no `enabled` contributor fails in `start_run`, and two contributors claiming one date fails in `merge_manifests`. Both would otherwise be a run that succeeds having produced nothing, or one where completion order picks what ships.
 - **Declared outcomes, not inferred ones**: each deliverable stage returns a Job outcome naming the S3 keys it wrote, persisted per item by `ResultWriter`. `run_summary` reconciles those against the manifest's job specs rather than listing S3 and matching date tokens ([ADR 0005](docs/adr/0005-job-outcome-contract-and-run-summary.md)). Failures take the mirrored path through `failure_handling` ([ADR 0003](docs/adr/0003-failure-surfacing.md)).
 
 The authoritative reference for every S3 key each stage reads and writes is

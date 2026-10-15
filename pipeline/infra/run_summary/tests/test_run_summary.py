@@ -3,6 +3,8 @@ import unittest
 
 import summarizer
 
+from utilities import job_outcome
+
 # ---------------------------------------------------------------------------
 # Fake S3 client
 # ---------------------------------------------------------------------------
@@ -163,8 +165,7 @@ class TestReconcilePipeline(unittest.TestCase):
 
 class TestBuildSummary(unittest.TestCase):
 
-    def test_artifact_shape_along_track_tier(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
+    def test_artifact_shape(self):
         manifests = {
             "along_track": [{"date": "2025-01-01"}],
             "gridded": [{"date": "2025-01-06"}],
@@ -176,27 +177,70 @@ class TestBuildSummary(unittest.TestCase):
                 "enso": [_outcome("enso", "2025-01-06", "enso", "e1")],
             },
         }
-        summary = summarizer.build_summary(jobs_key, manifests, outcomes, completed_at="2025-05-28T14:00:00Z")
-        self.assertEqual(summary["schema_version"], 1)
-        self.assertEqual(summary["source"], "S6")
+        summary = summarizer.build_summary(
+            "NASA-SSH", "20250528T120000", ["GSFC", "S6"], manifests, outcomes,
+            completed_at="2025-05-28T14:00:00Z",
+        )
+        self.assertEqual(summary["schema_version"], 2)
+        self.assertEqual(summary["published_product"], "NASA-SSH")
+        self.assertEqual(summary["contributors"], ["GSFC", "S6"])
         self.assertEqual(summary["run_id"], "20250528T120000")
-        self.assertIsNone(summary["published_product"])
-        self.assertEqual(
-            summary["product_pipelines"]["along_track"]["manifest"], jobs_key
+
+    def test_no_top_level_source(self):
+        """A run is one published product's, not one Source's. A `source` field
+        would have to name one of several contributors."""
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC", "S6"], {}, {}, completed_at="t"
+        )
+        self.assertNotIn("source", summary)
+
+    def test_schema_version_is_the_run_summarys_own(self):
+        """Job outcomes did not change shape, so bumping the shared constant
+        would have relabelled every one of them."""
+        self.assertEqual(summarizer.RUN_SUMMARY_SCHEMA_VERSION, 2)
+        self.assertEqual(job_outcome.SCHEMA_VERSION, 1)
+
+    def test_along_track_names_every_contributors_manifest(self):
+        """Naming only one of several would point a reader at an incomplete
+        picture of the run."""
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC", "S6"], {}, {}, completed_at="t"
         )
         self.assertEqual(
-            summary["product_pipelines"]["gridded"]["manifest"],
-            "pipeline_runs/S6/20250528T120000/sg_jobs.json",
+            summary["product_pipelines"]["along_track"]["manifests"],
+            ["pipeline_runs/GSFC/R1/jobs.json", "pipeline_runs/S6/R1/jobs.json"],
         )
 
-    def test_published_product_detected(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
-        summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
-        self.assertEqual(summary["published_product"], "NASA-SSH")
-        self.assertEqual(
-            summary["product_pipelines"]["gridded"]["manifest"],
-            "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json",
+    def test_gridded_manifest_is_at_the_product_run_path(self):
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC", "S6"], {}, {}, completed_at="t"
         )
+        self.assertEqual(
+            summary["product_pipelines"]["gridded"]["manifests"],
+            ["pipeline_runs/NASA-SSH/R1/sg_jobs.json"],
+        )
+
+    def test_high_latitude_run_has_one_contributor_and_an_empty_gridded_section(self):
+        summary = summarizer.build_summary(
+            "NASA-SSH_S3B", "R1", ["S3B"], {}, {}, completed_at="t"
+        )
+        self.assertEqual(
+            summary["product_pipelines"]["along_track"]["manifests"],
+            ["pipeline_runs/S3B/R1/jobs.json"],
+        )
+        self.assertEqual(summary["product_pipelines"]["gridded"]["expected"], 0)
+
+
+class TestManifestKeys(unittest.TestCase):
+    def test_source_tier_is_per_contributor_and_product_tier_is_not(self):
+        keys = summarizer.manifest_keys("NASA-SSH", "R1", ["GSFC", "S6"])
+        self.assertEqual(len(keys["along_track"]), 2)
+        self.assertEqual(len(keys["gridded"]), 1)
+
+    def test_no_contributors_yields_no_along_track_manifests(self):
+        keys = summarizer.manifest_keys("NASA-SSH", "R1", [])
+        self.assertEqual(keys["along_track"], [])
+        self.assertEqual(keys["gridded"], ["pipeline_runs/NASA-SSH/R1/sg_jobs.json"])
 
 
 # ---------------------------------------------------------------------------
@@ -251,17 +295,25 @@ class TestS3IO(unittest.TestCase):
 
     def test_read_run_params_missing_is_empty(self):
         s3 = FakeS3()
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
-        self.assertEqual(summarizer.read_run_params(s3, "b", jobs_key), {})
+        self.assertEqual(
+            summarizer.read_run_params(s3, "b", "NASA-SSH", "20250528T120000"), {}
+        )
 
-    def test_read_run_params_parses_sidecar(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
-        # derived from the original-source segment, not the published-product one
-        params_key = "pipeline_runs/S6/20250528T120000/run_params.json"
-        s3 = FakeS3({params_key: json.dumps(
-            {"source": "S6", "start": "2025-05-01", "end": "2025-05-31", "force_update": True}
-        ).encode()})
-        params = summarizer.read_run_params(s3, "b", jobs_key)
+    def test_read_run_params_reads_the_product_tier_sidecar(self):
+        """start_run's, not a contributor's: "how was this run invoked" has one
+        answer per run, while each pipeline_init's resolved window differs per
+        Source and a multi-contributor run has no single value for it."""
+        s3 = FakeS3({
+            "pipeline_runs/NASA-SSH/20250528T120000/run_params.json": json.dumps(
+                {"published_product": "NASA-SSH", "start": "2025-05-01",
+                 "end": "2025-05-31", "force_update": True}
+            ).encode(),
+            # A contributor's sidecar must not be picked up in its place.
+            "pipeline_runs/S6/20250528T120000/run_params.json": json.dumps(
+                {"source": "S6", "start": "2099-01-01"}
+            ).encode(),
+        })
+        params = summarizer.read_run_params(s3, "b", "NASA-SSH", "20250528T120000")
         self.assertEqual(params["start"], "2025-05-01")
         self.assertTrue(params["force_update"])
 
@@ -274,8 +326,8 @@ class TestRenderNotification(unittest.TestCase):
 
     def test_subject_and_body(self):
         summary = {
-            "source": "S6",
             "published_product": "NASA-SSH",
+            "contributors": ["GSFC", "S6"],
             "run_id": "R1",
             "completed_at": "t",
             "product_pipelines": {
@@ -290,15 +342,35 @@ class TestRenderNotification(unittest.TestCase):
             },
         }
         subject, body = summarizer.render_notification(summary)
-        self.assertIn("Pipeline success: S6 / R1", subject)
-        self.assertIn("S6 → NASA-SSH", body)
+        # The product is the subject of the run; the contributors are how it was fed.
+        self.assertIn("Pipeline success: NASA-SSH / R1", subject)
+        self.assertIn("Product: NASA-SSH ← GSFC, S6", body)
         self.assertIn("incomplete-lineage", body)
         # nominal run with no parameters sidecar
         self.assertIn("Parameters: none (scheduled defaults)", body)
 
+    def test_single_contributor_is_still_listed(self):
+        """So the reference line's two-mission handover weeks read the same as
+        its one-mission weeks."""
+        summary = {
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1",
+            "completed_at": "t", "parameters": {}, "product_pipelines": {},
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("Product: NASA-SSH ← S6", body)
+
+    def test_no_contributors_renders_the_product_alone(self):
+        summary = {
+            "published_product": "NASA-SSH", "contributors": [], "run_id": "R1",
+            "completed_at": "t", "parameters": {}, "product_pipelines": {},
+        }
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("Product: NASA-SSH", body)
+        self.assertNotIn("←", body)
+
     def test_params_overrides_rendered(self):
         summary = {
-            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1", "completed_at": "t",
             "parameters": {"start": "2025-05-01", "end": "2025-05-31", "force_update": True},
             "product_pipelines": {},
         }
@@ -307,7 +379,7 @@ class TestRenderNotification(unittest.TestCase):
 
     def test_along_track_folds_publication_when_complete(self):
         summary = {
-            "source": "S6", "published_product": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {
@@ -340,7 +412,7 @@ class TestRenderNotification(unittest.TestCase):
 
     def test_along_track_surfaces_publication_shortfall(self):
         summary = {
-            "source": "S6", "published_product": "NASA-SSH", "run_id": "R1", "completed_at": "t",
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {
@@ -365,7 +437,7 @@ class TestRenderNotification(unittest.TestCase):
     def test_filenames_capped(self):
         outputs = [{"key": f"d/f_{i}.nc", "kind": "simple_grid"} for i in range(summarizer._MAX_LISTED + 5)]
         summary = {
-            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "gridded": {
@@ -428,7 +500,6 @@ class TestSummarizeBadPasses(unittest.TestCase):
 class TestGatherBadPasses(unittest.TestCase):
 
     def test_gather_reads_bad_pass_results(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
         prefix = "pipeline_runs/S6/20250528T120000/results/bad_pass/"
         s3 = FakeS3({
             prefix + "run/SUCCEEDED_0.json": _bad_pass_succeeded_file([
@@ -436,18 +507,114 @@ class TestGatherBadPasses(unittest.TestCase):
                 {"date": "2025-01-02", "source": "S6", "count": 0},
             ]),
         })
-        _, _, _, bad_pass_results = summarizer.gather(s3, "b", jobs_key)
+        _, _, _, bad_pass_results = summarizer.gather(
+            s3, "b", "NASA-SSH", "20250528T120000", ["S6"]
+        )
         # the raw Lambda envelope is unwrapped back to the handler return
         counts = {r["date"]: r["count"] for r in bad_pass_results}
         self.assertEqual(counts, {"2025-01-01": 2, "2025-01-02": 0})
 
 
+class TestGatherAcrossContributors(unittest.TestCase):
+    """The source tier is read once per contributor and concatenated.
+
+    Reconciling one contributor's leg would report a shortfall for every other
+    contributor's dates — on a clean run. GSFC ends 2025-12-31 and S6 starts
+    2026-01-01, so a run over the handover has both.
+    """
+
+    def _handover_bucket(self):
+        objects = {}
+        for source, dates in (("GSFC", ["2025-12-30", "2025-12-31"]),
+                              ("S6", ["2026-01-01", "2026-01-02"])):
+            objects[f"pipeline_runs/{source}/R1/jobs.json"] = json.dumps(
+                [{"date": d, "source": source} for d in dates]
+            ).encode()
+            objects[f"pipeline_runs/{source}/R1/results/finalizer/m/SUCCEEDED_0.json"] = (
+                _succeeded_file([
+                    _outcome("finalizer", d, "daily_file_p3", f"{source}_{d}.nc")
+                    for d in dates
+                ])
+            )
+            objects[f"pipeline_runs/{source}/R1/results/publisher_along_track/m/SUCCEEDED_0.json"] = (
+                _succeeded_file([
+                    _outcome("publisher", d, "published_along_track", f"pub_{d}.nc")
+                    for d in dates
+                ])
+            )
+        objects["pipeline_runs/NASA-SSH/R1/sg_jobs.json"] = json.dumps(
+            [{"date": "2025-12-29"}]
+        ).encode()
+        return FakeS3(objects)
+
+    def test_manifest_dates_union_both_contributors(self):
+        manifests, _o, _p, _bp = summarizer.gather(
+            self._handover_bucket(), "b", "NASA-SSH", "R1", ["GSFC", "S6"]
+        )
+        self.assertEqual(
+            summarizer.manifest_dates(manifests["along_track"]),
+            ["2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02"],
+        )
+
+    def test_outcomes_concatenate_across_contributors(self):
+        _m, outcomes, _p, _bp = summarizer.gather(
+            self._handover_bucket(), "b", "NASA-SSH", "R1", ["GSFC", "S6"]
+        )
+        self.assertEqual(len(outcomes["along_track"]["finalizer"]), 4)
+        self.assertEqual(len(outcomes["along_track"]["publisher_along_track"]), 4)
+
+    def test_a_clean_handover_run_reports_nothing_missing(self):
+        s3 = self._handover_bucket()
+        manifests, outcomes, params, bad_pass = summarizer.gather(
+            s3, "b", "NASA-SSH", "R1", ["GSFC", "S6"]
+        )
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC", "S6"], manifests, outcomes,
+            run_params=params, bad_pass_results=bad_pass, completed_at="t",
+        )
+        at = summary["product_pipelines"]["along_track"]
+        self.assertEqual(at["expected"], 4)
+        self.assertEqual(at["deliverables"]["daily_file_p3"]["produced"], 4)
+        self.assertEqual(at["missing"], [])
+
+    def test_reading_one_contributor_only_would_have_shown_a_shortfall(self):
+        """The regression this guards: the pre-Phase-4 shape reconciled a single
+        jobs_key, which under a product-keyed run is one contributor's leg."""
+        s3 = self._handover_bucket()
+        manifests, outcomes, _p, _bp = summarizer.gather(
+            s3, "b", "NASA-SSH", "R1", ["GSFC"]
+        )
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC"], manifests, outcomes, completed_at="t"
+        )
+        self.assertEqual(summary["product_pipelines"]["along_track"]["expected"], 2)
+
+    def test_bad_pass_results_are_read_per_contributor(self):
+        s3 = self._handover_bucket()
+        for source, count in (("GSFC", 2), ("S6", 5)):
+            s3.objects[
+                f"pipeline_runs/{source}/R1/results/bad_pass/m/SUCCEEDED_0.json"
+            ] = _bad_pass_succeeded_file(
+                [{"date": "2025-12-30", "source": source, "count": count}]
+            )
+        _m, _o, _p, bad_pass = summarizer.gather(s3, "b", "NASA-SSH", "R1", ["GSFC", "S6"])
+        self.assertEqual(summarizer.summarize_bad_passes(bad_pass)["total_flagged"], 7)
+
+    def test_a_missing_contributor_manifest_reconciles_as_empty(self):
+        """Unlike merge_manifests, which fails on one: by the time the summary
+        runs the tiers are done, and erroring here would turn a reportable
+        shortfall into no report at all (ADR 0005: never fail a good run)."""
+        manifests, _o, _p, _bp = summarizer.gather(
+            FakeS3(), "b", "NASA-SSH", "R1", ["GSFC", "S6"]
+        )
+        self.assertEqual(manifests["along_track"], [])
+
+
 class TestBuildSummaryBadPasses(unittest.TestCase):
 
     def test_bad_passes_threaded_into_artifact(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
         summary = summarizer.build_summary(
-            jobs_key, {}, {},
+            "NASA-SSH", "R1", ["S6"], {}, {},
             bad_pass_results=[{"date": "2025-01-02", "source": "S6", "count": 4}],
             completed_at="t",
         )
@@ -455,8 +622,7 @@ class TestBuildSummaryBadPasses(unittest.TestCase):
         self.assertEqual(summary["bad_passes"]["by_date"], [{"date": "2025-01-02", "count": 4}])
 
     def test_bad_passes_default_empty(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
-        summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
+        summary = summarizer.build_summary("NASA-SSH", "R1", ["S6"], {}, {}, completed_at="t")
         self.assertEqual(summary["bad_passes"]["total_flagged"], 0)
         self.assertEqual(summary["bad_passes"]["dates_reported"], 0)
 
@@ -467,7 +633,7 @@ class TestRenderBadPasses(unittest.TestCase):
         # bad_pass lines render *within* the along_track section, so the summary
         # must carry one (mirrors the real artifact from build_summary).
         return {
-            "source": "S6", "published_product": None, "run_id": "R1", "completed_at": "t",
+            "published_product": "NASA-SSH", "contributors": ["S6"], "run_id": "R1", "completed_at": "t",
             "parameters": {},
             "product_pipelines": {
                 "along_track": {
@@ -522,15 +688,14 @@ class TestRenderBadPasses(unittest.TestCase):
 
 class TestBuildSummaryParameters(unittest.TestCase):
     def test_parameters_threaded_into_artifact(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
         summary = summarizer.build_summary(
-            jobs_key, {}, {}, run_params={"force_update": True}, completed_at="t"
+            "NASA-SSH", "R1", ["S6"], {}, {},
+            run_params={"force_update": True}, completed_at="t",
         )
         self.assertEqual(summary["parameters"], {"force_update": True})
 
     def test_parameters_default_empty(self):
-        jobs_key = "pipeline_runs/S6/20250528T120000/jobs.json"
-        summary = summarizer.build_summary(jobs_key, {}, {}, completed_at="t")
+        summary = summarizer.build_summary("NASA-SSH", "R1", ["S6"], {}, {}, completed_at="t")
         self.assertEqual(summary["parameters"], {})
 
 

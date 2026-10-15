@@ -72,6 +72,10 @@ _Avoid_: source (the whole point is that these are different kinds of thing), in
 The declared production fact: `enabled: true` in a **Source**'s `common` section. Registry membership is not production membership — a product-keyed run fans out over every Source resolving to the named **Published product**, so a staged-but-unintegrated Source would otherwise be pulled in by the act of existing. Defaults to `false`.
 _Avoid_: active, live, on
 
+**Schedule**:
+One EventBridge rule that triggers a run, naming a **Published product** in its input. Hand-maintained in AWS and mirrored in `utilities/schedules.yaml` so the trigger shape is reviewable; nothing in the repo deploys them. Complementary to **Enabled**, not redundant: Enabled says a Source *may* contribute, a Schedule says when anything runs at all. Both failure modes between them are silent, so a test pairs them.
+_Avoid_: trigger (fine informally, but it also means the EventBridge-to-Step-Functions invocation), cron, rule
+
 **Product type**:
 The product family a **Source** contributes to. Currently `reference` (TOPEX/Poseidon-baselined missions: S6, S6B, GSFC) or `high_latitude` (AVISO L2P sources: S3B, planned S3A/SARAL/HY-2B). Resolves the **Product** for each family the Source feeds (`along_track_{product_type}`, `simple_grid_{product_type}`) — and with it the filename family (`alt_ref_at_*` vs `alt_hilat_at_*`) and the in-file identity — plus the processor class and which downstream stages apply.
 _Avoid_: product family, mission class
@@ -98,7 +102,7 @@ The adapter at the discovery seam. Given a source and a date range, returns the 
 Pipeline_init's internal record of a discovered granule: `(date, uri, mod_time, ...)`. Only the URI is serialized into the **manifest**; mod_time is consumed during planning, not propagated.
 
 **Manifest** (or **jobs manifest**):
-The JSON file written to S3 by pipeline_init at `pipeline_runs/{source}/{run_id}/jobs.json`, consumed as the Distributed Map item source by the daily_files state machine. The seam between planning (pipeline_init) and execution (daily_files).
+The JSON file listing the dates a tier will process, consumed as the Distributed Map item source. One per **Contributor** on the **Source tier**, written by pipeline_init at `pipeline_runs/{source}/{run_id}/jobs.json`; one on the **Product tier**, written by `merge_manifests` at `pipeline_runs/{published_product}/{run_id}/jobs.json` as the union of the contributors' dates. The seam between planning and execution, and — at the tier boundary — between a Source-keyed and a Published-product-keyed view of the same run.
 
 **Job spec**:
 One entry in the manifest. Shape: `{date, source, bucket, granules: [uri, ...]}`. Carries exactly what daily_files needs to fetch and process a single (source, date) — nothing more.
@@ -106,12 +110,16 @@ One entry in the manifest. Shape: `{date, source, bucket, granules: [uri, ...]}`
 ## Results & reconciliation
 
 **Product pipeline**:
-A processing track within the top-level **pipeline** that owns one **manifest** and produces a coherent family of deliverables, reconciled independently. Two today: the *along-track product pipeline* (`at_pipeline` → P3 daily files, plus their promotion by the **publisher**) and the *gridded product pipeline* (`sg_pipeline` → simple grids and their promotion, ENSO, indicators). The publisher is wired at the top tier rather than inside `at_pipeline` (see [ADR 0003](adr/0003-failure-surfacing.md)); the along-track Run summary claims its outcomes via a stage→product-pipeline ownership mapping regardless. Partitions the pipeline along a different axis from **Source tier** / **Product tier**: a Product pipeline is a *manifest* boundary, a tier is a *keying* boundary.
+A processing track within the top-level **pipeline** that owns one **manifest** and produces a coherent family of deliverables, reconciled independently. Two today: the *along-track product pipeline* (`at_pipeline` → P3 daily files, plus their promotion by the **publisher**) and the *gridded product pipeline* (`sg_pipeline` → simple grids and their promotion, ENSO, indicators). The publisher is wired beside `at_pipeline` rather than inside it (see [ADR 0003](adr/0003-failure-surfacing.md)) — on the along-track side, within the parent's source-tier Map; the along-track Run summary claims its outcomes via a stage→product-pipeline ownership mapping regardless. Partitions the pipeline along a different axis from **Source tier** / **Product tier**: a Product pipeline is a *manifest* boundary, a tier is a *keying* boundary.
 _Avoid_: sub-pipeline, parent SM, stage group.
 
 **Source tier** / **Product tier**:
-The two keying regimes a run passes through. The *source tier* is keyed on a **Source** — planning, the along-track chain, and the promotion of each contributor's P3 — and its manifest lives at `pipeline_runs/{source}/{run_id}/jobs.json`. The *product tier* is keyed on a **Published product** — simple grids, their promotion, ENSO, indicators — and its manifest is the one `rewrite_manifest` writes under a further `{published_product}/` segment. The boundary is where `source` stops being the right key, because several Sources feed one line.
+The two keying regimes a run passes through, and the two tiers the product-keyed parent composes. The *source tier* is keyed on a **Source** — planning, the along-track chain, and the promotion of each contributor's P3 — and is Mapped across the **Contributors**, each leg living under `pipeline_runs/{source}/{run_id}/`. The *product tier* is keyed on a **Published product** — simple grids, their promotion, ENSO, indicators — and lives under `pipeline_runs/{published_product}/{run_id}/`, with the manifest `merge_manifests` writes there. The boundary is where `source` stops being the right key, because several Sources feed one line. Both tiers are independently optional: a high-latitude satellite's line has only the first, and the deferred composite grid would have only the second. One **Run id** spans both. See [ADR 0010](adr/0010-product-keyed-orchestration.md).
 _Avoid_: phase, stage group, upstream/downstream
+
+**Run id**:
+The UTC timestamp identifying one execution of the product-keyed parent, minted once by `start_run` and handed to every tier. Both tiers' artifacts — manifests, `ResultWriter` outputs, the params sidecars, the **Run summary** — live under `pipeline_runs/{identity}/{run_id}/`, where `identity` is whatever that tier is keyed on. Shared rather than per-leg: the product tier joins its contributors' manifests on it, and nothing else connects a run's two tiers.
+_Avoid_: execution id (reserved for the Step Functions ARN), timestamp, batch id
 
 **Job outcome**:
 The produced-side counterpart of a **Job spec** — what a deliverable **stage** declares after processing one item. Shape: `{schema_version, stage, status, date, source, outputs: [...], metadata: {...}}`. Returned by the handler and persisted per item in the Distributed Map's `ResultWriter` `SUCCEEDED_n.json`; the success-path analog of the structured `FAILED_n.json` entry ([ADR 0003](adr/0003-failure-surfacing.md)).
@@ -122,7 +130,7 @@ One produced artifact named inside a **Job outcome**: `{key, kind, ...}`. The pr
 _Avoid_: file, artifact, product (when the S3 object is meant).
 
 **Run summary**:
-The per-**Product pipeline** reconciliation of expected vs produced — **Job specs** from the **manifest** against **Job outcomes** from `ResultWriter` — grouped by **stage**/deliverable, with skipped or missing items and their reasons. What **failure_handling** renders into the success SNS notification, replacing the prior S3-listing-and-`YYYYMMDD`-token-matching inference.
+The per-**Product pipeline** reconciliation of expected vs produced — **Job specs** from the **manifest** against **Job outcomes** from `ResultWriter` — grouped by **stage**/deliverable, with skipped or missing items and their reasons. One per run, keyed on the **Published product** rather than on a Source: the along-track side reconciles the *union* across every **Contributor**, since a run that produced all of GSFC's and all of S6's dates has no shortfall, and reconciling either leg alone would report the other's dates as missing. Written at `pipeline_runs/{published_product}/{run_id}/summary.json` and rendered into the success SNS notification, replacing the prior S3-listing-and-`YYYYMMDD`-token-matching inference.
 _Avoid_: report, status (overloaded), manifest.
 
 **processing_history**:
@@ -189,6 +197,7 @@ _Avoid_: error_handler, on_failure
 - **Crossover** statistics drive both **OER** (which produces P2) and **bad pass** flagging (consumed during finalization to produce P3).
 - A **Source**'s **Crossover type** follows from its **Product type**: a `reference` Source uses **Self-crossovers**; a `high_latitude` Source uses **Reference-mission crossovers** against the **reference mission** (the released NASA-SSH along-track product).
 - A **Source** publishes to exactly one **Published product**, derived from its **Product type**; a **Published product** has one or more **Contributors**. Whether a Source is in a run is decided by **Enabled** alone.
+- A **Schedule** triggers a run of one **Published product**; the run resolves to that product's **Enabled Contributors**, Maps the **Source tier** over them, and runs the **Product tier** if the line publishes a grid.
 - A pipeline-run failure is classified as a **Code failure**, **Runtime failure**, or **Auth failure**; **failure_handling** groups failed items by this classification in the SNS notification.
 - The top-level **pipeline** is composed of **Product pipelines**; each owns one **manifest** and yields a deliverable family.
 - A deliverable **stage** declares one **Job outcome** per processed item (naming its **Outputs**), persisted in `ResultWriter`; a **Product pipeline**'s **Run summary** reconciles those **Job outcomes** against its **manifest**'s **Job specs**.

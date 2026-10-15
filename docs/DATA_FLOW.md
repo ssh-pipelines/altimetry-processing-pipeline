@@ -17,6 +17,15 @@ The gridded products hang off the reference line only. They read the *published*
 reference along-track product, not any source's staging files
 ([ADR 0008](adr/0008-published-products-prefix.md)).
 
+A **run is triggered by published product**, which is what makes the diagram's two
+halves two *tiers* of one execution rather than two unrelated pipelines. The
+trigger resolves the line's enabled sources, Maps the along-track chain and the
+publisher across them (the **source tier**, still one independent instance each),
+then runs the gridded products once over the line (the **product tier**). A
+high-latitude satellite's line has no product tier at all, so the gridded branch
+is unreachable from its trigger rather than merely unused
+([ADR 0010](adr/0010-product-keyed-orchestration.md)).
+
 
 ```mermaid
 flowchart TB
@@ -57,7 +66,7 @@ flowchart TB
     UP --> AT
     UA --> AT
 
-    subgraph AT["Along-track product pipeline — one independent run per source, in internal staging"]
+    subgraph AT["Along-track product pipeline — source tier: one independent run per contributing source, in internal staging"]
         direction TB
 
         DF["<i>daily file generation</i><br/>MSS swapped, ssha smoothed, nasa_ssh flag derivation"]
@@ -89,7 +98,7 @@ flowchart TB
     PUB -->|"<code>reference</code>"| NSSH
     PUB -.->|"<code>high_latitude</code>"| HLP
 
-    subgraph SG["Gridded product pipeline — reference line only"]
+    subgraph SG["Gridded product pipeline — product tier: once per published line, reference only"]
         direction TB
 
         SGS["<i>simple grids</i><br/>basin-aware Gaussian resample to 0.5°"]
@@ -146,7 +155,10 @@ The publisher runs for *every* source, on both branches; which line a source
 publishes to is derived from its **Product type** rather than configured
 ([ADR 0009](adr/0009-publisher-stage-and-enabled.md)). The reference line has no
 staging representation of its own — it is composed from several missions, so
-`products/` is the only place it exists.
+`products/` is the only place it exists. That composition is also the tier
+boundary: the source tier's per-contributor manifests are unioned into one
+product-tier manifest, and a date claimed by two contributors fails the run rather
+than letting completion order decide which mission's data ships.
 
 The two **runs** boxes at the top group inputs by which family consumes them, which
 is why one input is green: a high-latitude run needs the pipeline's own

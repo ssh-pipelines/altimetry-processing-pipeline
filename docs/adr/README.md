@@ -16,6 +16,7 @@ than an edit to it.
 | [0007](0007-shared-basin-reference-files.md) | Consolidate basin reference files duplicated across stages into one shared directory. | Proposed · 2026-08-24 — loader and connection-table header implemented; directory move pending |
 | [0008](0008-published-products-prefix.md) | Released artifacts live under a `products/` prefix in the same bucket, keyed on Published product; `daily_files/*` and friends are internal staging. A separate bucket was rejected because the pipeline consumes its own published product. | Accepted · 2026-10-14 |
 | [0009](0009-publisher-stage-and-enabled.md) | The unifier generalizes into one `publisher` every source runs, family as an argument; the `unify` double gate is deleted rather than rekeyed because published identity is derivable, and `enabled` becomes the explicit production fact. | Accepted · 2026-10-14 |
+| [0010](0010-product-keyed-orchestration.md) | A trigger names a Published product, not a Source. The parent composes two independently optional tiers — a source tier Mapped over contributors, a product tier for the gridded products — each on its own run path under one shared `run_id`. Event-driven fan-in was rejected because it destroys run-scoped reconciliation. | Accepted · 2026-10-15 |
 
 ## Writing a new one
 

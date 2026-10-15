@@ -104,30 +104,53 @@ class TestBadPass(unittest.TestCase):
 
 
 class TestPipelineRuns(unittest.TestCase):
-    def test_jobs_manifest_key(self):
+    """Both tiers key their run path on whatever they are keyed on, sharing one
+    run_id. The gridded manifest used to nest under the source tier's path
+    (`pipeline_runs/S6/{run_id}/NASA-SSH/jobs.json`), which forced every results
+    helper to ignore the identity it was handed; those pins are deliberately
+    replaced rather than loosened — the layout itself changed."""
+
+    def test_jobs_manifest_key_source_tier(self):
         key = jobs_manifest_key("S6", "20250219T120000")
         self.assertEqual(key, "pipeline_runs/S6/20250219T120000/jobs.json")
 
-    def test_stage_results_prefix_at_side(self):
+    def test_jobs_manifest_key_product_tier(self):
+        """Same function, same depth: the product tier is a sibling of its
+        contributors' paths, not a child of one of them."""
+        key = jobs_manifest_key("NASA-SSH", "20250219T120000")
+        self.assertEqual(key, "pipeline_runs/NASA-SSH/20250219T120000/jobs.json")
+
+    def test_stage_results_prefix_source_tier(self):
         self.assertEqual(
-            stage_results_prefix(
-                "pipeline_runs/S6/20250528T120000/jobs.json", "daily_file"
-            ),
+            stage_results_prefix("S6", "20250528T120000", "daily_file"),
             "pipeline_runs/S6/20250528T120000/results/daily_file/",
         )
 
-    def test_stage_results_prefix_sg_side_uses_original_source(self):
-        """Gridded-tier sg_jobs.json: $p[1] is the original source, $p[2] is run_id."""
+    def test_stage_results_prefix_product_tier(self):
         self.assertEqual(
-            stage_results_prefix(
-                "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso"
-            ),
-            "pipeline_runs/S6/20250528T120000/results/enso/",
+            stage_results_prefix("NASA-SSH", "20250528T120000", "enso"),
+            "pipeline_runs/NASA-SSH/20250528T120000/results/enso/",
         )
 
-    def test_stage_results_prefix_rejects_short_jobs_key(self):
+    def test_stage_results_prefix_matches_leaf_asl_jsonata(self):
+        """The leaf ASLs build this prefix from the first three segments of the
+        manifest key they were handed. Pin that the two agree for both tiers,
+        since nothing in the suite evaluates the JSONata itself."""
+        for identity, manifest in (
+            ("S6", jobs_manifest_key("S6", "R1")),
+            ("NASA-SSH", layout.sg_jobs_key(jobs_manifest_key("NASA-SSH", "R1"))),
+        ):
+            parts = manifest.split("/")
+            jsonata = f"{parts[0]}/{parts[1]}/{parts[2]}/results/finalizer/"
+            self.assertEqual(stage_results_prefix(identity, "R1", "finalizer"), jsonata)
+
+    def test_stage_results_prefix_rejects_blank_identity(self):
         with self.assertRaises(ValueError):
-            stage_results_prefix("a/b", "enso")
+            stage_results_prefix("", "20250528T120000", "enso")
+
+    def test_stage_results_prefix_rejects_blank_run_id(self):
+        with self.assertRaises(ValueError):
+            stage_results_prefix("NASA-SSH", "", "enso")
 
     def test_jobs_key_identity(self):
         self.assertEqual(
@@ -135,13 +158,12 @@ class TestPipelineRuns(unittest.TestCase):
             ("S6", "20250528T120000"),
         )
 
-    def test_jobs_key_identity_gridded_tier_uses_original_source(self):
-        self.assertEqual(
-            layout.jobs_key_identity(
-                "pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"
-            ),
-            ("S6", "20250528T120000"),
-        )
+    def test_jobs_key_identity_inverts_jobs_manifest_key(self):
+        for identity in ("S6", "NASA-SSH", "NASA-SSH_S3B"):
+            key = jobs_manifest_key(identity, "20250528T120000")
+            self.assertEqual(
+                layout.jobs_key_identity(key), (identity, "20250528T120000")
+            )
 
     def test_jobs_key_identity_rejects_short(self):
         with self.assertRaises(ValueError):
@@ -149,14 +171,24 @@ class TestPipelineRuns(unittest.TestCase):
 
     def test_sg_jobs_key(self):
         self.assertEqual(
-            layout.sg_jobs_key("pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json"),
-            "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json",
+            layout.sg_jobs_key("pipeline_runs/NASA-SSH/20250528T120000/jobs.json"),
+            "pipeline_runs/NASA-SSH/20250528T120000/sg_jobs.json",
         )
 
-    def test_run_summary_key(self):
+    def test_run_summary_key_is_product_keyed(self):
         self.assertEqual(
-            layout.run_summary_key("S6", "20250528T120000"),
-            "pipeline_runs/S6/20250528T120000/summary.json",
+            layout.run_summary_key("NASA-SSH", "20250528T120000"),
+            "pipeline_runs/NASA-SSH/20250528T120000/summary.json",
+        )
+
+    def test_run_params_key_per_tier(self):
+        """Two sidecars per run, one per tier, distinguished only by identity."""
+        self.assertEqual(
+            layout.run_params_key("NASA-SSH", "R1"),
+            "pipeline_runs/NASA-SSH/R1/run_params.json",
+        )
+        self.assertEqual(
+            layout.run_params_key("S6", "R1"), "pipeline_runs/S6/R1/run_params.json"
         )
 
 

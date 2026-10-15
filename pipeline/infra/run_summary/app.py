@@ -1,11 +1,12 @@
 """``run_summary`` Lambda — success-path reconciliation (ADR 0005).
 
-Replaces the ``Notify Success`` invocation of ``failure_handling``. Runs once at the top of
-``pipeline.asl`` after the gridded pipeline succeeds, given the same input the old success
-path received: ``{jobs_key, bucket, source}``. It reconciles expected (manifests) vs produced
-(ResultWriter Job outcomes), writes the **Run summary** artifact, and publishes the success
-SNS. Like ``failure_handling``, it never raises — a summarizer fault must not fail an
-otherwise-successful run (the ASL also guards this with a Catch → Succeed).
+Replaces the ``Notify Success`` invocation of ``failure_handling``. Runs once at the end of
+``pipeline.asl``, given the run envelope
+``{bucket, published_product, run_id, contributors}``. It reconciles expected (manifests)
+vs produced (ResultWriter Job outcomes) across *every* contributor on the source tier and
+the one product-tier manifest, writes the **Run summary** artifact, and publishes the
+success SNS. Like ``failure_handling``, it never raises — a summarizer fault must not fail
+an otherwise-successful run (the ASL also guards this with a Catch → Succeed).
 """
 
 import json
@@ -25,23 +26,34 @@ SNS_TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
 
 
 def handler(event, context):
-    jobs_key = event.get("jobs_key", "")
     bucket = event.get("bucket", "")
+    published_product = event.get("published_product", "")
+    run_id = event.get("run_id", "")
+    # A product-tier-only run (the deferred composite grid) will have none, which
+    # reconciles the gridded section and reports an empty source tier — correct
+    # rather than degraded, so this is not defaulted away into an error.
+    contributors = event.get("contributors") or []
 
-    if not jobs_key or not bucket:
-        logger.error("run_summary requires jobs_key and bucket; got %s", event)
-        return {"status": "skipped", "reason": "missing jobs_key or bucket"}
+    if not bucket or not published_product or not run_id:
+        logger.error(
+            "run_summary requires bucket, published_product and run_id; got %s", event
+        )
+        return {"status": "skipped", "reason": "missing run identity"}
 
-    manifests, outcomes, run_params, bad_pass_results = summarizer.gather(s3, bucket, jobs_key)
+    manifests, outcomes, run_params, bad_pass_results = summarizer.gather(
+        s3, bucket, published_product, run_id, contributors
+    )
     summary = summarizer.build_summary(
-        jobs_key,
+        published_product,
+        run_id,
+        contributors,
         manifests,
         outcomes,
         run_params=run_params,
         bad_pass_results=bad_pass_results,
     )
 
-    key = summarizer.summary_key(jobs_key)
+    key = summarizer.summary_key(published_product, run_id)
     try:
         s3.put_object(
             Bucket=bucket,
@@ -57,6 +69,10 @@ def handler(event, context):
     try:
         sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
     except Exception as e:
-        logger.error("Could not publish success SNS for %s: %s", jobs_key, e)
+        logger.error("Could not publish success SNS for %s/%s: %s", published_product, run_id, e)
 
-    return {"status": "summarized", "source": summary["source"], "run_id": summary["run_id"]}
+    return {
+        "status": "summarized",
+        "published_product": summary["published_product"],
+        "run_id": summary["run_id"],
+    }

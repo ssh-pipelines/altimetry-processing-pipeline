@@ -12,6 +12,52 @@ production. The entries below ship in the code but remain unannounced until that
 source is fully supported.
 
 ### Changed
+- **Pipeline runs are triggered by published product, not by source.** The trigger
+  input changes from `{source: "S6"}` to `{published_product: "NASA-SSH"}`, and
+  `pipeline.asl.json` composes two independently optional tiers over it: a *source
+  tier* Mapped across the line's `enabled` contributors (planning, the along-track
+  chain, publication) and a *product tier* run once over the line (simple grids,
+  their promotion, ENSO, indicators).
+
+  **The 16 EventBridge schedules must be updated to the new input shape**; nothing
+  in the repo deploys them. They are now mirrored in `utilities/schedules.yaml` so
+  the trigger shape is reviewable, with a test pairing them against the source
+  registry in both directions.
+
+  A high-latitude satellite's line has no product tier, so ENSO and indicators are
+  unreachable from a per-satellite trigger rather than fatal — which is what makes
+  `enabled: true` safe to set on a high-latitude source. `product_type` drives the
+  fan-out, so 15 satellites are 15 schedules and no new code. See ADR 0010.
+- **A contributor's failure now fails the whole product run** (`ToleratedFailureCount: 0`).
+  Per-source executions were independent, so a GSFC failure could not previously
+  block S6. Tolerating it would run the gridded tier over whatever dates landed and
+  publish a grid across a hole from a *successful* run; the reference contributors
+  have disjoint date ranges, so on any given week only one has data to contribute.
+- **`rewrite_manifest` is now `merge_manifests`.** It unions the contributors'
+  manifests into one product-tier manifest instead of stamping a published product
+  onto a single source's, and **fails the run when two contributors claim the same
+  date** rather than letting Map completion order decide which mission's data ships.
+  The AWS function `${stage}-rewrite_manifest` is not deleted by the deploy scripts
+  and must be removed by hand.
+- **Each tier has its own run path**, sharing one `run_id` minted by the new
+  `start_run` Lambda. The product tier's manifest moves from
+  `pipeline_runs/{source}/{run_id}/{published_product}/jobs.json` to
+  `pipeline_runs/{published_product}/{run_id}/jobs.json` — a sibling of its
+  contributors' paths rather than a child of one of them. `stage_results_prefix`
+  takes `(identity, run_id, stage)` instead of parsing a manifest key to recover an
+  identity it then ignored; the leaf state machines' ResultWriter JSONata is
+  unchanged, since those three path segments now mean the same thing in both tiers.
+- **`pipeline_init` requires a `run_id`** rather than minting one. A locally
+  generated one would write to a run path nothing else in the execution reads, and
+  the product tier would silently see one fewer contributor.
+- **The Run summary is per published product.** `summary.json` moves to
+  `pipeline_runs/{published_product}/{run_id}/summary.json`, replaces its top-level
+  `source` with `published_product` + `contributors`, names a list of manifests per
+  product pipeline, and reconciles the *union* across every contributor on the
+  along-track side — reconciling one leg alone would report the others' dates as
+  missing on a clean run. Its `schema_version` is now its own (2) rather than
+  `job_outcome.SCHEMA_VERSION`, which stays at 1 because Job outcomes are unchanged.
+  The success email heads with `Product: NASA-SSH ← GSFC, S6`.
 - **Released artifacts now live under a `products/` prefix**, keyed on *published
   product* rather than on source, and separate from the internal staging area
   (`daily_files/`, `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`,
@@ -90,10 +136,33 @@ source is fully supported.
   be mistaken for each other; a product with no published template cannot be
   published.
 
+### Added
+- **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published
+  product's `enabled` contributors, mints the one `run_id` both tiers share, computes
+  the product tier's manifest address, decides whether the line has a product tier at
+  all, and records the run's invocation parameters. Containerized rather than a zip
+  infra Lambda: it exists to read the source registry, which a self-contained zip
+  target does not ship.
+
+  **It raises on an empty fan-out**, with distinct messages for a published product no
+  registered source resolves to (a typo) and one whose sources are all disabled (an
+  `enabled` flag). A run over zero contributors would otherwise succeed having
+  produced nothing — indistinguishable downstream from a week with no new upstream
+  data.
+- `utilities/schedules.yaml` and a paired test: every schedule names a resolvable
+  published product with an enabled contributor, and every enabled source's line has
+  a schedule. The two failure modes between `enabled` and a schedule are silent in
+  opposite directions — an enabled source with no schedule never runs, an enabled
+  schedule with no enabled contributor runs and does nothing.
+
 ### Removed
 - `tools/manifest_generation/unifier_manifest.py`. It read a nonexistent
   `utilities/sources.yaml` and raised `FileNotFoundError` before reaching any of its
   logic, so it could not have been a working reference for the new layout.
+- `summarizer`'s published-product-from-jobs-key parser, and the `parts[1]` caveats on
+  `jobs_key_identity` and `stage_results_prefix`. All three existed only because the
+  gridded manifest nested under the source run path, so every results helper had to
+  ignore the identity it was handed.
 
 ### Fixed
 - High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
@@ -113,6 +182,10 @@ source is fully supported.
   the NASA-SSH reference mission, from each pass's own crossovers, collected over a
   5-day window centered on the processing day. The `reference`-source wording is
   byte-identical to what is already distributed.
+- `set_sg_jobs` resolves "today" per invocation. It was bound as a default argument
+  and therefore evaluated at module import, so a warm Lambda container kept planning
+  simple grids against the date it started on — a container alive for two weeks
+  planned two Mondays behind, and dropped the Mondays it had grown past.
 
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed

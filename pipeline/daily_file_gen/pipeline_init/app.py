@@ -28,6 +28,7 @@ def handler(event, context):
     Event parameters:
         - bucket (required): S3 bucket name
         - source (required): Data source name
+        - run_id (required): the run this Source's leg belongs to, minted by start_run
         - force_update (optional): regenerate all dates
         - start, end (optional): ISO date range
     """
@@ -45,6 +46,15 @@ def handler(event, context):
     source = event.get("source")
     if source is None:
         raise ValueError("source job parameter missing.")
+
+    # Minted once per run by `start_run` and handed to every contributor, so the
+    # source tier's manifests and the product tier's share one identity. Required
+    # rather than defaulted: a locally-generated run_id would put this Source's
+    # leg under a run path nothing else in the execution writes to, and the
+    # product tier would silently see one fewer contributor.
+    run_id = event.get("run_id")
+    if run_id is None:
+        raise ValueError("run_id job parameter missing; it is minted by start_run.")
 
     available = get_available_sources()
     if source not in available:
@@ -71,9 +81,11 @@ def handler(event, context):
 
     logging.info(f"Generated {len(jobs)} jobs for processing")
 
-    # Record how this run was invoked. `start`/`end`/`force_update` are the *given*
-    # overrides (null/false on a nominal scheduled run); `resolved_*` capture the range
-    # actually planned after defaulting/capping, for unambiguous provenance.
+    # What the window resolved to *for this Source* after defaulting and capping
+    # to its date range. The given overrides are recorded too, but the run-level
+    # sidecar `start_run` writes is the one the Run summary reports from; this
+    # one exists because `resolved_*` differs per contributor and a run over
+    # several of them has no single answer.
     run_params = {
         "start": event.get("start"),
         "end": event.get("end"),
@@ -83,15 +95,18 @@ def handler(event, context):
         "resolved_end": end.isoformat(),
     }
 
-    jobs_key = write_manifest(bucket, source, jobs, run_params)
+    jobs_key = write_manifest(bucket, source, run_id, jobs, run_params)
 
     # `published_product` rather than a publish gate: every source publishes, and
-    # which line it publishes to follows from its product_type. The orchestrator
-    # needs it on the wire because ASL cannot read the source registry.
+    # which line it publishes to follows from its product_type. Echoed back
+    # although the parent already knows it, so the publisher's Map item can be
+    # built from this Source's own leg and a mismatch would show up as a
+    # publication shortfall rather than a wrong destination.
     return {
         "jobs_key": jobs_key,
         "bucket": bucket,
         "source": source,
+        "run_id": run_id,
         "published_product": published_identity(config),
         "job_count": len(jobs),
     }

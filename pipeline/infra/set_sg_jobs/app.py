@@ -7,11 +7,17 @@ import boto3
 s3 = boto3.client("s3")
 
 
-def last_sg_date(today = date.today()) -> date:
+def last_sg_date(today: date | None = None) -> date:
     """
     Returns the date of the most recent Monday for which a full 10-day window is available.
     The pipeline runs on a Monday cadence and simple grids are generated for Mondays.
+
+    ``today`` is resolved per call, not bound as a default: a warm Lambda
+    container imports this module once and may serve invocations for days, so a
+    default argument would pin the window to whenever the container started.
     """
+    if today is None:
+        today = date.today()
     latest_simple_grid_date = today - timedelta(days=today.weekday())
     while latest_simple_grid_date + timedelta(days=4) >= today:
         latest_simple_grid_date -= timedelta(weeks=1)

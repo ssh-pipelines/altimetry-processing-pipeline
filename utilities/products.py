@@ -125,3 +125,19 @@ def published_simple_grid_product(identity: str) -> Product:
             f"publishes no gridded product."
         )
     return get_product(published.simple_grid)
+
+
+def publishes_simple_grid(identity: str) -> bool:
+    """Whether a published line publishes a grid — and so has a **Product tier**.
+
+    `published_simple_grid_product` raises both for an identity absent from
+    `published_products:` and for one declaring no `simple_grid`; both mean there
+    is nothing to grid, which is one answer to this question. Read by `start_run`
+    for the `gridded` flag the parent branches on, and by `run_summary` to decide
+    which tiers to reconcile.
+    """
+    try:
+        published_simple_grid_product(identity)
+    except ValueError:
+        return False
+    return True

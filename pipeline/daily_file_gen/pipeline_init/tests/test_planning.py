@@ -1,10 +1,11 @@
+import json
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from config.source_config import get_source_config
 from enumeration.base import GranuleRef
-from planning import dates_to_plan, plan_jobs
+from planning import dates_to_plan, plan_jobs, write_manifest
 
 
 class TestPlanJobs(unittest.TestCase):
@@ -184,3 +185,38 @@ class TestDatesToPlan(unittest.TestCase):
         by_date = {date(2018, 12, 31): [], date(2019, 1, 2): []}
         planned = dates_to_plan(date(2019, 1, 1), date(2019, 1, 2), by_date)
         self.assertEqual(planned, [date(2018, 12, 31), date(2019, 1, 1), date(2019, 1, 2)])
+
+
+class TestWriteManifest(unittest.TestCase):
+    """The manifest lands under the run_id it was handed, not one minted here.
+
+    `merge_manifests` is given each contributor's manifest address derived from
+    the shared run_id, so a locally-generated one would leave the product tier
+    reading a key that does not exist.
+    """
+
+    def _write(self, run_id="20260219T120000"):
+        with patch("planning._s3") as s3:
+            key = write_manifest(
+                "test-bucket",
+                "S6",
+                run_id,
+                [{"date": "2026-02-09"}],
+                {"force_update": False},
+            )
+        return key, {c.kwargs["Key"]: c.kwargs["Body"] for c in s3.put_object.call_args_list}
+
+    def test_manifest_key_uses_the_supplied_run_id(self):
+        key, _written = self._write()
+        self.assertEqual(key, "pipeline_runs/S6/20260219T120000/jobs.json")
+
+    def test_params_sidecar_is_a_sibling(self):
+        _key, written = self._write()
+        self.assertIn("pipeline_runs/S6/20260219T120000/run_params.json", written)
+
+    def test_manifest_is_a_bare_list(self):
+        """Its iterators (the Distributed Maps, merge_manifests) index it
+        directly, so the params must not be folded into it."""
+        _key, written = self._write()
+        body = written["pipeline_runs/S6/20260219T120000/jobs.json"]
+        self.assertEqual(json.loads(body), [{"date": "2026-02-09"}])

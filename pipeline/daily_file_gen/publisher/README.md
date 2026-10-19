@@ -7,8 +7,9 @@ gate, because which **Published product** a source feeds is derived from its
 
 One Lambda serves both product families, with `family` as an argument. Invoked
 once per date via a Distributed Map in `state_machines/publisher.asl.json`, which
-is itself invoked once per tier: the along-track tier from `pipeline.asl.json`,
-the gridded tier from `sg_pipeline.asl.json`.
+is itself invoked once per tier: the along-track tier from inside
+`pipeline.asl.json`'s source-tier Map, so once per contributing source; the
+gridded tier from `sg_pipeline.asl.json`, once per published line.
 
 ## How it works
 
@@ -58,9 +59,13 @@ implementation copies from exactly one file. Once two reference missions can
 claim the same date — S6B starts 2025-11-26, five weeks before GSFC ends — this
 becomes a composer, and that change should replace the body without reshaping the
 event or the Job outcome. Until then a date claimed by more than one contributor
-**fails**, rather than letting execution order decide what ships. That is the
-runtime half of the guard; the static half is a registry test asserting that
-every `enabled` `reference` source has a date range disjoint from every other.
+**fails**, rather than letting execution order decide what ships.
+
+That guard is now the innermost of three. `merge_manifests` fails first, when the
+product-tier manifest is assembled from the contributors' manifests; a registry
+test asserting that every `enabled` `reference` source has a date range disjoint
+from every other fails earliest, at review time. This one remains the backstop for
+a hand-invoked promotion that bypasses the parent entirely.
 
 ## Lambda output
 

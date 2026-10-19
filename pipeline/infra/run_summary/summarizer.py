@@ -4,6 +4,14 @@ Reconciles, per **Product pipeline**, the **Job specs** a run expected (from its
 against the **Job outcomes** its deliverable stages produced (from the Distributed Map
 ``ResultWriter``), and assembles the **Run summary** artifact.
 
+A run is one **Published product**'s, not one **Source**'s. Which means the along-track
+side reconciles across *every* contributor: one `{published_product: "NASA-SSH"}` run fans
+out over GSFC and S6, each writing its own manifest and its own ResultWriter outputs under
+its own leg of the run path. The gridded side has exactly one manifest, at the product run
+path. That asymmetry is the **Source tier** / **Product tier** split, and it is why this
+module is handed `(published_product, run_id, contributors)` rather than a single
+`jobs_key` to parse an identity out of.
+
 The pure functions here (`reconcile_pipeline`, `build_summary`) take already-loaded data so
 they are unit-testable without S3; the thin I/O helpers (`read_manifest`, `read_outcomes`)
 wrap boto3 and are exercised with a stubbed client. All S3-key derivation goes through
@@ -16,16 +24,29 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from utilities.job_outcome import SCHEMA_VERSION, SKIPPED, SUCCESS
+from utilities.job_outcome import SKIPPED, SUCCESS
 from utilities.pipeline_layout import (
-    jobs_key_identity,
+    jobs_manifest_key,
     run_params_key,
     run_summary_key,
     sg_jobs_key,
     stage_results_prefix,
 )
+from utilities.products import publishes_simple_grid
 
 logger = logging.getLogger(__name__)
+
+# The Run summary's own wire version, deliberately not ``job_outcome.SCHEMA_VERSION``.
+# The two shapes evolve independently and only this one changed: v2 drops the
+# top-level `source` for `published_product` + `contributors`, because a run is no
+# longer one Source's. Job outcomes are untouched and stay at their own v1.
+RUN_SUMMARY_SCHEMA_VERSION = 2
+
+# Which tier owns each Product pipeline's run path. The along-track manifests and
+# ResultWriter outputs live under each *contributor's* leg; the gridded ones under
+# the published product's.
+SOURCE_TIER = "source"
+PRODUCT_TIER = "product"
 
 
 # A deliverable the run summary reconciles. `anchor` deliverables define a Product
@@ -37,9 +58,13 @@ logger = logging.getLogger(__name__)
 # `stage` is the ResultWriter segment, not the Job outcome's own `stage` field.
 # One publisher Lambda serves both tiers, so each tier's promotion lands under
 # its own `publisher_{family}` segment — the same shape as `xover_{df_version}`.
+#
+# The full catalog, not what any one run reconciles: `applicable_pipelines`
+# narrows it to the tiers a given published line has.
 PRODUCT_PIPELINES = {
     "along_track": {
-        "manifest": lambda jobs_key: jobs_key,
+        "tier": SOURCE_TIER,
+        "manifest": lambda identity, run_id: jobs_manifest_key(identity, run_id),
         "deliverables": [
             {"kind": "daily_file_p3", "stage": "finalizer", "anchor": True, "conditional": False},
             {
@@ -51,7 +76,8 @@ PRODUCT_PIPELINES = {
         ],
     },
     "gridded": {
-        "manifest": lambda jobs_key: sg_jobs_key(jobs_key),
+        "tier": PRODUCT_TIER,
+        "manifest": lambda identity, run_id: sg_jobs_key(jobs_manifest_key(identity, run_id)),
         "deliverables": [
             {"kind": "simple_grid", "stage": "simple_grids", "anchor": True, "conditional": False},
             {
@@ -64,6 +90,25 @@ PRODUCT_PIPELINES = {
         ],
     },
 }
+
+
+def applicable_pipelines(published_product: str) -> dict[str, dict]:
+    """The Product pipelines a published line runs.
+
+    A line with no **Product tier** — a single high-latitude satellite — has no
+    gridded manifest and no gridded stage, so it reconciles the source tier alone.
+
+    Only the gridded side is filtered. Whether a line publishes a grid is a
+    property of the *line*, answered by the registry; whether a run has an
+    along-track side is a property of the *run*, answered by the contributors it
+    was handed, so a contributorless run reports an empty source tier (the
+    deferred product-tier-only shape of ADR 0010).
+    """
+    if publishes_simple_grid(published_product):
+        return PRODUCT_PIPELINES
+    return {
+        name: cfg for name, cfg in PRODUCT_PIPELINES.items() if cfg["tier"] != PRODUCT_TIER
+    }
 
 
 def manifest_dates(job_specs: list[dict]) -> list[str]:
@@ -167,8 +212,23 @@ def summarize_bad_passes(results: list[dict]) -> dict:
     }
 
 
+def manifest_keys(published_product: str, run_id: str, contributors: list[str]) -> dict[str, list[str]]:
+    """Each Product pipeline's manifest key(s) for a run.
+
+    A list per pipeline rather than one key, because the along-track side has one
+    manifest *per contributor* — the plural is the tier split, not defensiveness.
+    """
+    keys: dict[str, list[str]] = {}
+    for name, cfg in applicable_pipelines(published_product).items():
+        identities = contributors if cfg["tier"] == SOURCE_TIER else [published_product]
+        keys[name] = [cfg["manifest"](identity, run_id) for identity in identities]
+    return keys
+
+
 def build_summary(
-    jobs_key: str,
+    published_product: str,
+    run_id: str,
+    contributors: list[str],
     manifests: dict[str, list[dict]],
     outcomes: dict[str, dict[str, list[dict]]],
     *,
@@ -178,48 +238,38 @@ def build_summary(
 ) -> dict:
     """Assemble the Run summary artifact.
 
-    `manifests` maps a Product-pipeline name to its Job specs; `outcomes` maps a
-    Product-pipeline name to its `{stage: [outcome, ...]}`; `run_params` is the
-    pipeline_init invocation sidecar (or `{}` for legacy runs without one);
+    `manifests` maps a Product-pipeline name to its Job specs — already unioned
+    across contributors on the along-track side; `outcomes` maps a Product-pipeline
+    name to its `{stage: [outcome, ...]}`, likewise concatenated; `run_params` is
+    `start_run`'s invocation sidecar (or `{}` for legacy runs without one);
     `bad_pass_results` are the bad_pass stage's raw Job results (or `[]`). All are
     passed in (already loaded) so this stays pure and testable.
     """
-    source, run_id = jobs_key_identity(jobs_key)
-    published_product = _published_product(jobs_key)
     completed_at = completed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    keys = manifest_keys(published_product, run_id, contributors)
 
     product_pipelines = {}
-    for name, cfg in PRODUCT_PIPELINES.items():
+    for name, cfg in applicable_pipelines(published_product).items():
         section = reconcile_pipeline(
             cfg["deliverables"],
             manifest_dates(manifests.get(name, [])),
             outcomes.get(name, {}),
         )
-        section["manifest"] = cfg["manifest"](jobs_key)
+        # A list on the along-track side: naming only one of several contributors'
+        # manifests would point a reader at an incomplete picture of the run.
+        section["manifests"] = keys[name]
         product_pipelines[name] = section
 
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": RUN_SUMMARY_SCHEMA_VERSION,
         "run_id": run_id,
-        "source": source,
         "published_product": published_product,
+        "contributors": list(contributors),
         "completed_at": completed_at,
         "parameters": run_params or {},
         "product_pipelines": product_pipelines,
         "bad_passes": summarize_bad_passes(bad_pass_results or []),
     }
-
-
-def _published_product(jobs_key: str) -> str | None:
-    """The published-product segment of a jobs key, or None.
-
-    The gridded tier's manifest lives at
-    ``pipeline_runs/{source}/{run_id}/{published_product}/jobs.json`` (5 segments);
-    the along-track tier's at ``pipeline_runs/{source}/{run_id}/jobs.json`` (4).
-    Goes away once the product tier gets its own run path.
-    """
-    parts = jobs_key.split("/")
-    return parts[3] if len(parts) >= 5 else None
 
 
 # ─── S3 I/O (thin, stubbed in tests) ──────────────────────────────────────
@@ -286,42 +336,77 @@ def _outcome_from_entry(entry: dict) -> dict | None:
     return output
 
 
-def read_run_params(s3, bucket: str, jobs_key: str) -> dict:
-    """Load the pipeline_init params sidecar for a run. A missing/invalid sidecar
-    (legacy runs predating the feature) yields ``{}`` — the notification then shows
-    "scheduled defaults" rather than erroring."""
-    source, run_id = jobs_key_identity(jobs_key)
+def read_run_params(s3, bucket: str, published_product: str, run_id: str) -> dict:
+    """Load `start_run`'s invocation sidecar from the product run path.
+
+    The run-level one, not a contributor's: the question it answers — how was this
+    run asked for — has one answer per run, while each pipeline_init's sidecar
+    records a per-Source resolved window that a multi-contributor run has no single
+    value for. A missing/invalid sidecar yields ``{}`` and the notification shows
+    "scheduled defaults" rather than erroring.
+    """
+    key = run_params_key(published_product, run_id)
     try:
-        body = s3.get_object(Bucket=bucket, Key=run_params_key(source, run_id))["Body"].read()
+        body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     except Exception as e:
-        logger.info("No run params sidecar for %s (%s); treating as defaults.", jobs_key, e)
+        logger.info("No run params sidecar at %s (%s); treating as defaults.", key, e)
         return {}
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
-        logger.warning("Run params for %s is not valid JSON; ignoring.", jobs_key)
+        logger.warning("Run params %s is not valid JSON; ignoring.", key)
         return {}
     return data if isinstance(data, dict) else {}
 
 
-def gather(s3, bucket: str, jobs_key: str) -> tuple[dict, dict, dict, list[dict]]:
+def _tier_identities(cfg: dict, published_product: str, contributors: list[str]) -> list[str]:
+    """The run-path identities one Product pipeline's artifacts live under."""
+    return contributors if cfg["tier"] == SOURCE_TIER else [published_product]
+
+
+def gather(
+    s3, bucket: str, published_product: str, run_id: str, contributors: list[str]
+) -> tuple[dict, dict, dict, list[dict]]:
     """Load all manifests, outcomes, the params sidecar, and bad_pass results.
 
-    Manifests + outcomes are keyed by Product-pipeline name; run_params is the flat
-    pipeline_init invocation sidecar (or ``{}`` when absent); bad_pass_results are the
-    diagnostic bad_pass stage's raw Job results (``{date, source, count}``), read from
-    its ResultWriter prefix. bad_pass has no `Output: $states.result.Payload` unwrap in
-    its Map, so `read_outcomes`'s defensive envelope-unwrap is what yields the results."""
+    Manifests + outcomes are keyed by Product-pipeline name, with an entry only for
+    the pipelines this line runs: a line with no product tier is read for neither a
+    gridded manifest nor a gridded ResultWriter prefix. On the along-track side
+    both are read once per contributor and concatenated: the run expected the union
+    of their planned dates and produced the union of their outcomes, so reconciling
+    one contributor's leg would report a shortfall for every other contributor's
+    dates. bad_pass_results are the diagnostic bad_pass stage's raw Job results
+    (``{date, source, count}``), read per contributor from its ResultWriter prefix;
+    bad_pass has no `Output: $states.result.Payload` unwrap in its Map, so
+    `read_outcomes`'s defensive envelope-unwrap is what yields them.
+    """
     manifests: dict[str, list[dict]] = {}
     outcomes: dict[str, dict[str, list[dict]]] = {}
-    for name, cfg in PRODUCT_PIPELINES.items():
-        manifests[name] = read_manifest(s3, bucket, cfg["manifest"](jobs_key))
+    for name, cfg in applicable_pipelines(published_product).items():
+        identities = _tier_identities(cfg, published_product, contributors)
+        specs: list[dict] = []
+        for identity in identities:
+            specs += read_manifest(s3, bucket, cfg["manifest"](identity, run_id))
+        manifests[name] = specs
         outcomes[name] = {
-            spec["stage"]: read_outcomes(s3, bucket, stage_results_prefix(jobs_key, spec["stage"]))
+            spec["stage"]: [
+                o
+                for identity in identities
+                for o in read_outcomes(
+                    s3, bucket, stage_results_prefix(identity, run_id, spec["stage"])
+                )
+            ]
             for spec in cfg["deliverables"]
         }
-    run_params = read_run_params(s3, bucket, jobs_key)
-    bad_pass_results = read_outcomes(s3, bucket, stage_results_prefix(jobs_key, "bad_pass"))
+
+    run_params = read_run_params(s3, bucket, published_product, run_id)
+    # bad_pass runs inside each contributor's along-track chain, so its results are
+    # per-Source like the rest of the source tier.
+    bad_pass_results = [
+        r
+        for source in contributors
+        for r in read_outcomes(s3, bucket, stage_results_prefix(source, run_id, "bad_pass"))
+    ]
     return manifests, outcomes, run_params, bad_pass_results
 
 
@@ -440,13 +525,18 @@ def _bad_pass_lines(bp: dict) -> list[str]:
 
 def render_notification(summary: dict) -> tuple[str, str]:
     """(subject, body) for the success SNS, rendered from the Run summary artifact."""
-    source = summary["source"]
-    published = summary.get("published_product")
+    published = summary["published_product"]
+    contributors = summary.get("contributors") or []
     run_id = summary["run_id"]
 
-    source_line = f"Source: {source} → {published}" if published else f"Source: {source}"
+    # The product is the subject of the run; the contributors are how it was fed.
+    # A single-contributor line still lists it, so the reference line's two-mission
+    # handover weeks read the same as its one-mission weeks.
+    product_line = f"Product: {published}"
+    if contributors:
+        product_line += f" ← {', '.join(contributors)}"
     lines = [
-        source_line,
+        product_line,
         f"Run ID: {run_id}",
         f"Completed: {summary['completed_at']}",
         _params_line(summary),
@@ -468,10 +558,11 @@ def render_notification(summary: dict) -> tuple[str, str]:
             lines.append(_missing_line(section["missing"]))
         lines.append("")
 
-    subject = f"Pipeline success: {source} / {run_id}"[:100]
+    subject = f"Pipeline success: {published} / {run_id}"[:100]
     return subject, "\n".join(lines).rstrip()
 
 
-def summary_key(jobs_key: str) -> str:
-    source, run_id = jobs_key_identity(jobs_key)
-    return run_summary_key(source, run_id)
+def summary_key(published_product: str, run_id: str) -> str:
+    """Written at the product run path: a run is one published product's, even
+    when several Sources contributed to it."""
+    return run_summary_key(published_product, run_id)

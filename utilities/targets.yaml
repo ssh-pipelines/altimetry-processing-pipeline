@@ -28,7 +28,11 @@ targets:
   # ── container — lightweight stages (literal FROM lambda/python) ───────
   pipeline_init: {}
   publisher:     {}
-  run_summary:   {}  # orchestration Lambda; ships utilities (see ADR 0005)
+  # Orchestration Lambdas. Containerized rather than zip because they ship
+  # utilities: run_summary for pipeline_layout (ADR 0005), start_run to read the
+  # Source registry (ADR 0010). A zip target is self-contained by construction.
+  run_summary:   {}
+  start_run:     {}
 
   # ── container — base image (built + pushed, never deployed) ───────────
   pipeline_runtime: {deployable: false}
@@ -39,5 +43,5 @@ targets:
   # PODAAC/EDL creds into fixed Secrets Manager secrets for every stage. Deployed
   # only from prod so a dev push can't overwrite the function prod relies on.
   podaac_auth:      {function: podaac_cred_update, deploy_stages: [prod]}
-  rewrite_manifest: {}
+  merge_manifests:  {}
   set_sg_jobs:      {}

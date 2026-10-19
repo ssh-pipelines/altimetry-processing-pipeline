@@ -10,6 +10,7 @@ from utilities.products import (
     published_along_track_product,
     published_identity,
     published_simple_grid_product,
+    publishes_simple_grid,
     registered_contributors,
 )
 from utilities.source_profile import (
@@ -113,6 +114,33 @@ class TestPublishedSimpleGridProduct(unittest.TestCase):
     def test_line_without_a_declared_grid_raises(self):
         with self.assertRaises(ValueError):
             published_simple_grid_product("NASA-SSH_S3B")
+
+
+class TestPublishesSimpleGrid(unittest.TestCase):
+    """The predicate behind "does this line have a product tier", read by both
+    `start_run`'s `gridded` flag and `run_summary`'s tier filter."""
+
+    def test_reference_line_publishes_a_grid(self):
+        self.assertTrue(publishes_simple_grid("NASA-SSH"))
+
+    def test_high_latitude_line_does_not(self):
+        self.assertFalse(publishes_simple_grid("NASA-SSH_S3B"))
+
+    def test_unknown_line_does_not_raise(self):
+        """An unregistered name has nothing to grid, the same answer as a line
+        declaring no grid."""
+        self.assertFalse(publishes_simple_grid("NASA-SSH-typo"))
+
+    def test_agrees_with_the_product_resolution(self):
+        for identity in ("NASA-SSH", "NASA-SSH_S3B", "NASA-SSH-typo"):
+            with self.subTest(identity=identity):
+                try:
+                    published_simple_grid_product(identity)
+                except ValueError:
+                    resolves = False
+                else:
+                    resolves = True
+                self.assertEqual(publishes_simple_grid(identity), resolves)
 
 
 class TestPublishedProductRegistry(unittest.TestCase):

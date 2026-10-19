@@ -151,20 +151,23 @@ def bad_pass_key(source: str, d: date_type | datetime) -> str:
 
 # ─── Pipeline runs (jobs manifest + Distributed Map results) ──────────────
 
-def jobs_manifest_key(source: str, run_id: str) -> str:
-    """Bucket-relative key for the jobs manifest written by pipeline_init.
+def jobs_manifest_key(identity: str, run_id: str) -> str:
+    """Bucket-relative key for a tier's jobs manifest.
+
+    ``identity`` is whatever the tier is keyed on: a **Source** for the source
+    tier (written by pipeline_init), a **Published product** for the product tier
+    (written by merge_manifests). Both tiers of one run share a ``run_id``, so a
+    run is traceable across them without either path nesting inside the other.
 
     Example: pipeline_runs/S6/20250219T120000/jobs.json
+             pipeline_runs/NASA-SSH/20250219T120000/jobs.json
     """
-    return f"pipeline_runs/{source}/{run_id}/jobs.json"
+    return f"pipeline_runs/{identity}/{run_id}/jobs.json"
 
 
 def jobs_key_identity(jobs_key: str) -> tuple[str, str]:
-    """The ``(source, run_id)`` embedded in a jobs manifest key.
-
-    ``source`` is the *original* source segment (e.g. ``S6``) even for a gridded-tier
-    manifest living under a further ``{published_product}/`` segment — it is always
-    ``parts[1]``, matching ``stage_results_prefix``'s first-three-segments rule.
+    """The ``(identity, run_id)`` embedded in a jobs manifest key — the inverse of
+    `jobs_manifest_key`.
 
     Example: jobs_key_identity("pipeline_runs/S6/20250528T120000/jobs.json")
              → ("S6", "20250528T120000")
@@ -177,58 +180,66 @@ def jobs_key_identity(jobs_key: str) -> tuple[str, str]:
 
 def sg_jobs_key(jobs_key: str) -> str:
     """The gridded (simple-grid/ENSO) manifest key for a run, derived from the
-    along-track jobs manifest key. Mirrors the exact convention `set_sg_jobs`
+    product-tier jobs manifest key. Mirrors the exact convention `set_sg_jobs`
     writes by, so the two stay coupled to one definition.
 
-    Example: sg_jobs_key("pipeline_runs/S6/20250528T120000/NASA-SSH/jobs.json")
-             → "pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json"
+    Example: sg_jobs_key("pipeline_runs/NASA-SSH/20250528T120000/jobs.json")
+             → "pipeline_runs/NASA-SSH/20250528T120000/sg_jobs.json"
     """
     return jobs_key.replace("/jobs.json", "/sg_jobs.json")
 
 
-def run_summary_key(source: str, run_id: str) -> str:
-    """Bucket-relative key for a run's Run summary artifact, written alongside
-    the jobs manifest.
+def run_summary_key(identity: str, run_id: str) -> str:
+    """Bucket-relative key for a run's Run summary artifact. Written at the
+    **product** run path: a run is one published product's, even when several
+    Sources contributed to it.
 
-    Example: pipeline_runs/S6/20250528T120000/summary.json
+    Example: pipeline_runs/NASA-SSH/20250528T120000/summary.json
     """
-    return f"pipeline_runs/{source}/{run_id}/summary.json"
+    return f"pipeline_runs/{identity}/{run_id}/summary.json"
 
 
-def run_params_key(source: str, run_id: str) -> str:
-    """Bucket-relative key for a run's parameters sidecar, written by pipeline_init
-    alongside the jobs manifest. Records the overrides the run was launched with
-    (start/end/force_update); a nominal scheduled run records the resolved defaults.
-    The Run summary reads it back so the notification can show how a run was invoked.
+def run_params_key(identity: str, run_id: str) -> str:
+    """Bucket-relative key for a parameters sidecar, written alongside a tier's
+    jobs manifest.
 
-    Example: pipeline_runs/S6/20250528T120000/run_params.json
+    Two are written per run, answering different questions. `start_run` writes
+    the product-tier one — how the run was *invoked* — and that is the one the
+    Run summary reports. Each pipeline_init writes a source-tier one recording
+    what the window *resolved to* for that Source after capping to its date
+    range, which differs per contributor and is forensic rather than reported.
+
+    Example: pipeline_runs/NASA-SSH/20250528T120000/run_params.json
+             pipeline_runs/S6/20250528T120000/run_params.json
     """
-    return f"pipeline_runs/{source}/{run_id}/run_params.json"
+    return f"pipeline_runs/{identity}/{run_id}/run_params.json"
 
 
-def stage_results_prefix(jobs_key: str, stage: str) -> str:
+def stage_results_prefix(identity: str, run_id: str, stage: str) -> str:
     """Bucket-relative prefix for a stage's Distributed Map ResultWriter output.
 
-    Mirrors the JSONata used by every leaf ASL's ResultWriter:
+    Mirrors the JSONata in every leaf ASL's ResultWriter, which takes the first
+    three segments of the manifest key it was handed:
         $p := $split(jobs_key, '/'); $p[0]/$p[1]/$p[2]/results/{stage}/
-    Must take `jobs_key` rather than (source, run_id) because in the gridded tier
-    the SM input is keyed on the published product (e.g. "NASA-SSH") while jobs_key
-    still embeds the original source (e.g. "S6") — and the ResultWriter wrote
-    under the original-source path. Listing by the published product would miss
-    everything.
+    Since each tier's manifest now lives under its own keying identity, those
+    three segments *are* `pipeline_runs/{identity}/{run_id}` for both tiers, so
+    this takes them directly instead of parsing a key to recover an identity it
+    then had to ignore.
 
     The actual on-disk layout under this prefix is `{MapRunArn}/{FAILED,SUCCEEDED,...}_n.json`;
     callers list under this prefix to discover failed items without needing the MapRunArn
     in advance.
 
     Example:
-        stage_results_prefix("pipeline_runs/S6/20250528T120000/NASA-SSH/sg_jobs.json", "enso")
-        → "pipeline_runs/S6/20250528T120000/results/enso/"
+        stage_results_prefix("NASA-SSH", "20250528T120000", "enso")
+        → "pipeline_runs/NASA-SSH/20250528T120000/results/enso/"
     """
-    parts = jobs_key.split("/")
-    if len(parts) < 3:
-        raise ValueError(f"jobs_key too short to derive results prefix: {jobs_key!r}")
-    return f"{parts[0]}/{parts[1]}/{parts[2]}/results/{stage}/"
+    if not identity or not run_id:
+        raise ValueError(
+            f"identity and run_id are both required to derive a results prefix; "
+            f"got identity={identity!r}, run_id={run_id!r}"
+        )
+    return f"pipeline_runs/{identity}/{run_id}/results/{stage}/"
 
 
 # ─── Simple grids (internal staging) ──────────────────────────────────────

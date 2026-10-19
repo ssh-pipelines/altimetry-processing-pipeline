@@ -2,25 +2,63 @@
 
 Success-path reconciliation Lambda. See [ADR 0005](../../../docs/adr/0005-job-outcome-contract-and-run-summary.md).
 
-Runs once at the top of `pipeline.asl` (replacing `Notify Success`) after the gridded
-pipeline succeeds. Given `{jobs_key, bucket}` it:
+Runs once at the end of `pipeline.asl` (replacing `Notify Success`). Given the run
+envelope `{bucket, published_product, run_id, contributors}` it:
 
-1. resolves both manifests (along-track = `jobs_key`; gridded = `sg_jobs_key(jobs_key)`),
-   reading the **Job specs** (expected dates);
+1. resolves each **Product pipeline** the line runs (see *Only the tiers the line
+   has*) and reads its manifest(s)' **Job specs** (expected dates) — one per
+   contributor on the source tier at `pipeline_runs/{source}/{run_id}/jobs.json`, one
+   on the product tier at `pipeline_runs/{published_product}/{run_id}/sg_jobs.json`;
 2. reads **Job outcomes** from each owned stage's `ResultWriter` SUCCEEDED files
    (`along_track ← {finalizer, publisher_along_track}`,
-   `gridded ← {simple_grids, publisher_simple_grid, enso}`). One `publisher` Lambda serves
-   both tiers, so each tier's promotion writes under its own `results/publisher_{family}/`
-   prefix — the `stage` in `PRODUCT_PIPELINES` is that ResultWriter segment, not the Job
-   outcome's own `stage` field;
-3. reads `pipeline_init`'s `run_params.json` sidecar (absent ⇒ `{}` ⇒ "scheduled defaults")
-   so the notification can report how the run was invoked;
-4. reads the diagnostic **bad_pass** stage's results (`results/bad_pass/` ResultWriter)
-   and aggregates the flagged-pass counts per date;
+   `gridded ← {simple_grids, publisher_simple_grid, enso}`), likewise once per
+   contributor on the source tier. One `publisher` Lambda serves both tiers, so each
+   tier's promotion writes under its own `results/publisher_{family}/` prefix — the
+   `stage` in `PRODUCT_PIPELINES` is that ResultWriter segment, not the Job outcome's
+   own `stage` field;
+3. reads `start_run`'s `run_params.json` sidecar from the **product** run path
+   (absent ⇒ `{}` ⇒ "scheduled defaults") so the notification can report how the run
+   was invoked;
+4. reads the diagnostic **bad_pass** stage's results (`results/bad_pass/` ResultWriter,
+   per contributor — bad_pass runs inside each along-track chain) and aggregates the
+   flagged-pass counts per date;
 5. reconciles expected vs produced per **Product pipeline**, collecting `missing`
    (and skip reasons) and a per-deliverable `provenance_incomplete` count;
-6. writes the **Run summary** to `pipeline_runs/{source}/{run_id}/summary.json`;
+6. writes the **Run summary** to `pipeline_runs/{published_product}/{run_id}/summary.json`;
 7. renders and publishes the success SNS.
+
+## A run is one Published product's, not one Source's
+
+The along-track side reconciles the **union** across every contributor. A
+`{published_product: "NASA-SSH"}` run fans out over GSFC and S6, each writing its own
+manifest and its own ResultWriter outputs under its own leg of the run path, and a run
+that produced all of GSFC's dates and all of S6's has no shortfall. Reconciling either
+leg alone would report the other's dates as missing — on a clean run. The gridded side
+has exactly one manifest, at the product run path. That asymmetry is the **Source tier**
+/ **Product tier** split ([ADR 0010](../../../docs/adr/0010-product-keyed-orchestration.md)),
+and it is why `summarizer` is handed `(published_product, run_id, contributors)` rather
+than a single `jobs_key` to parse an identity out of.
+
+`summary.json` carries `published_product` and `contributors` where it used to carry
+`source`, under its own `schema_version: 2`. That version is deliberately *not*
+`job_outcome.SCHEMA_VERSION` — Job outcomes did not change shape, and bumping the shared
+constant would have relabelled every one of them.
+
+A missing contributor manifest reconciles as empty rather than raising, unlike
+`merge_manifests`, which fails on one. By the time the summary runs both tiers are done,
+and erroring here would turn a reportable shortfall into no report at all.
+
+## Only the tiers the line has
+
+`product_pipelines` carries a section per Product pipeline the line runs, which for a
+high-latitude satellite is `along_track` alone. `applicable_pipelines` asks
+`utilities.products.publishes_simple_grid` — the same predicate behind the `gridded`
+flag `start_run` returns and the parent's Choice branches on.
+
+The filter is one-sided. Publishing a grid is a property of the *line*, so the registry
+answers it; having an along-track side is a property of the *run*, answered by the
+contributors it was handed. A contributorless run (the deferred product-tier-only shape)
+reports an empty `along_track` section.
 
 ## Reading SUCCEEDED entries
 
@@ -35,6 +73,9 @@ the copies succeeding.
 
 The rendered email:
 
+- heads with `Product: NASA-SSH ← GSFC, S6` — the product is the subject of the run, the
+  contributors are how it was fed. A single-contributor line is still listed, so the
+  reference line's two-mission handover weeks read the same as its one-mission weeks;
 - shows invocation params (`start`/`end`/`force_update`, or "scheduled defaults");
 - **folds the publisher's `published_along_track` into the finalizer's `daily_file_p3` line**
   as a publication annotation (`16 produced → all published to NASA-SSH`, or
@@ -62,11 +103,12 @@ aggregates. `count` is the number of passes flagged for that date.
 
 ## Why it lives in `infra/` but is containerized
 
-Unlike the other `infra/` Lambdas (zip, no `utilities`), `run_summary` **ships `utilities`**
+Unlike most `infra/` Lambdas (zip, no `utilities`), `run_summary` **ships `utilities`**
 so it can use `pipeline_layout` for *all* key derivation instead of duplicating layout
 conventions (the smell ADR 0005 removes). It is therefore a containerized **orchestration**
-Lambda — the first of its kind here. The target registry derives `container` from the
-presence of a `Dockerfile`, so it registers automatically; `targets.yaml` only declares its
+Lambda — the first of its kind here; `start_run` is the second, for the same reason
+applied to the Source registry. The target registry derives `container` from the presence
+of a `Dockerfile`, so it registers automatically; `targets.yaml` only declares its
 `deployable: true`, `heavy: false` facts. Its eventual home is the planned
 `src/orchestration/` directory (see project memory).
 

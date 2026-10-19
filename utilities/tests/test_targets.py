@@ -7,9 +7,13 @@ from utilities.targets import Packaging
 # Expected catalog, kept here as an independent assertion of intent (the module
 # derives this from the filesystem; this pins what we expect to find).
 HEAVY = {"bad_pass", "daily_files", "finalizer", "oer", "xover", "enso", "indicators", "simple_grids"}
-LIGHT_CONTAINER = {"pipeline_init", "publisher", "run_summary"}
+# `run_summary` and `start_run` are orchestration Lambdas that would be zip but
+# for shipping utilities — one for pipeline_layout, one to read the Source
+# registry. A zip target is self-contained by construction, so they carry a
+# Dockerfile and land here.
+LIGHT_CONTAINER = {"pipeline_init", "publisher", "run_summary", "start_run"}
 BASE_IMAGE = {"pipeline_runtime"}
-ZIP = {"failure_handling", "podaac_auth", "rewrite_manifest", "set_sg_jobs"}
+ZIP = {"failure_handling", "podaac_auth", "merge_manifests", "set_sg_jobs"}
 
 ALL_CONTAINER = HEAVY | LIGHT_CONTAINER | BASE_IMAGE
 ALL_NAMES = ALL_CONTAINER | ZIP

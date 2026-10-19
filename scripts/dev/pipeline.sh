@@ -14,9 +14,9 @@ set -eo pipefail
 # release.sh, which always ships both halves together.
 #
 # With --smoke, run the non-mutating end-to-end smoke test after deploying.
-# Source/window come from the environment (SMOKE_SOURCE / SMOKE_START / SMOKE_END,
-# optional SMOKE_BUCKET) so you don't retype them; set them in .env. It's opt-in
-# so a routine dev push doesn't start an execution unless you ask.
+# Product/window come from the environment (SMOKE_PRODUCT / SMOKE_START /
+# SMOKE_END, optional SMOKE_BUCKET) so you don't retype them; set them in .env.
+# It's opt-in so a routine dev push doesn't start an execution unless you ask.
 #
 # Usage: scripts/dev/pipeline.sh [--all] [--dry-run] [--base <ref>] [--smoke]
 
@@ -106,12 +106,12 @@ fi
 # pre-check refuses windows with real work, and falls back to BUCKET_NAME when
 # SMOKE_BUCKET is unset.
 if [ "$SMOKE" = true ] && [ -z "$DRY_RUN" ]; then
-    : "${SMOKE_SOURCE:?--smoke needs SMOKE_SOURCE set (e.g. in .env)}"
+    : "${SMOKE_PRODUCT:?--smoke needs SMOKE_PRODUCT set (e.g. in .env); the trigger is product-keyed}"
     : "${SMOKE_START:?--smoke needs SMOKE_START (YYYY-MM-DD)}"
     : "${SMOKE_END:?--smoke needs SMOKE_END (YYYY-MM-DD)}"
-    smoke_args=(--stage dev --source "$SMOKE_SOURCE" --start "$SMOKE_START" --end "$SMOKE_END")
+    smoke_args=(--stage dev --product "$SMOKE_PRODUCT" --start "$SMOKE_START" --end "$SMOKE_END")
     [ -n "${SMOKE_BUCKET:-}" ] && smoke_args+=(--bucket "$SMOKE_BUCKET")
-    echo "Running post-deploy smoke (source=$SMOKE_SOURCE, $SMOKE_START..$SMOKE_END)."
+    echo "Running post-deploy smoke (product=$SMOKE_PRODUCT, $SMOKE_START..$SMOKE_END)."
     "$DEV/../smoke.sh" "${smoke_args[@]}"
 elif [ "$SMOKE" = true ]; then
     echo "Skipping smoke (--dry-run)."

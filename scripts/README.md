@@ -37,9 +37,9 @@ scripts/
 Requires a `.env` file at the repo root containing `AWS_REGION`, `AWS_ACCOUNT_ID`, `AWS_PROFILE` key/value pairs. `AWS_PROFILE` names the profile with valid credentials for `AWS_ACCOUNT_ID`'s ECR, Lambda, and Step Functions services. Optional values:
 
 - `STATE_MACHINE_ROLE_ARN` — execution role ARN, used only when **creating** a state machine that doesn't exist yet (updates don't need it).
-- `BUCKET_NAME` and `SMOKE_SOURCE` / `SMOKE_START` / `SMOKE_END` / `SMOKE_BUCKET` — defaults for the smoke test (see **Smoke test**).
+- `BUCKET_NAME` and `SMOKE_PRODUCT` / `SMOKE_START` / `SMOKE_END` / `SMOKE_BUCKET` — defaults for the smoke test (see **Smoke test**).
 
-The registry runs via `python3 -m utilities.targets`; the `utilities` package must be importable (`uv sync` from the repo root, or `pip install .`). If `python3` on PATH lacks it, set `REGISTRY_PY` (or `PYTHON`) to a venv interpreter (e.g. `.venv/bin/python`). `python3` (stdlib only) is also used to verify state-machine definitions and to assert the smoke run's summary.
+The registry runs via `python3 -m utilities.targets`; the `utilities` package must be importable (`uv sync` from the repo root, or `pip install .`). If `python3` on PATH lacks it, set `REGISTRY_PY` (or `PYTHON`) to a venv interpreter (e.g. `.venv/bin/python`). The smoke test resolves a published product's contributors through the same package and honours the same override as `SMOKE_PY`. `python3` (stdlib only) is also used to verify state-machine definitions and to assert the smoke run's summary.
 
 Scripts are enforced to be run from the root of the repo.
 
@@ -175,14 +175,14 @@ It shallow-clones the tag into a tmp dir (your working tree is untouched), rende
 
 # Smoke test
 
-`scripts/smoke.sh` is a **non-mutating** end-to-end check. It starts a real pipeline execution over an already-processed window **without** `force_update`, so `pipeline_init` finds no new jobs and the run fast-exits straight to `run_summary` — exercising the whole orchestration (`pipeline_init`, the `Has Jobs?`/`No Jobs` wiring, `run_summary`, the success notification) while writing **zero product data**. It then asserts the run summary reconciles clean (every product pipeline `expected == produced`, `missing == []`).
+`scripts/smoke.sh` is a **non-mutating** end-to-end check. It starts a real pipeline execution over an already-processed window **without** `force_update`, so every contributor's `pipeline_init` finds no new jobs and each source-tier Map iteration fast-exits down `No Jobs` — exercising the whole product-keyed orchestration (`start_run`'s contributor resolution, the source tier Map, `merge_manifests`, `run_summary`, the success notification) while writing **zero product data**. It then asserts the run summary reconciles clean (every product pipeline `expected == produced`, `missing == []`).
 
 ```
-scripts/smoke.sh --source <NAME> --start <YYYY-MM-DD> --end <YYYY-MM-DD> \
+scripts/smoke.sh --product <NAME> --start <YYYY-MM-DD> --end <YYYY-MM-DD> \
                  [--stage dev|prod] [--bucket <b>] [--timeout <sec>] [--no-precheck]
 ```
 
-Pick a window you know is already processed (or has no data). By default a pre-check invokes `pipeline_init` and **aborts if the window has new jobs** (which would process real data); `--no-precheck` overrides. `--bucket` defaults to `BUCKET_NAME`. The dev pipeline runs this via `pipeline.sh --smoke`, drawing `--source`/`--start`/`--end` from `SMOKE_SOURCE` / `SMOKE_START` / `SMOKE_END` (and `SMOKE_BUCKET`). Run it right after a deploy so the weekly scheduled run is a confirmation, not your first signal.
+`--product` names a **Published product** (e.g. `NASA-SSH`), not a Source — the trigger is product-keyed and `start_run` resolves the contributors. Pick a window you know is already processed (or has no data). By default a pre-check asks the registry which Sources contribute, invokes `pipeline_init` once per contributor, and **aborts if any has new jobs** (which would process real data); `--no-precheck` overrides. `--bucket` defaults to `BUCKET_NAME`. The dev pipeline runs this via `pipeline.sh --smoke`, drawing `--product`/`--start`/`--end` from `SMOKE_PRODUCT` / `SMOKE_START` / `SMOKE_END` (and `SMOKE_BUCKET`). Run it right after a deploy so the weekly scheduled run is a confirmation, not your first signal.
 
 ---
 

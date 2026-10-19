@@ -13,7 +13,7 @@ where = ["."]
 include = ["utilities*"]
 
 [tool.setuptools.package-data]
-utilities = ["products.yaml", "sources/*.yaml", "targets.yaml"]
+utilities = ["products.yaml", "sources/*.yaml", "targets.yaml", "schedules.yaml"]
 
 [project.optional-dependencies]
 pipeline_runtime = [
@@ -53,6 +53,9 @@ publisher = [
 run_summary = [
     "boto3==1.28.84",
 ]
+start_run = [
+    "boto3==1.28.84",
+]
 enso = [
     "cartopy==0.24.1",
     "matplotlib==3.10.3",
@@ -77,7 +80,7 @@ simple_grids = [
 dev = [
     "pytest",
     "ruff",
-    "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,publisher,xover,enso,indicators,simple_grids,run_summary]",
+    "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,publisher,xover,enso,indicators,simple_grids,run_summary,start_run]",
 ]
 
 [tool.ruff]

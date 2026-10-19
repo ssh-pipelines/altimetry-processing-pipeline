@@ -1,63 +1,15 @@
 {
   "QueryLanguage": "JSONata",
-  "StartAt": "Along Track Execution",
+  "Comment": "Product-keyed parent. The trigger names a published product; this composes two optional tiers over it — a source tier Mapped across the contributing sources, and a product tier for the gridded products. A high-latitude satellite's line has only the first, which is what makes a per-satellite ENSO index unreachable rather than merely unused.",
+  "StartAt": "Start Run",
   "States": {
-    "Along Track Execution": {
+    "Start Run": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::states:startExecution.sync:2",
-      "Arguments": {
-        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-at_pipeline-sm",
-        "Input": "{% $states.input %}"
-      },
-      "Next": "Has Jobs?",
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "Fail"
-        }
-      ]
-    },
-    "Has Jobs?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Next": "Publish Along Track",
-          "Condition": "{% $states.input.Output.job_count > 0 %}"
-        }
-      ],
-      "Default": "No Jobs Summary"
-    },
-    "No Jobs Summary": {
-      "Type": "Pass",
-      "Comment": "Fast exit: the along-track run found no dates to process. Skip publication and the SG pipeline; unwrap the execution result to the bare run identity Run Summary expects, then summarize (empty manifests reconcile to expected 0 / produced 0).",
-      "Output": "{% $states.input.Output %}",
-      "Next": "Run Summary"
-    },
-    "Publish Along Track": {
-      "Type": "Task",
-      "Comment": "Unconditional: every source publishes, and which line it publishes to is derived from its product_type rather than gated by config.",
-      "Resource": "arn:aws:states:::states:startExecution.sync:2",
-      "Arguments": {
-        "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-publisher-sm",
-        "Input": "{% $merge([$states.input.Output, { 'family': 'along_track' }]) %}"
-      },
-      "Output": "{% $states.input.Output %}",
-      "Next": "Rewrite Manifest",
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'publisher_along_track', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.Output.jobs_key, 'bucket': $states.input.Output.bucket, 'source': $states.input.Output.source } %}"
-        }
-      ]
-    },
-    "Rewrite Manifest": {
-      "Type": "Task",
-      "Comment": "Rekey the along-track manifest onto the published product the gridded tier works on. Becomes a merge of several source manifests once the parent is product-keyed.",
+      "Comment": "Resolve the contributors, mint the one run_id both tiers share, and decide whether this line has a product tier. ASL can read neither the source registry nor a clock.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Arguments": {
-        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-rewrite_manifest:$LATEST",
-        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'published_product': $states.input.published_product } %}"
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-start_run:$LATEST",
+        "Payload": "{% $states.input %}"
       },
       "Output": "{% $states.result.Payload %}",
       "Retry": [
@@ -74,21 +26,173 @@
           "JitterStrategy": "FULL"
         }
       ],
-      "Next": "SG Execution",
+      "Next": "Source Tier",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "Notify Failure",
-          "Output": "{% { 'stage': 'rewrite_manifest', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.source } %}"
+          "Output": "{% { 'stage': 'start_run', 'errorOutput': $states.errorOutput, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
         }
       ]
+    },
+    "Source Tier": {
+      "Type": "Map",
+      "Comment": "One independent along-track run plus publication per contributing source. INLINE rather than DISTRIBUTED because the item results are the input to the manifest merge — a distributed Map returns a run summary, not its items. Inline mode also rules out the tolerance and Label fields the leaf ASLs carry: it has no partial-failure setting to tune, since any failed iteration fails the Map.",
+      "Items": "{% $states.input.contributors %}",
+      "ItemSelector": "{% { 'source': $states.context.Map.Item.Value, 'bucket': $states.input.bucket, 'run_id': $states.input.run_id, 'published_product': $states.input.published_product, 'start': $states.input.start, 'end': $states.input.end, 'force_update': $states.input.force_update } %}",
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Along Track Execution",
+        "States": {
+          "Along Track Execution": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
+            "Arguments": {
+              "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-at_pipeline-sm",
+              "Input": "{% $states.input %}"
+            },
+            "Next": "Has Jobs?",
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "Next": "Fail Contributor"
+              }
+            ]
+          },
+          "Has Jobs?": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Next": "Publish Along Track",
+                "Condition": "{% $states.input.Output.job_count > 0 %}"
+              }
+            ],
+            "Default": "No Jobs"
+          },
+          "No Jobs": {
+            "Type": "Pass",
+            "Comment": "Fast exit: this contributor's along-track run found no dates. Skip its publication and hand its run identity back, so the merge still sees an empty manifest from it rather than no manifest at all.",
+            "Output": "{% $states.input.Output %}",
+            "End": true
+          },
+          "Publish Along Track": {
+            "Type": "Task",
+            "Comment": "Unconditional: every source publishes, and which line it publishes to is derived from its product_type rather than gated by config.",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
+            "Arguments": {
+              "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-publisher-sm",
+              "Input": "{% $merge([$states.input.Output, { 'family': 'along_track' }]) %}"
+            },
+            "Output": "{% $states.input.Output %}",
+            "End": true,
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "Next": "Notify Contributor Failure",
+                "Output": "{% { 'stage': 'publisher_along_track', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.Output.jobs_key, 'bucket': $states.input.Output.bucket, 'source': $states.input.Output.source } %}"
+              }
+            ]
+          },
+          "Notify Contributor Failure": {
+            "Type": "Task",
+            "Comment": "at_pipeline notifies its own failures; the publisher state machine does not, so this branch covers it.",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Arguments": {
+              "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-failure_handling:$LATEST",
+              "Payload": "{% $states.input %}"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 2,
+                "BackoffRate": 2
+              }
+            ],
+            "Next": "Fail Contributor"
+          },
+          "Fail Contributor": {
+            "Type": "Fail"
+          }
+        }
+      },
+      "MaxConcurrency": 10,
+      "Output": "{% $merge([$states.input, { 'source_results': $states.result }]) %}",
+      "Next": "Has Product Tier?",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Fail"
+        }
+      ]
+    },
+    "Has Product Tier?": {
+      "Type": "Choice",
+      "Comment": "Only a line that publishes a grid has one. A single high-latitude satellite publishes along-track only — there is at most one high-latitude grid and it is composed from all of them — so its run ends at the source tier.",
+      "Choices": [
+        {
+          "Next": "Merge Manifests",
+          "Condition": "{% $states.input.gridded %}"
+        }
+      ],
+      "Default": "Run Summary"
+    },
+    "Merge Manifests": {
+      "Type": "Task",
+      "Comment": "Union the contributors' dates into the product tier's manifest. Fails loudly when two contributors claim one date rather than letting Map completion order decide what ships.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-merge_manifests:$LATEST",
+        "Payload": "{% { 'bucket': $states.input.bucket, 'published_product': $states.input.published_product, 'product_jobs_key': $states.input.product_jobs_key, 'source_results': $states.input.source_results } %}"
+      },
+      "Output": "{% $merge([$states.input, $states.result.Payload]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 5,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "Next": "Has Gridded Jobs?",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "Notify Failure",
+          "Output": "{% { 'stage': 'merge_manifests', 'errorOutput': $states.errorOutput, 'jobs_key': $states.input.product_jobs_key, 'bucket': $states.input.bucket, 'source': $states.input.published_product } %}"
+        }
+      ]
+    },
+    "Has Gridded Jobs?": {
+      "Type": "Choice",
+      "Comment": "No contributor planned anything this run. The product manifest is still written, so the run summary reconciles against an explicit zero.",
+      "Choices": [
+        {
+          "Next": "SG Execution",
+          "Condition": "{% $states.input.date_count > 0 %}"
+        }
+      ],
+      "Default": "Run Summary"
     },
     "SG Execution": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Arguments": {
         "StateMachineArn": "arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:nasa-ssh-pipeline-${STAGE}-sg_pipeline-sm",
-        "Input": "{% $states.input %}"
+        "Input": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket, 'published_product': $states.input.published_product } %}"
       },
       "Output": "{% $states.input %}",
       "Next": "Run Summary",
@@ -101,10 +205,11 @@
     },
     "Run Summary": {
       "Type": "Task",
+      "Comment": "Reconciles across every contributor on the source tier and the one product-tier manifest. Reached from three paths, all of which carry the run envelope.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Arguments": {
         "FunctionName": "arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${STAGE}-run_summary:$LATEST",
-        "Payload": "{% { 'jobs_key': $states.input.jobs_key, 'bucket': $states.input.bucket } %}"
+        "Payload": "{% { 'bucket': $states.input.bucket, 'published_product': $states.input.published_product, 'run_id': $states.input.run_id, 'contributors': $states.input.contributors } %}"
       },
       "Retry": [
         {

@@ -24,7 +24,8 @@ publisher across them (the **source tier**, still one independent instance each)
 then runs the gridded products once over the line (the **product tier**). A
 high-latitude satellite's line has no product tier at all, so the gridded branch
 is unreachable from its trigger rather than merely unused
-([ADR 0010](adr/0010-product-keyed-orchestration.md)).
+([ADR 0010](adr/0010-product-keyed-orchestration.md)). The run summary reconciles
+only the tiers the line has.
 
 
 ```mermaid

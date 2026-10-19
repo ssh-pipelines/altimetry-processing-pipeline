@@ -75,7 +75,7 @@ class TestHighLatitudeLine(_StartRunCase):
     """
 
     def test_no_gridded_tier(self):
-        self.assertFalse(app.has_gridded_tier("NASA-SSH_S3B"))
+        self.assertFalse(app.publishes_simple_grid("NASA-SSH_S3B"))
 
     def test_resolves_to_exactly_one_registered_satellite(self):
         """One contributor per line is what makes 15 satellites 15 schedules and

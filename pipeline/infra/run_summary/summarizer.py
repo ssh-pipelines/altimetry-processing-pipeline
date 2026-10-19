@@ -32,6 +32,7 @@ from utilities.pipeline_layout import (
     sg_jobs_key,
     stage_results_prefix,
 )
+from utilities.products import publishes_simple_grid
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ PRODUCT_TIER = "product"
 # `stage` is the ResultWriter segment, not the Job outcome's own `stage` field.
 # One publisher Lambda serves both tiers, so each tier's promotion lands under
 # its own `publisher_{family}` segment — the same shape as `xover_{df_version}`.
+#
+# The full catalog, not what any one run reconciles: `applicable_pipelines`
+# narrows it to the tiers a given published line has.
 PRODUCT_PIPELINES = {
     "along_track": {
         "tier": SOURCE_TIER,
@@ -86,6 +90,25 @@ PRODUCT_PIPELINES = {
         ],
     },
 }
+
+
+def applicable_pipelines(published_product: str) -> dict[str, dict]:
+    """The Product pipelines a published line runs.
+
+    A line with no **Product tier** — a single high-latitude satellite — has no
+    gridded manifest and no gridded stage, so it reconciles the source tier alone.
+
+    Only the gridded side is filtered. Whether a line publishes a grid is a
+    property of the *line*, answered by the registry; whether a run has an
+    along-track side is a property of the *run*, answered by the contributors it
+    was handed, so a contributorless run reports an empty source tier (the
+    deferred product-tier-only shape of ADR 0010).
+    """
+    if publishes_simple_grid(published_product):
+        return PRODUCT_PIPELINES
+    return {
+        name: cfg for name, cfg in PRODUCT_PIPELINES.items() if cfg["tier"] != PRODUCT_TIER
+    }
 
 
 def manifest_dates(job_specs: list[dict]) -> list[str]:
@@ -196,7 +219,7 @@ def manifest_keys(published_product: str, run_id: str, contributors: list[str]) 
     manifest *per contributor* — the plural is the tier split, not defensiveness.
     """
     keys: dict[str, list[str]] = {}
-    for name, cfg in PRODUCT_PIPELINES.items():
+    for name, cfg in applicable_pipelines(published_product).items():
         identities = contributors if cfg["tier"] == SOURCE_TIER else [published_product]
         keys[name] = [cfg["manifest"](identity, run_id) for identity in identities]
     return keys
@@ -226,7 +249,7 @@ def build_summary(
     keys = manifest_keys(published_product, run_id, contributors)
 
     product_pipelines = {}
-    for name, cfg in PRODUCT_PIPELINES.items():
+    for name, cfg in applicable_pipelines(published_product).items():
         section = reconcile_pipeline(
             cfg["deliverables"],
             manifest_dates(manifests.get(name, [])),
@@ -346,7 +369,9 @@ def gather(
 ) -> tuple[dict, dict, dict, list[dict]]:
     """Load all manifests, outcomes, the params sidecar, and bad_pass results.
 
-    Manifests + outcomes are keyed by Product-pipeline name. On the along-track side
+    Manifests + outcomes are keyed by Product-pipeline name, with an entry only for
+    the pipelines this line runs: a line with no product tier is read for neither a
+    gridded manifest nor a gridded ResultWriter prefix. On the along-track side
     both are read once per contributor and concatenated: the run expected the union
     of their planned dates and produced the union of their outcomes, so reconciling
     one contributor's leg would report a shortfall for every other contributor's
@@ -357,7 +382,7 @@ def gather(
     """
     manifests: dict[str, list[dict]] = {}
     outcomes: dict[str, dict[str, list[dict]]] = {}
-    for name, cfg in PRODUCT_PIPELINES.items():
+    for name, cfg in applicable_pipelines(published_product).items():
         identities = _tier_identities(cfg, published_product, contributors)
         specs: list[dict] = []
         for identity in identities:

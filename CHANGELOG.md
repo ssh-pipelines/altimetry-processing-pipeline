@@ -56,8 +56,10 @@ source is fully supported.
   `source` with `published_product` + `contributors`, names a list of manifests per
   product pipeline, and reconciles the *union* across every contributor on the
   along-track side — reconciling one leg alone would report the others' dates as
-  missing on a clean run. Its `schema_version` is now its own (2) rather than
-  `job_outcome.SCHEMA_VERSION`, which stays at 1 because Job outcomes are unchanged.
+  missing on a clean run. It carries a section only for the product pipelines the
+  line runs, so a high-latitude satellite's summary holds `along_track` alone. Its
+  `schema_version` is now its own (2) rather than `job_outcome.SCHEMA_VERSION`,
+  which stays at 1 because Job outcomes are unchanged.
   The success email heads with `Product: NASA-SSH ← GSFC, S6`.
 - **Released artifacts now live under a `products/` prefix**, keyed on *published
   product* rather than on source, and separate from the internal staging area
@@ -140,8 +142,6 @@ source is fully supported.
   `SMOKE_PRODUCT` (`pipeline.sh --smoke`). The pre-check asks the registry which
   Sources contribute to the line and plans each one, since a product-keyed run
   fans out over all of them and any contributor with real work would mutate data.
-  `--source` now exits with a pointed error rather than being silently rejected by
-  `start_run`.
 
 ### Added
 - **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published

@@ -34,25 +34,11 @@ import boto3
 from utilities.pipeline_layout import jobs_manifest_key, run_params_key
 from utilities.products import (
     contributing_sources,
-    published_simple_grid_product,
+    publishes_simple_grid,
     registered_contributors,
 )
 
 s3 = boto3.client("s3")
-
-
-def has_gridded_tier(published_product: str) -> bool:
-    """Whether this line publishes a grid, and so has a product tier.
-
-    `published_simple_grid_product` raises both for an identity absent from
-    `published_products:` and for one that declares no `simple_grid`; both mean
-    the same thing here — nothing to grid — so neither is an error.
-    """
-    try:
-        published_simple_grid_product(published_product)
-    except ValueError:
-        return False
-    return True
 
 
 def resolve_contributors(published_product: str) -> list[str]:
@@ -110,7 +96,9 @@ def handler(event, context):
         "run_id": run_id,
         "contributors": contributors,
         "product_jobs_key": jobs_manifest_key(published_product, run_id),
-        "gridded": has_gridded_tier(published_product),
+        # The product tier exists iff the line publishes a grid; `run_summary`
+        # reads the same predicate to decide which tiers to reconcile.
+        "gridded": publishes_simple_grid(published_product),
         "start": event.get("start"),
         "end": event.get("end"),
         "force_update": force_update,

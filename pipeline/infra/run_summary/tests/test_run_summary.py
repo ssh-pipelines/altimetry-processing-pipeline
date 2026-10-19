@@ -18,29 +18,36 @@ class _Body:
 
 
 class _Paginator:
-    def __init__(self, store):
-        self._store = store
+    def __init__(self, owner):
+        self._owner = owner
 
     def paginate(self, Bucket, Prefix):
-        contents = [{"Key": k} for k in self._store if k.startswith(Prefix)]
+        self._owner.listed_prefixes.append(Prefix)
+        contents = [{"Key": k} for k in self._owner.objects if k.startswith(Prefix)]
         yield {"Contents": contents}
 
 
 class FakeS3:
-    """Minimal in-memory S3 stub: get_object, get_paginator(list_objects_v2)."""
+    """Minimal in-memory S3 stub: get_object, get_paginator(list_objects_v2).
+
+    Records the keys read and prefixes listed, so a test can assert what a run did
+    not go looking for."""
 
     def __init__(self, objects: dict[str, bytes] | None = None):
         self.objects = dict(objects or {})
         self.put_calls = []
+        self.requested_keys = []
+        self.listed_prefixes = []
 
     def get_object(self, Bucket, Key):
+        self.requested_keys.append(Key)
         if Key not in self.objects:
             raise KeyError(Key)  # stands in for a ClientError NoSuchKey
         return {"Body": _Body(self.objects[Key])}
 
     def get_paginator(self, name):
         assert name == "list_objects_v2"
-        return _Paginator(self.objects)
+        return _Paginator(self)
 
     def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
@@ -220,7 +227,9 @@ class TestBuildSummary(unittest.TestCase):
             ["pipeline_runs/NASA-SSH/R1/sg_jobs.json"],
         )
 
-    def test_high_latitude_run_has_one_contributor_and_an_empty_gridded_section(self):
+    def test_high_latitude_run_has_one_contributor_and_no_gridded_section(self):
+        """A high-latitude line has no product tier, so its summary carries the
+        along-track section alone."""
         summary = summarizer.build_summary(
             "NASA-SSH_S3B", "R1", ["S3B"], {}, {}, completed_at="t"
         )
@@ -228,7 +237,23 @@ class TestBuildSummary(unittest.TestCase):
             summary["product_pipelines"]["along_track"]["manifests"],
             ["pipeline_runs/S3B/R1/jobs.json"],
         )
-        self.assertEqual(summary["product_pipelines"]["gridded"]["expected"], 0)
+        self.assertNotIn("gridded", summary["product_pipelines"])
+
+    def test_reference_run_has_both_sections(self):
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["GSFC", "S6"], {}, {}, completed_at="t"
+        )
+        self.assertEqual(
+            sorted(summary["product_pipelines"]), ["along_track", "gridded"]
+        )
+
+    def test_unknown_product_reconciles_the_source_tier_alone(self):
+        """A name the registry doesn't carry has nothing to grid, so the summary
+        reports the source tier and does not raise."""
+        summary = summarizer.build_summary(
+            "NASA-SSH-typo", "R1", ["S6"], {}, {}, completed_at="t"
+        )
+        self.assertEqual(list(summary["product_pipelines"]), ["along_track"])
 
 
 class TestManifestKeys(unittest.TestCase):
@@ -241,6 +266,34 @@ class TestManifestKeys(unittest.TestCase):
         keys = summarizer.manifest_keys("NASA-SSH", "R1", [])
         self.assertEqual(keys["along_track"], [])
         self.assertEqual(keys["gridded"], ["pipeline_runs/NASA-SSH/R1/sg_jobs.json"])
+
+    def test_high_latitude_line_names_no_gridded_manifest(self):
+        keys = summarizer.manifest_keys("NASA-SSH_S3B", "R1", ["S3B"])
+        self.assertEqual(list(keys), ["along_track"])
+
+
+class TestApplicablePipelines(unittest.TestCase):
+    """Which Product pipelines a line runs. The gridded side is a property of the
+    *line* (does it publish a grid), the along-track side a property of the *run*
+    (which contributors it was handed), so only the former is decided here."""
+
+    def test_reference_line_runs_both(self):
+        self.assertEqual(
+            sorted(summarizer.applicable_pipelines("NASA-SSH")),
+            ["along_track", "gridded"],
+        )
+
+    def test_high_latitude_line_runs_the_source_tier_only(self):
+        self.assertEqual(
+            list(summarizer.applicable_pipelines("NASA-SSH_S3B")), ["along_track"]
+        )
+
+    def test_along_track_survives_a_contributorless_run(self):
+        """The deferred product-tier-only shape (ADR 0010): a run handed no
+        contributors reports an empty along-track section."""
+        summary = summarizer.build_summary("NASA-SSH", "R1", [], {}, {}, completed_at="t")
+        self.assertIn("along_track", summary["product_pipelines"])
+        self.assertEqual(summary["product_pipelines"]["along_track"]["manifests"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +429,17 @@ class TestRenderNotification(unittest.TestCase):
         }
         _, body = summarizer.render_notification(summary)
         self.assertIn("Parameters: start=2025-05-01, end=2025-05-31, force_update=true", body)
+
+    def test_high_latitude_body_has_no_gridded_block(self):
+        """The body renders the sections the summary carries, which on a satellite
+        line is the along-track one."""
+        summary = summarizer.build_summary(
+            "NASA-SSH_S3B", "R1", ["S3B"], {}, {}, completed_at="t"
+        )
+        _, body = summarizer.render_notification(summary)
+        self.assertIn("along_track", body)
+        self.assertNotIn("gridded", body)
+        self.assertNotIn("ENSO", body)
 
     def test_along_track_folds_publication_when_complete(self):
         summary = {
@@ -599,6 +663,28 @@ class TestGatherAcrossContributors(unittest.TestCase):
             )
         _m, _o, _p, bad_pass = summarizer.gather(s3, "b", "NASA-SSH", "R1", ["GSFC", "S6"])
         self.assertEqual(summarizer.summarize_bad_passes(bad_pass)["total_flagged"], 7)
+
+    def test_a_high_latitude_run_reads_no_gridded_addresses(self):
+        """The line has no product tier, so there is no sg_jobs manifest and no
+        gridded ResultWriter prefix to read."""
+        s3 = FakeS3()
+        manifests, outcomes, _p, _bp = summarizer.gather(
+            s3, "b", "NASA-SSH_S3B", "R1", ["S3B"]
+        )
+        self.assertNotIn("gridded", manifests)
+        self.assertNotIn("gridded", outcomes)
+        self.assertNotIn("pipeline_runs/NASA-SSH_S3B/R1/sg_jobs.json", s3.requested_keys)
+        for stage in ("simple_grids", "publisher_simple_grid", "enso"):
+            with self.subTest(stage=stage):
+                self.assertNotIn(
+                    f"pipeline_runs/NASA-SSH_S3B/R1/results/{stage}/", s3.listed_prefixes
+                )
+
+    def test_a_reference_run_reads_them(self):
+        s3 = FakeS3()
+        summarizer.gather(s3, "b", "NASA-SSH", "R1", ["GSFC", "S6"])
+        self.assertIn("pipeline_runs/NASA-SSH/R1/sg_jobs.json", s3.requested_keys)
+        self.assertIn("pipeline_runs/NASA-SSH/R1/results/enso/", s3.listed_prefixes)
 
     def test_a_missing_contributor_manifest_reconciles_as_empty(self):
         """Unlike merge_manifests, which fails on one: by the time the summary

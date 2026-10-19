@@ -13,7 +13,7 @@ the Source registry nor a clock:
 | `contributors` | The `enabled` Sources feeding the line, for the source-tier Map to fan out over. A thin wrapper over `utilities.products.contributing_sources`, not a second copy of the derivation rule |
 | `run_id` | Minted once and handed to both tiers, so one run is traceable across `pipeline_runs/{source}/` and `pipeline_runs/{published_product}/`. pipeline_init minting its own was sufficient only while one run meant one Source |
 | `product_jobs_key` | The product tier's manifest address. Computed here so `merge_manifests` needs no layout knowledge and can stay a self-contained zip target |
-| `gridded` | Whether the line has a product tier at all. A single high-latitude satellite publishes along-track only, and the Choice that skips the gridded tier cannot consult `published_products:` itself |
+| `gridded` | Whether the line has a product tier at all. A single high-latitude satellite publishes along-track only, and the Choice that skips the gridded tier cannot consult `published_products:` itself. `utilities.products.publishes_simple_grid`, the same predicate `run_summary` uses to decide which tiers to reconcile |
 
 It also writes the run's parameters sidecar, because the parent is where the invocation
 parameters arrive. Two sidecars exist per run and answer different questions: this one

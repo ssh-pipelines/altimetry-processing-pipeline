@@ -5,10 +5,10 @@ Success-path reconciliation Lambda. See [ADR 0005](../../../docs/adr/0005-job-ou
 Runs once at the end of `pipeline.asl` (replacing `Notify Success`). Given the run
 envelope `{bucket, published_product, run_id, contributors}` it:
 
-1. resolves each **Product pipeline**'s manifest(s) and reads their **Job specs**
-   (expected dates) — one per contributor on the source tier at
-   `pipeline_runs/{source}/{run_id}/jobs.json`, one on the product tier at
-   `pipeline_runs/{published_product}/{run_id}/sg_jobs.json`;
+1. resolves each **Product pipeline** the line runs (see *Only the tiers the line
+   has*) and reads its manifest(s)' **Job specs** (expected dates) — one per
+   contributor on the source tier at `pipeline_runs/{source}/{run_id}/jobs.json`, one
+   on the product tier at `pipeline_runs/{published_product}/{run_id}/sg_jobs.json`;
 2. reads **Job outcomes** from each owned stage's `ResultWriter` SUCCEEDED files
    (`along_track ← {finalizer, publisher_along_track}`,
    `gridded ← {simple_grids, publisher_simple_grid, enso}`), likewise once per
@@ -47,6 +47,18 @@ constant would have relabelled every one of them.
 A missing contributor manifest reconciles as empty rather than raising, unlike
 `merge_manifests`, which fails on one. By the time the summary runs both tiers are done,
 and erroring here would turn a reportable shortfall into no report at all.
+
+## Only the tiers the line has
+
+`product_pipelines` carries a section per Product pipeline the line runs, which for a
+high-latitude satellite is `along_track` alone. `applicable_pipelines` asks
+`utilities.products.publishes_simple_grid` — the same predicate behind the `gridded`
+flag `start_run` returns and the parent's Choice branches on.
+
+The filter is one-sided. Publishing a grid is a property of the *line*, so the registry
+answers it; having an along-track side is a property of the *run*, answered by the
+contributors it was handed. A contributorless run (the deferred product-tier-only shape)
+reports an empty `along_track` section.
 
 ## Reading SUCCEEDED entries
 

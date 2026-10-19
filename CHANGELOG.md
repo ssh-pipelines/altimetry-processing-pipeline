@@ -28,9 +28,10 @@ source is fully supported.
   unreachable from a per-satellite trigger rather than fatal — which is what makes
   `enabled: true` safe to set on a high-latitude source. `product_type` drives the
   fan-out, so 15 satellites are 15 schedules and no new code. See ADR 0010.
-- **A contributor's failure now fails the whole product run** (`ToleratedFailureCount: 0`).
-  Per-source executions were independent, so a GSFC failure could not previously
-  block S6. Tolerating it would run the gridded tier over whatever dates landed and
+- **A contributor's failure now fails the whole product run.** The source tier's
+  Map is inline, which has no partial-failure tolerance to set: one failed
+  iteration fails the tier. Per-source executions were independent, so a GSFC
+  failure could not previously block S6. Tolerating it would run the gridded tier over whatever dates landed and
   publish a grid across a hole from a *successful* run; the reference contributors
   have disjoint date ranges, so on any given week only one has data to contribute.
 - **`rewrite_manifest` is now `merge_manifests`.** It unions the contributors'
@@ -135,6 +136,12 @@ source is fully supported.
   The two are deliberately distinct so a staging file and a released file can never
   be mistaken for each other; a product with no published template cannot be
   published.
+- **`scripts/smoke.sh --source` becomes `--product`**, and `SMOKE_SOURCE` becomes
+  `SMOKE_PRODUCT` (`pipeline.sh --smoke`). The pre-check asks the registry which
+  Sources contribute to the line and plans each one, since a product-keyed run
+  fans out over all of them and any contributor with real work would mutate data.
+  `--source` now exits with a pointed error rather than being silently rejected by
+  `start_run`.
 
 ### Added
 - **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published

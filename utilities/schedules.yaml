@@ -3,13 +3,6 @@
 # or deletes them, so this file is a reviewable *mirror* of what exists in AWS,
 # not a deployment source.
 #
-# It exists because product-keyed orchestration changed the trigger input from
-# `{source: "S6"}` to `{published_product: "NASA-SSH"}`, and that is the one part
-# of the change with no reviewable diff anywhere else — the schedules are the
-# only place the old input shape still lives. Sixteen hand-maintained rules
-# (the reference line plus one per high-latitude satellite) is also more than
-# anyone can hold in their head while deciding whether a Source is actually
-# running.
 #
 # `enabled` here mirrors the rule's own state in AWS and is independent of a
 # Source's `enabled`: a Source says it *may* contribute, a schedule says when

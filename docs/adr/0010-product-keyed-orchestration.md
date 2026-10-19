@@ -140,7 +140,10 @@ conventions of its own.
 **The source tier's Map is INLINE, not DISTRIBUTED.** Forced, not stylistic: a
 distributed Map's output is a run summary, and the item results are the input to the
 manifest merge. Contributor counts are small (one to a few), so the inline
-concurrency ceiling is not a constraint.
+concurrency ceiling is not a constraint. The mode also fixes the failure semantics:
+inline has no partial-failure tolerance to set, so one failed contributor fails the
+tier, and `ToleratedFailureCount` / `Label` are rejected outright rather than
+ignored — a definition carrying them does not deploy at all.
 
 **The ADR 0003 `Catch` topology shifts again.** The along-track promotion's notifying
 Catch moves *inside* the source-tier Map, since that is where the publisher is now

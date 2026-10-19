@@ -37,7 +37,7 @@
     },
     "Source Tier": {
       "Type": "Map",
-      "Comment": "One independent along-track run plus publication per contributing source. INLINE rather than DISTRIBUTED because the item results are the input to the manifest merge — a distributed Map returns a run summary, not its items.",
+      "Comment": "One independent along-track run plus publication per contributing source. INLINE rather than DISTRIBUTED because the item results are the input to the manifest merge — a distributed Map returns a run summary, not its items. Inline mode also rules out the tolerance and Label fields the leaf ASLs carry: it has no partial-failure setting to tune, since any failed iteration fails the Map.",
       "Items": "{% $states.input.contributors %}",
       "ItemSelector": "{% { 'source': $states.context.Map.Item.Value, 'bucket': $states.input.bucket, 'run_id': $states.input.run_id, 'published_product': $states.input.published_product, 'start': $states.input.start, 'end': $states.input.end, 'force_update': $states.input.force_update } %}",
       "ItemProcessor": {
@@ -124,8 +124,6 @@
         }
       },
       "MaxConcurrency": 10,
-      "ToleratedFailureCount": 0,
-      "Label": "SourceTier",
       "Output": "{% $merge([$states.input, { 'source_results': $states.result }]) %}",
       "Next": "Has Product Tier?",
       "Catch": [

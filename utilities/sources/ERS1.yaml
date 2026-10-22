@@ -1,0 +1,51 @@
+common:
+  product_type: high_latitude
+  discovery_type: thredds
+  # High-latitude metadata values (title, summary, DOI) are still placeholders,
+  # and the gridded pipeline is per-source until product-keyed orchestration
+  # lands, so a run today would attempt a per-satellite grid.
+  enabled: true
+  start_date: "1992-10-25"
+  end_date: "1996-06-01"
+  ground_speed: 0   # km/s, median 1 Hz ground speed over 179 long passes (tools/compute_ground_speed.py)
+  intermission_bias: 0   # m, median (ssh1 - ssh2) over 3158711 reference crossovers vs NASA-SSH
+  collections:
+    - shortname: dataset-l2p-uncross-calibrated-ntc-sla-e1
+      thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-e1
+      thredds_version: version_04_00
+      priority: 1
+      source_label: "NTC ERS-1 Global Ocean Along track Sea Level Anomalies L2P products"
+      source_url: "https://tds-odatis.aviso.altimetry.fr/thredds/catalog/dataset-l2p-uncross-calibrated-ntc-sla-e1/version_04_00/catalog.html"
+      reference: "https://www.aviso.altimetry.fr/"
+
+pipeline_init: {}
+
+daily_files:
+  smoothing:
+    sigma: 15
+
+finalizer:
+  # offset is a manual datum tie, kept as a separate lever from the measured
+  # intermission_bias (read from common). For L2P the intermission bias is the
+  # absolute tie, so offset is a deliberate no-op; future high-lat sources may
+  # need it.
+  offset: 0.0
+  pass_flag:
+    mean_num: 15.0
+    rms_num: 25.0
+    mean_threshold: 0.1
+    rms_threshold: 0.27
+
+xover:
+  crossover_type: reference
+  # The published reference along-track product, not a source: there is one
+  # released along-track line per identity, so there is no version to choose.
+  reference_product: NASA-SSH
+  cycle_length: 9.9156
+  # window_size/window_padding are interpreted as a CENTERED window for
+  # reference crossovers (±): the reference mission repeats its ground track
+  # every ~9.9 days, so ~12 days captures a before/after bracket for most
+  # crossings. A wider window (~20) brackets every crossing; calibrate later.
+  window_size: 12
+  window_padding: 2
+  max_pass_number: 9999

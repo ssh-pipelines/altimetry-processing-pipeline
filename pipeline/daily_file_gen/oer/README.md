@@ -15,7 +15,7 @@ The mapping is `_CROSSOVER_TYPE_BY_PRODUCT_TYPE` in [`oer/oer.py`](oer/oer.py), 
 
 ## Ground speed
 
-`oerfit` places spline knots by converting each pass's knot time-span into an along-track distance, which requires the satellite's ground speed. This is a single canonical per-source value, `common.ground_speed` (km/s), shared with the daily-file smoothing filter. Compute it for a new source with [`tools/compute_ground_speed.py`](../../../tools/compute_ground_speed.py) and set it under `common:` in the source YAML. Sources without an explicit value fall back to the `SourceCommon` default (5.745).
+`oerfit` places spline knots by converting each pass's knot time-span into an along-track distance, which requires the satellite's ground speed. This is a single canonical per-source value, `common.ground_speed` (km/s), shared with the daily-file smoothing filter. Compute it for a new source with [`tools/compute_ground_speed.py`](../../../tools/compute_ground_speed.py) and set it under `common:` in the source YAML. The same tool measures `common.sample_period`, which OER does not read. Sources without an explicit value fall back to the `SourceCommon` default (5.745).
 
 ## How it works
 

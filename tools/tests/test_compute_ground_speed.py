@@ -2,7 +2,8 @@
 
 Feed synthetic passes with a known constant along-track speed and assert the
 recovered speed; assert short passes are excluded; assert duplicate / reversed
-timestamps do not divide-by-zero.
+timestamps do not divide-by-zero. Feed passes at a known non-1 Hz sample period
+and assert the recovered period, and that the speed is unaffected by the rate.
 """
 import os
 import sys
@@ -16,23 +17,33 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from compute_ground_speed import (  # noqa: E402
     _MIN_PASS_POINTS,
     compute_ground_speed,
+    compute_sample_period,
     haversine_km,
     pass_ground_speed,
+    pass_sample_period,
 )
 
+# ERS-1's measured sample period: not 1 Hz, and not on whole seconds.
+ERS1_PERIOD_S = 0.980468
 
-def _synthetic_pass(n, speed_km_s, start_lat=0.0, lon=0.0, t0=0):
-    """Build a straight north-going meridian pass of `n` points at 1 Hz whose
-    along-track ground speed is `speed_km_s`.
+
+def _synthetic_pass(n, speed_km_s, start_lat=0.0, lon=0.0, t0=0, period_s=1.0):
+    """Build a straight north-going meridian pass of `n` points, `period_s`
+    seconds apart, whose along-track ground speed is `speed_km_s`.
 
     A step of `speed_km_s` km along a meridian is `speed_km_s / 111.194...` deg
     of latitude per second (deg per km = 180 / (pi * R)).
     """
     deg_per_km = 180.0 / (np.pi * 6371.0088)
-    dlat = speed_km_s * deg_per_km
+    dlat = speed_km_s * period_s * deg_per_km
     lat = start_lat + dlat * np.arange(n)
     lon_arr = np.full(n, lon)
-    time = (t0 + np.arange(n)).astype("datetime64[s]").astype("datetime64[ns]")
+    # Real timestamps are ~1e9 s from the epoch, where float seconds lose
+    # sub-microsecond precision; build them in integer nanoseconds.
+    t0_ns = np.datetime64("1992-10-25T00:00:00", "ns").astype("int64") + int(t0 * 1e9)
+    time = (t0_ns + np.round(np.arange(n) * period_s * 1e9).astype("int64")).astype(
+        "datetime64[ns]"
+    )
     return time, lat, lon_arr
 
 
@@ -74,6 +85,70 @@ class PassGroundSpeedTestCase(unittest.TestCase):
         t[500:] += 100  # inject a gap after point 500
         time = t.astype("datetime64[s]").astype("datetime64[ns]")
         self.assertAlmostEqual(pass_ground_speed(time, lat, lon), 5.9, places=3)
+
+    def test_speed_independent_of_sample_period(self):
+        time, lat, lon = _synthetic_pass(2000, speed_km_s=6.7267, period_s=ERS1_PERIOD_S)
+        self.assertAlmostEqual(pass_ground_speed(time, lat, lon), 6.7267, places=3)
+
+
+class PassSamplePeriodTestCase(unittest.TestCase):
+    def test_recovers_non_1hz_period(self):
+        time, _, _ = _synthetic_pass(2000, speed_km_s=6.7, period_s=ERS1_PERIOD_S)
+        self.assertAlmostEqual(pass_sample_period(time), ERS1_PERIOD_S, places=7)
+
+    def test_unsorted_input_is_sorted(self):
+        time, _, _ = _synthetic_pass(500, speed_km_s=6.7, period_s=ERS1_PERIOD_S)
+        order = np.random.permutation(len(time))
+        self.assertAlmostEqual(pass_sample_period(time[order]), ERS1_PERIOD_S, places=7)
+
+    def test_gaps_do_not_bias_period(self):
+        # Land crossings omit records; the long steps must not pull the median.
+        time, _, _ = _synthetic_pass(1000, speed_km_s=6.7, period_s=ERS1_PERIOD_S)
+        keep = np.ones(len(time), dtype=bool)
+        keep[200:208] = False
+        keep[600:900] = False
+        self.assertAlmostEqual(pass_sample_period(time[keep]), ERS1_PERIOD_S, places=7)
+
+    def test_duplicate_timestamps_return_none(self):
+        time = np.array(["2020-01-01T00:00:00", "2020-01-01T00:00:00"], dtype="datetime64[ns]")
+        self.assertIsNone(pass_sample_period(time))
+
+
+class ComputeSamplePeriodTestCase(unittest.TestCase):
+    def test_median_across_passes(self):
+        periods = [0.980224, ERS1_PERIOD_S, ERS1_PERIOD_S]
+        passes = [
+            _synthetic_pass(300, 6.7, t0=i * 10000, period_s=p) for i, p in enumerate(periods)
+        ]
+        time = np.concatenate([p[0] for p in passes])
+        cycle = np.ones(len(time), dtype=int)
+        pass_ = np.repeat([1, 2, 3], 300)
+        period, per_pass = compute_sample_period(time, cycle, pass_)
+        self.assertAlmostEqual(period, ERS1_PERIOD_S, places=7)
+        self.assertEqual(len(per_pass), 3)
+
+    def test_short_passes_count(self):
+        # Unlike ground speed, a pass truncated at a day boundary still has
+        # regular steps and contributes.
+        time, _, _ = _synthetic_pass(50, 6.7, period_s=ERS1_PERIOD_S)
+        period, per_pass = compute_sample_period(time, np.ones(50), np.ones(50))
+        self.assertAlmostEqual(period, ERS1_PERIOD_S, places=7)
+        self.assertEqual(len(per_pass), 1)
+
+    def test_steps_do_not_span_passes(self):
+        # Two passes interleaved in time: grouping by pass recovers each one's
+        # period, where differencing the concatenation would halve it.
+        a, _, _ = _synthetic_pass(400, 6.7, period_s=ERS1_PERIOD_S)
+        b = a + np.timedelta64(490, "ms")
+        time = np.concatenate([a, b])
+        pass_ = np.repeat([1, 2], 400)
+        period, _ = compute_sample_period(time, np.ones(800), pass_)
+        self.assertAlmostEqual(period, ERS1_PERIOD_S, places=7)
+
+    def test_no_regular_step_raises(self):
+        time = (np.arange(10) * 100).astype("datetime64[s]").astype("datetime64[ns]")
+        with self.assertRaises(ValueError):
+            compute_sample_period(time, np.ones(10), np.ones(10))
 
 
 class ComputeGroundSpeedTestCase(unittest.TestCase):

@@ -4,6 +4,7 @@ common:
   enabled: true
   start_date: "2026-01-01"
   ground_speed: 5.7529
+  sample_period: 1.0     # s
   collections:
     - shortname: JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01
       concept_id: C3332203845-POCLOUD

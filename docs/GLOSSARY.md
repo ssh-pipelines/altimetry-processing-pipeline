@@ -83,6 +83,10 @@ _Avoid_: product family, mission class
 **L2P**:
 The AVISO Level-2P along-track wire format. Each L2P granule is one (cycle, pass) NetCDF carrying SSHA, mean sea surface, inter-mission bias, and a single-column validation flag. Used by all current and planned `high_latitude` sources.
 
+**Sample period**:
+Seconds between successive along-track samples of a **Source**, declared as `common.sample_period` (default `1.0`). A platform fact, kept separate from `common.ground_speed` because `oerfit` converts crossover time to distance and must not see the rate. The `reference` Sources are 1 Hz; the AVISO L2P high-latitude Sources are not (ERS-1 0.980468 s, CryoSat-2 0.943437 s).
+_Avoid_: sampling rate (when the period in seconds is meant), dt
+
 **MSS** (Mean Sea Surface):
 The static reference surface SSHA is measured against. Different upstream products use different MSS references; pipeline output is normalized to **DTU21** so cross-source SSHA comparison is meaningful.
 

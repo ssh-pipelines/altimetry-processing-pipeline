@@ -104,7 +104,7 @@ The `daily_files:` section — this stage's own fields:
 
 `SourceConfig.__post_init__` enforces the MSS fields by product type: a `reference` source **must** set all three, and a `high_latitude` source **must not** set any of them — high-latitude processors interpolate DTU21 directly from a bundled grid instead of swapping via a diff file ([ADR 0002](../../../docs/adr/0002-aviso-l2p-mss-handling.md)).
 
-Relevant `common:` fields (shared with other stages): `product_type`, `discovery_type`, `ground_speed`, `collections`, and — for `s3_bucket` discovery — `source_bucket`, `source_prefix_pattern`, `source_filename_pattern`, `cycle_index_key`.
+Relevant `common:` fields (shared with other stages): `product_type`, `discovery_type`, `ground_speed`, `sample_period` (seconds between along-track samples, default `1.0`; not yet read by any stage), `collections`, and — for `s3_bucket` discovery — `source_bucket`, `source_prefix_pattern`, `source_filename_pattern`, `cycle_index_key`.
 
 Output prefixes and filenames are **not** configured per source. They are derived from `utilities.pipeline_layout` and `utilities/products.yaml`, which own the version, filename template, and in-file identity metadata per product family. Empty-file templates are built in code (`processing/empty_template.py`), not read from config.
 

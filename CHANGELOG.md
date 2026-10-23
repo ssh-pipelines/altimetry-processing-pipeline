@@ -144,6 +144,11 @@ source is fully supported.
   fans out over all of them and any contributor with real work would mutate data.
 
 ### Added
+- `common.sample_period`, the seconds between a Source's along-track samples,
+  defaulting to `1.0` and declared explicitly as `1.0` for GSFC, S6, S6B, and S3B.
+  Nothing reads it yet; it is groundwork for making the smoother
+  correct on the high-latitude L2P sources, none of which sample at 1 Hz. Like
+  `ground_speed`, a populated value takes a redeploy to reach any stage.
 - **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published
   product's `enabled` contributors, mints the one `run_id` both tiers share, computes
   the product tier's manifest address, decides whether the line has a product tier at

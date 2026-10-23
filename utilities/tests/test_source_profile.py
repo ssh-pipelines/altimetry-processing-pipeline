@@ -1,12 +1,14 @@
 import unittest
 from dataclasses import dataclass
 from datetime import date
+from unittest.mock import patch
 
 from utilities.source_profile import (
     CollectionConfig,
     Product,
     SourceCommon,
     _load_products_raw,
+    _load_yaml,
     clear_caches,
     get_product,
     get_registered_sources,
@@ -205,6 +207,42 @@ class TestEnabled(unittest.TestCase):
         for source in ("S6B", "S3B", "EXAMPLE_S3"):
             with self.subTest(source=source):
                 self.assertFalse(get_source_profile(source).enabled)
+
+
+class TestSamplePeriod(unittest.TestCase):
+    """`sample_period` is a platform fact declared in `common`, so it reaches
+    every stage config through SourceCommon."""
+
+    def test_defaults_to_one_second(self):
+        self.assertEqual(
+            SourceCommon(
+                source="X", product_type="reference", start_date=date(2020, 1, 1)
+            ).sample_period,
+            1.0,
+        )
+
+    def test_current_sources_declare_1hz(self):
+        """Declared rather than inherited, so a source's period is a stated fact
+        and not an unexamined default."""
+        for source in ("GSFC", "S6", "S6B", "S3B", "EXAMPLE_S3"):
+            with self.subTest(source=source):
+                common = _load_yaml(source)["common"]
+                self.assertEqual(common.get("sample_period"), 1.0)
+                self.assertEqual(get_source_profile(source).sample_period, 1.0)
+
+    def test_common_value_reaches_stage_config(self):
+        raw = {
+            "common": {
+                "product_type": "high_latitude",
+                "start_date": "1992-10-25",
+                "sample_period": 0.980468,
+            },
+            "stage_a": {"extra_field": "x", "nested_value": 1},
+        }
+        with patch("utilities.source_profile._load_yaml", return_value=raw):
+            cfg = load_source_config(_StageA, "stage_a", "ERS1")
+        self.assertEqual(cfg.sample_period, 0.980468)
+        self.assertEqual(cfg.ground_speed, 5.745)
 
 
 class TestListSourcesForStage(unittest.TestCase):

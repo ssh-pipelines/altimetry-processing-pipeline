@@ -182,7 +182,7 @@ source is fully supported.
   source measured except S3B). Land gaps are now filled by counting omitted samples
   from each gap's length in local sample periods, and filter taps are
   `ground_speed × sample_period` km apart. Output for the 1 Hz sources is
-  byte-identical. See ADR 0011.
+  unchanged. See ADR 0011.
 - High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
   product's in-file identity. `title`, `summary`, `id` (DOI), `processing_level`,
   `product_short_name`, `product_version`, `references`, and `source_url` moved out of

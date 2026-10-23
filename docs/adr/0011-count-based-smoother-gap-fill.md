@@ -35,8 +35,8 @@ Filter taps are spaced `ground_speed × sample_period` km apart rather than
 `ground_speed × 1 s`.
 
 At 1 Hz on whole seconds this is the grid by construction, and the outputs are
-byte-identical: pinned on a full S6 day and on an S6 segment with 1 to 40 samples
-deleted.
+identical on any one platform: pinned on a full S6 day and on an S6 segment with
+1 to 40 samples deleted, at 1e-12 m so the goldens hold across CPU architectures.
 
 ## Consequences
 

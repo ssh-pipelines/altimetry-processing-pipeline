@@ -26,12 +26,16 @@ def _open_gz(name: str) -> xr.Dataset:
 
 class S6GoldenTestCase(unittest.TestCase):
     """A full S6 day (85,815 points, all on whole seconds, five land gaps of 62 s
-    and 132 s) must smooth byte-identically to the integer-second-grid smoother.
+    and 132 s) must smooth as the integer-second-grid smoother did.
 
     `S6_ssha_smoothed_20250101.nc.gz` holds `ssha` and `nasa_flag` from the OER
     stage's S6 P1 input, with `ssha_smoothed` produced by the grid-reindexing
-    smoother at S6's `ground_speed` 5.7529. That input's own `ssha_smoothed`
-    cannot serve: it was written at the earlier 5.745.
+    smoother at S6's `ground_speed` 5.7529 on arm64 macOS. That input's own
+    `ssha_smoothed` cannot serve: it was written at the earlier 5.745.
+
+    The two smoothers agree exactly on any one platform, but the golden does not
+    survive a change of CPU: on linux x86_64 the grid smoother itself differs from
+    it at 49 points by up to 2.8e-17 m.
     """
 
     @classmethod
@@ -39,9 +43,13 @@ class S6GoldenTestCase(unittest.TestCase):
         cls.golden = _open_gz("S6_ssha_smoothed_20250101.nc.gz")
         cls.out = ssha_smoothing(cls.golden[["ssha", "nasa_flag"]].copy(), "S6")
 
-    def test_ssha_smoothed_is_byte_identical(self):
-        np.testing.assert_array_equal(
-            self.out["ssha_smoothed"].values, self.golden["ssha_smoothed"].values
+    def test_ssha_smoothed_matches(self):
+        """1e-12 m: far below any physical signal, above cross-platform rounding."""
+        np.testing.assert_allclose(
+            self.out["ssha_smoothed"].values,
+            self.golden["ssha_smoothed"].values,
+            rtol=0,
+            atol=1e-12,
         )
 
     def test_fixture_is_whole_second_1hz(self):
@@ -66,9 +74,13 @@ class S6OmittedSamplesGoldenTestCase(unittest.TestCase):
         cls.golden = _open_gz("S6_ssha_smoothed_omitted_samples.nc.gz")
         cls.out = ssha_smoothing(cls.golden[["ssha", "nasa_flag"]].copy(), "S6")
 
-    def test_ssha_smoothed_is_byte_identical(self):
-        np.testing.assert_array_equal(
-            self.out["ssha_smoothed"].values, self.golden["ssha_smoothed"].values
+    def test_ssha_smoothed_matches(self):
+        """Same tolerance as the full day, for the same cross-platform reason."""
+        np.testing.assert_allclose(
+            self.out["ssha_smoothed"].values,
+            self.golden["ssha_smoothed"].values,
+            rtol=0,
+            atol=1e-12,
         )
 
     def test_fixture_has_the_omitted_sample_counts(self):

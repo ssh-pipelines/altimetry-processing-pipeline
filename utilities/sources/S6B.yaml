@@ -7,6 +7,7 @@ common:
   # this flips to true while the ranges overlap).
   enabled: false
   start_date: "2025-11-26"
+  sample_period: 1.0     # s
   collections:
     - shortname: JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G
       concept_id: C3213767230-POCLOUD

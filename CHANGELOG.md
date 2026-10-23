@@ -144,6 +144,10 @@ source is fully supported.
   fans out over all of them and any contributor with real work would mutate data.
 
 ### Added
+- `common.sample_period`, the seconds between a Source's along-track samples,
+  defaulting to `1.0` and declared explicitly as `1.0` for GSFC, S6, S6B, and S3B.
+  It sets the smoothing filter's tap spacing (see Fixed). Like `ground_speed`, a
+  populated value takes a redeploy to reach any stage.
 - **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published
   product's `enabled` contributors, mints the one `run_id` both tiers share, computes
   the product tier's manifest address, decides whether the line has a product tier at
@@ -172,6 +176,13 @@ source is fully supported.
   ignore the identity it was handed.
 
 ### Fixed
+- `ssha_smoothing` no longer assumes 1 Hz sampling on whole-second timestamps. It
+  reindexed each day onto an integer-second grid, which raised `KeyError` for any
+  source whose timestamps miss whole seconds (ERS-1, and every other AVISO L2P
+  source measured except S3B). Land gaps are now filled by counting omitted samples
+  from each gap's length in local sample periods, and filter taps are
+  `ground_speed × sample_period` km apart. Output for the 1 Hz sources is
+  unchanged. See ADR 0011.
 - High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
   product's in-file identity. `title`, `summary`, `id` (DOI), `processing_level`,
   `product_short_name`, `product_version`, `references`, and `source_url` moved out of

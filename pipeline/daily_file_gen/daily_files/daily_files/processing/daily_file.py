@@ -220,7 +220,7 @@ class DailyFile(ABC):
         self.clean_date(self.date)
         self.mss_swap()
         self.apply_basin_to_nasa()
-        self.make_ssha_smoothed(self.date)
+        self.make_ssha_smoothed()
         self.set_metadata()
         self.set_source_attrs()
 
@@ -342,8 +342,8 @@ class DailyFile(ABC):
             )
         return mss_swapped_values
 
-    def make_ssha_smoothed(self, date: datetime):
-        self.ds = ssha_smoothing(self.ds, date, self.source_config.source)
+    def make_ssha_smoothed(self):
+        self.ds = ssha_smoothing(self.ds, self.source_config.source)
 
     def make_lonlat_points(self, lats: np.ndarray, lons: np.ndarray) -> gpd.GeoDataFrame:
         """

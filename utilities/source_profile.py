@@ -125,6 +125,9 @@ class SourceCommon:
     source_filename_pattern: str | None = None
     cycle_index_key: str | None = None
     ground_speed: float = 5.745
+    # Seconds between along-track samples. Kept apart from ground_speed because
+    # oerfit converts crossover *time* to distance and must not see the rate.
+    sample_period: float = 1.0
     intermission_bias: float = 0.0
 
 

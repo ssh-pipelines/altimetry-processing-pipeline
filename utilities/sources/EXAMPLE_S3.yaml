@@ -10,6 +10,7 @@ common:
   enabled: false
   start_date: "2020-01-01"
   ground_speed: 5.7582   # km/s, median 1 Hz ground speed
+  sample_period: 1.0     # s between along-track samples, measured; defaults to 1.0
   source_bucket: "example-source-bucket"
   source_prefix_pattern: "data/{source}/{year}"
   source_filename_pattern: "{source}_{date}.nc"

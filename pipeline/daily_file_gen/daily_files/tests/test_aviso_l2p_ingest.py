@@ -69,6 +69,14 @@ class TestAvisoL2PIngest(unittest.TestCase):
         self.assertEqual(ingested.cycles.dtype, np.int32)
         self.assertEqual(ingested.passes.dtype, np.int32)
 
+    def test_ssha_is_sea_level_anomaly_unchanged(self):
+        # sea_level_anomaly already has AVISO's inter_mission_bias subtracted;
+        # ssha must not add it back or subtract it again.
+        buf = _make_l2p_bytes(cycle=101, pass_num=745, n=100, t_start="2025-01-07T00:00:00")
+        expected = xr.open_dataset(BytesIO(buf.getvalue()))["sea_level_anomaly"].values
+        ingested = AvisoL2PIngestor().ingest([buf])
+        np.testing.assert_array_equal(ingested.ssha, expected.astype(np.float64))
+
     def test_inv_bar_cor_nan_filled(self):
         buf = _make_l2p_bytes(cycle=101, pass_num=745, n=100, t_start="2025-01-07T00:00:00")
         ingested = AvisoL2PIngestor().ingest([buf])

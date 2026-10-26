@@ -118,6 +118,7 @@ Current sources (those with a `daily_files:` section):
 | S6     | reference      | `JASON_CS_S6A_L2_ALT_LR_RED_OST_NTC_G01`, `..._NTC_G01_UNVALIDATED`, `..._STC_F` | DTU18 → DTU21 (diff file) |
 | S6B    | reference      | `JASON_CS_S6B_L2_ALT_LR_RED_OST_STC_G`                                           | DTU18 → DTU21 (diff file) |
 | S3B    | high_latitude  | `dataset-l2p-uncross-calibrated-ntc-sla-s3b-1hz` (THREDDS)                        | DTU21 interpolated  |
+| ERS1   | high_latitude  | `dataset-l2p-uncross-calibrated-ntc-sla-e1` (THREDDS)                             | DTU21 interpolated  |
 | EXAMPLE_S3 | reference  | — (template, not a real source)                                                  | DTU15 → DTU21 (diff file) |
 
 To add a new source, create `utilities/sources/{source}.yaml` with a `common` block and a `daily_files:` section, implement the required components (downloader, ingestor, processor), and register them in `SOURCE_REGISTRY` (`daily_files/daily_file_job.py`).

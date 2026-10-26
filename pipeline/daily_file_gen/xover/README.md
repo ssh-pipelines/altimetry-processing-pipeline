@@ -20,7 +20,7 @@ The Lambda receives one item from the jobs manifest per invocation, with `df_ver
 | Parameter    | Example      | Description                          |
 |--------------|--------------|--------------------------------------|
 | `date`       | `2025-01-01` | Processing day (ISO 8601)            |
-| `source`     | `S6`         | Satellite source (`GSFC`, `S6`, `S6B`, `S3B`) |
+| `source`     | `S6`         | Satellite source (`GSFC`, `S6`, `S6B`, `S3B`, `ERS1`) |
 | `df_version` | `p1`         | Daily file generation step (`p1`, `p2`) |
 | `bucket`     | `my-bucket`  | S3 bucket for input/output           |
 
@@ -113,6 +113,7 @@ Current sources:
 | S6     | `self`         | 9.9156 days | 10 days (forward) | 2 days   |
 | S6B    | `self`         | 9.9156 days | 10 days (forward) | 2 days   |
 | S3B    | `reference`    | 9.9156 days | 12 days (±)       | 2 days   |
+| ERS1   | `reference`    | 9.9156 days | 12 days (±)       | 2 days   |
 
 To add a new satellite, add an `xover:` section to its `utilities/sources/{source}.yaml`.
 No code changes required for either existing `crossover_type` — the stage is

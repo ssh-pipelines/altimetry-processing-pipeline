@@ -171,7 +171,8 @@ drift within one.
 
 `enabled: true` is required even for a manual dev run: `start_run.resolve_contributors`
 refuses to fan out over a line with zero *enabled* contributors. It is the declared
-production fact, so setting it has a paired obligation (step 2).
+production fact, so setting it has a paired obligation (step 2). A source onboarded
+ahead of production goes back to `false` when the passes are done (step 8).
 
 ## Step 2 — Wire the two registries
 
@@ -415,6 +416,19 @@ The low-pass cutoff default was validated for S3B; `--lowpass-cutoff-days` chang
 Check the crossover count against what the record length warrants. Orders of magnitude
 low means step 4's crossovers were thin, not that the bias is well-constrained.
 
+For a mission with several orbit phases, also run the tool once per phase with
+`--start-date` / `--end-date`. A level step between phases shows on the low-pass plot as
+a plateau, not a slope, and the Theil-Sen trend misreads one that falls mid-record as
+drift. ERS-1 stepped by about 11 mm (0.0209 m in phases C and G, 0.0102 m in the
+geodetic phase), and AVISO's own `inter_mission_bias` changes at the same boundaries.
+
+A step of that size does not need a per-phase constant. The reference OER fits each
+day's own crossovers, so it removes whatever offset that day carries: on ERS-1, final
+`ssha` was the same at a median of 0.00 mm whether `intermission_bias` was 0 or
+0.0175. The constant matters only where the spline is held at zero: at the ends of
+the day's data, across gaps of 0.75 h or more (0–5% of points on the days tested),
+and on days with no crossovers at all.
+
 Write the result to `common.intermission_bias` with the count and the comparison it was
 measured against, replacing the placeholder comment, then **redeploy**.
 
@@ -447,6 +461,15 @@ fraction of its passes under thresholds tuned for a quieter one. Record what the
 flagged fraction actually is; a threshold change needs that number as its
 justification.
 
+Group the crossovers by `(cycle1, pass1)` and compute each pass's mean and standard
+deviation of `ssh1 - ssh2`, counting only passes with more crossovers than
+`mean_num` / `rms_num`. ERS-1 inherited S3B's thresholds (0.1 m mean, 0.27 m RMS)
+unchanged. Over 25,386 passes, the per-pass |mean| had a 99th percentile of 0.070 m
+and the RMS a maximum of 0.154 m, even before OER. The full-record run flagged three
+passes on one date, 1995-11-15. AVISO flags 9 of that day's passes entirely, so the
+spline is held at zero beside the gaps they leave, and those three passes' offsets
+survive OER.
+
 ## Step 8 — Documentation
 
 Per-source tables that go stale, all of which list every source explicitly:
@@ -458,6 +481,10 @@ Per-source tables that go stale, all of which list every source explicitly:
 - `pipeline/daily_file_gen/xover/README.md` — crossover config table
 - `pipeline/daily_file_gen/finalizer/README.md` — offset / bias / date-range table
 - `CHANGELOG.md` under `[Unreleased]`
+
+If the source is not going to production yet, set `common.enabled` back to `false` and
+leave its `schedules.yaml` entry staged. `test_schedules` passes either way, since a
+disabled source needs no schedule, and a staged rule is disabled too.
 
 An L2P source introduces no new vocabulary, so `docs/GLOSSARY.md` needs nothing. It
 also makes no new architectural decision, so no ADR — unless the orbit-phase question
@@ -493,6 +520,7 @@ Pass 2 — real P1 + crossovers (full record, force_update: true)
 [ ] One p1 crossover file: ssh2 populated
 [ ] compute_intermission_bias --version p1 --plot
 [ ] Diagnostic plots reviewed for drift and latitude structure
+[ ] Multi-phase mission: median compared per orbit phase
 [ ] Crossover count plausible for the record length
 [ ] intermission_bias written with its count, placeholder comment replaced
 [ ] REDEPLOY
@@ -503,4 +531,5 @@ Pass 3 — full chain (full record, force_update: true)
 
 Docs
 [ ] 4 README tables + DATA_FLOW node + CHANGELOG
+[ ] Not going to production yet: enabled back to false, schedule left staged
 ```

@@ -148,6 +148,16 @@ source is fully supported.
   defaulting to `1.0` and declared explicitly as `1.0` for GSFC, S6, S6B, and S3B.
   It sets the smoothing filter's tap spacing (see Fixed). Like `ground_speed`, a
   populated value takes a redeploy to reach any stage.
+- ERS-1 as a `high_latitude` source (`utilities/sources/ERS1.yaml`), 1992-10-25 through
+  1996-06-01 from the AVISO `dataset-l2p-uncross-calibrated-ntc-sla-e1` collection.
+  Its constants are measured: `sample_period` 0.980468 s, `ground_speed` 6.7267 km/s,
+  and `intermission_bias` 0.0177 m over 1,231,056 reference crossovers. It is
+  **disabled** (`enabled: false`, schedule staged with `cron: TBD`) until the
+  high-latitude metadata values are settled. The 1993-12-21 to 1994-04-09 ice phase
+  has no upstream data and produces empty daily files. The bias against NASA-SSH
+  steps by about 11 mm between orbit phases (0.0209 m in the 35-day phases, 0.0102 m
+  in the geodetic phase). A single constant is kept because the reference OER fits
+  each day's offset regardless of the configured value.
 - `tools/compute_ground_speed.py` also measures `sample_period`, as the median
   across passes of each pass's median non-gap time step, and warns when the
   configured value differs.

@@ -17,6 +17,17 @@ from utilities.aws_utils import aws_manager
 # after the 200 and so is invisible to the adapter.
 _RETRYABLE = (requests.exceptions.RequestException, gzip.BadGzipFile, OSError)
 
+# Raised by session.get only once the adapter's own retries are spent. Retrying
+# them here multiplies the attempts (5 x 6 connects) past the Lambda timeout,
+# so a host that drops connections would time the job out instead of failing it.
+_ADAPTER_RETRIED = (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+
+# (connect, read). The adapter makes up to 6 attempts, so each bound times 6
+# plus ~30s of backoff must fit the Lambda timeout: ~2 min for a host that drops
+# connections, ~3.5 min for one that accepts but stalls. A healthy AVISO
+# handshake takes well under a second.
+_TIMEOUT = (15, 30)
+
 
 def get_podaac_s3_credentials() -> dict:
     """Retrieve temporary PODAAC S3 credentials via EDL auth stored in Secrets Manager."""
@@ -94,7 +105,7 @@ class HttpDownloader(Downloader):
         self.backoff_max = backoff_max
 
     def _fetch(self, uri: str) -> BytesIO:
-        with self.session.get(uri, stream=True, timeout=120) as resp:
+        with self.session.get(uri, stream=True, timeout=_TIMEOUT) as resp:
             resp.raise_for_status()
             raw = resp.raw
             raw.decode_content = True
@@ -106,13 +117,17 @@ class HttpDownloader(Downloader):
         """Download a single granule, retrying transient errors with backoff.
 
         Retries cover the streamed body read + decompress phase (see _RETRYABLE);
-        the mounted adapter handles connect/read/5xx within each attempt. After
-        max_attempts the last error is re-raised so the job fails closed.
+        the mounted adapter handles connect/read/5xx within each attempt, and
+        connection errors and timeouts it gives up on are re-raised immediately.
+        After max_attempts the last error is re-raised so the job fails closed.
         """
         logging.debug(f"Downloading {uri}")
         for attempt in range(self.max_attempts):
             try:
                 return self._fetch(uri)
+            except _ADAPTER_RETRIED:
+                logging.exception(f"Error downloading {uri}; connection retries exhausted")
+                raise
             except _RETRYABLE as e:
                 if attempt + 1 >= self.max_attempts:
                     logging.exception(

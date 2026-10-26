@@ -207,6 +207,12 @@ source is fully supported.
   and therefore evaluated at module import, so a warm Lambda container kept planning
   simple grids against the date it started on — a container alive for two weeks
   planned two Mondays behind, and dropped the Mondays it had grown past.
+- An AVISO host that drops connections now fails the `daily_files` job instead of
+  timing out the Lambda. `HttpDownloader` retried connection errors the session's
+  adapter had already retried, 30 connect attempts at up to 120 s each, so the job
+  never reached the fail-closed path that lets the date replan. Connection errors
+  and timeouts now re-raise once the adapter gives up, and the request timeout is
+  `(connect=15, read=30)` seconds.
 
 ### Added
 - Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed

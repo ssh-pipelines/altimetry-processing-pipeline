@@ -82,9 +82,10 @@ _MIN_PASS_POINTS = 1000
 _DT_LOW_S = 0.5
 _DT_HIGH_S = 1.5
 
-# The measured sample period is printed to 6 decimals; a configured value that
-# differs at that precision was not taken from this measurement.
-_SAMPLE_PERIOD_TOLERANCE_S = 5e-7
+# ERS-1's period sits on a 6-decimal rounding boundary (0.980468 vs 0.980469
+# across windows), so a tolerance at print precision warns on a correct value.
+# 1e-5 s is still ~25x below the 2.4e-4 s gap between ERS-1's two clock rates.
+_SAMPLE_PERIOD_TOLERANCE_S = 1e-5
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,11 @@ def compute_sample_period(
         )
 
     return float(np.median(periods)), periods
+
+
+def sample_period_mismatch(measured: float, configured: float) -> bool:
+    """True if the configured sample period was not taken from this measurement."""
+    return abs(measured - configured) > _SAMPLE_PERIOD_TOLERANCE_S
 
 
 def compute_ground_speed(
@@ -399,7 +405,7 @@ sample_period is read only by daily-file smoothing.
     )
 
     configured = profile.sample_period
-    if abs(sample_period - configured) > _SAMPLE_PERIOD_TOLERANCE_S:
+    if sample_period_mismatch(sample_period, configured):
         print(
             f"\nWARNING: configured common.sample_period is {configured} s; "
             f"measured {sample_period:.6f} s. Update it and redeploy before "

@@ -21,6 +21,7 @@ from compute_ground_speed import (  # noqa: E402
     haversine_km,
     pass_ground_speed,
     pass_sample_period,
+    sample_period_mismatch,
 )
 
 # ERS-1's measured sample period: not 1 Hz, and not on whole seconds.
@@ -149,6 +150,21 @@ class ComputeSamplePeriodTestCase(unittest.TestCase):
         time = (np.arange(10) * 100).astype("datetime64[s]").astype("datetime64[ns]")
         with self.assertRaises(ValueError):
             compute_sample_period(time, np.ones(10), np.ones(10))
+
+
+class SamplePeriodMismatchTestCase(unittest.TestCase):
+    def test_rounding_boundary_is_not_a_mismatch(self):
+        # ERS-1 measured 0.980469 s on a 1995 window against a configured
+        # 0.980468 s taken from 1992: the same rate either side of a rounding
+        # boundary.
+        self.assertFalse(sample_period_mismatch(0.980469, ERS1_PERIOD_S))
+
+    def test_default_on_non_1hz_source_is_a_mismatch(self):
+        self.assertTrue(sample_period_mismatch(ERS1_PERIOD_S, 1.0))
+
+    def test_other_ers1_clock_rate_is_a_mismatch(self):
+        # ERS-1's second clock population, 2.4e-4 s away, must still register.
+        self.assertTrue(sample_period_mismatch(0.980224, ERS1_PERIOD_S))
 
 
 class ComputeGroundSpeedTestCase(unittest.TestCase):

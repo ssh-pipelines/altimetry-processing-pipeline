@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Compute the along-track ground speed of a satellite for OER knot placement.
+Compute the along-track ground speed and sample period of a satellite.
 
 A satellite's along-track ground speed is one canonical per-source quantity,
 configured as `common.ground_speed`. This tool measures it for any source from
-its along-trackbdaily files: for a long, nearly-complete pass, the ground speed
-is the median of the first-difference of geodesic distances between successive
-1 Hz measurements.
+its along-track daily files: for a long, nearly-complete pass, the ground speed
+is the median of the geodesic distance between successive measurements divided
+by the time between them, so it does not depend on the sampling rate.
+
+It also measures `common.sample_period`, the median time between successive
+measurements within a pass, and reports whether it agrees with the configured
+value.
 
 Usage (S3 mode):
     python tools/compute_ground_speed.py \\
@@ -29,12 +33,16 @@ Result:
         utilities/sources/{source}.yaml
 
         common:
-          ground_speed: <value>   # km/s, median 1 Hz ground speed over N long passes
+          ground_speed: <value>   # km/s, median ground speed over N long passes
+          sample_period: <value>  # s, median sample step over N passes
 
 Caveats:
   - This is the satellite's along-track ground speed — a SINGLE canonical value
     (`common.ground_speed`) read by BOTH oerfit knot placement and the
     daily-file smoothing filter.
+  - The sample period is measured from the daily files, which hold the upstream
+    timestamps unchanged, so it can be checked after the fact. The smoothing
+    filter in those files used whatever `sample_period` was deployed.
 
 Prerequisites:
     pip install boto3 xarray numpy netcdf4 h5netcdf
@@ -68,11 +76,16 @@ _EARTH_RADIUS_KM = 6371.0088
 _COMPLETENESS_FRACTION = 0.9
 _MIN_PASS_POINTS = 1000
 
-# Successive 1 Hz points are ~1 s apart. Drop pairs whose dt strays far from
-# 1 s (data gaps) before taking the median, and reject non-positive dt
-# (duplicate / out-of-order timestamps).
+# Successive points are ~1 s apart (0.94-1.04 s across every source measured).
+# Drop pairs whose dt strays far from that (data gaps) before taking the median,
+# and reject non-positive dt (duplicate / out-of-order timestamps).
 _DT_LOW_S = 0.5
 _DT_HIGH_S = 1.5
+
+# ERS-1's period sits on a 6-decimal rounding boundary (0.980468 vs 0.980469
+# across windows), so a tolerance at print precision warns on a correct value.
+# 1e-5 s is still ~25x below the 2.4e-4 s gap between ERS-1's two clock rates.
+_SAMPLE_PERIOD_TOLERANCE_S = 1e-5
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +116,7 @@ def haversine_km(
 def pass_ground_speed(
     time: np.ndarray, lat: np.ndarray, lon: np.ndarray
 ) -> Optional[float]:
-    """Median 1 Hz ground speed (km/s) for a single pass, or None if unusable.
+    """Median ground speed (km/s) for a single pass, or None if unusable.
 
     Sorts by time, computes successive geodesic distance / time delta, drops
     samples with non-positive or non-~1 s dt, and returns the median. Robust to
@@ -125,6 +138,54 @@ def pass_ground_speed(
     return float(np.median(speeds))
 
 
+def pass_sample_period(time: np.ndarray) -> Optional[float]:
+    """Median time step (s) between successive points of a single pass, or None.
+
+    Applies the same dt gate as `pass_ground_speed`, so gaps and duplicate
+    timestamps are excluded. Differenced in integer nanoseconds, since float
+    seconds since 1970 resolve only a few 1e-7 s and the result is reported to
+    1e-6.
+    """
+    dt = np.diff(np.sort(time.astype("datetime64[ns]").astype("int64"))) / 1e9
+    good = (dt >= _DT_LOW_S) & (dt <= _DT_HIGH_S)
+    if not np.any(good):
+        return None
+    return float(np.median(dt[good]))
+
+
+def compute_sample_period(
+    time: np.ndarray, cycle: np.ndarray, pass_: np.ndarray
+) -> tuple[float, list[float]]:
+    """Compute the per-source sample period from concatenated arrays.
+
+    Groups points by (cycle, pass) so no step spans two passes, takes each
+    pass's median step, and returns the median across passes together with the
+    per-pass medians (their spread shows whether the rate drifts between
+    passes). Unlike ground speed, every pass counts: a truncated pass still has
+    regular steps.
+
+    Raises ValueError if no pass has a step inside the dt gate.
+    """
+    trackids = cycle.astype("int64") * 100000 + pass_.astype("int64")
+    periods: list[float] = []
+    for tid in np.unique(trackids):
+        period = pass_sample_period(time[trackids == tid])
+        if period is not None:
+            periods.append(period)
+
+    if not periods:
+        raise ValueError(
+            f"No pass has a time step between {_DT_LOW_S} and {_DT_HIGH_S} s."
+        )
+
+    return float(np.median(periods)), periods
+
+
+def sample_period_mismatch(measured: float, configured: float) -> bool:
+    """True if the configured sample period was not taken from this measurement."""
+    return abs(measured - configured) > _SAMPLE_PERIOD_TOLERANCE_S
+
+
 def compute_ground_speed(
     time: np.ndarray,
     lat: np.ndarray,
@@ -132,7 +193,7 @@ def compute_ground_speed(
     cycle: np.ndarray,
     pass_: np.ndarray,
 ) -> tuple[float, list[int]]:
-    """Compute the per-source ground speed from concatenated 1 Hz arrays.
+    """Compute the per-source ground speed from concatenated arrays.
 
     Groups points by (cycle, pass), keeps only long/nearly-complete passes,
     computes each pass's median speed, and returns the median across passes
@@ -177,8 +238,8 @@ def compute_ground_speed(
 def load_daily(path: str) -> tuple[np.ndarray, ...]:
     """Load geometry (time, lat, lon, cycle, pass) from a daily file.
 
-    Geometry only — keeps every 1 Hz point (no ssha_smoothed drop), since the
-    ground speed depends solely on coordinates.
+    Geometry only — keeps every point (no ssha_smoothed drop), since the ground
+    speed and sample period depend solely on coordinates and times.
     """
     ds = xr.open_dataset(path, engine="h5netcdf")
     time = ds["time"].values
@@ -214,17 +275,19 @@ def list_local_daily_files(directory: str) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compute a satellite's along-track ground speed for OER knot placement.",
+        description="Compute a satellite's along-track ground speed and sample period.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Enter the printed value under `common` for the source in:
+Enter the printed values under `common` for the source in:
   utilities/sources/{source}.yaml
 
     common:
-      ground_speed: <value>   # km/s
+      ground_speed: <value>    # km/s
+      sample_period: <value>   # s
 
-Note: this is the SINGLE canonical value read by both OER and daily-file
+Note: ground_speed is the SINGLE canonical value read by both OER and daily-file
 smoothing (it replaces the legacy oerfit 5.7 and smoothing.speed 5.745).
+sample_period is read only by daily-file smoothing.
         """,
     )
     parser.add_argument("--source", required=True, help="Source name (e.g. S3B)")
@@ -324,9 +387,10 @@ smoothing (it replaces the legacy oerfit 5.7 and smoothing.speed 5.745).
     lon = np.concatenate(lon_chunks)
     cycle = np.concatenate(cycle_chunks)
     pass_ = np.concatenate(pass_chunks)
-    print(f"\nLoaded {len(time)} 1 Hz points.")
+    print(f"\nLoaded {len(time)} points.")
 
     ground_speed, used_counts = compute_ground_speed(time, lat, lon, cycle, pass_)
+    sample_period, pass_periods = compute_sample_period(time, cycle, pass_)
 
     print("\nResults:")
     print(f"  Ground speed ({args.source}): {ground_speed:.4f} km/s")
@@ -334,11 +398,29 @@ smoothing (it replaces the legacy oerfit 5.7 and smoothing.speed 5.745).
         f"  Passes used: {len(used_counts)}  "
         f"(point counts {min(used_counts)}–{max(used_counts)})"
     )
+    print(f"  Sample period ({args.source}): {sample_period:.6f} s")
+    print(
+        f"  Passes used: {len(pass_periods)}  "
+        f"(per-pass medians {min(pass_periods):.6f}–{max(pass_periods):.6f})"
+    )
+
+    configured = profile.sample_period
+    if sample_period_mismatch(sample_period, configured):
+        print(
+            f"\nWARNING: configured common.sample_period is {configured} s; "
+            f"measured {sample_period:.6f} s. Update it and redeploy before "
+            "producing the P1 that crossovers are built from."
+        )
+
     print("\nAdd under `common` in utilities/sources/{}.yaml:".format(args.source))
     print("  common:")
     print(
         f"    ground_speed: {ground_speed:.4f}   "
-        f"# km/s, median 1 Hz ground speed over {len(used_counts)} long passes"
+        f"# km/s, median ground speed over {len(used_counts)} long passes"
+    )
+    print(
+        f"    sample_period: {sample_period:.6f}   "
+        f"# s, median sample step over {len(pass_periods)} passes"
     )
 
 

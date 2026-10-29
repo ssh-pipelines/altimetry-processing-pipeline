@@ -217,6 +217,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from each gap's length in local sample periods, and filter taps are
   `ground_speed × sample_period` km apart. Output for the 1 Hz sources is
   unchanged. See ADR 0011.
+- The AVISO L2P `ssha` comment no longer says AVISO's inter-mission bias is not
+  applied. AVISO's `sea_level_anomaly`, which `ssha` is read from unchanged, already
+  has `inter_mission_bias` subtracted to tie each mission to TOPEX/Poseidon (verified
+  against the documented SLA formula on AltiKa, CryoSat-2, ERS-1, and Jason-1
+  granules). `common.intermission_bias` is the residual against the reference
+  mission on top of it.
 - High-latitude daily files and simple grids no longer ship the NASA-SSH *reference*
   product's in-file identity. `title`, `summary`, `id` (DOI), `processing_level`,
   `product_short_name`, `product_version`, `references`, and `source_url` moved out of

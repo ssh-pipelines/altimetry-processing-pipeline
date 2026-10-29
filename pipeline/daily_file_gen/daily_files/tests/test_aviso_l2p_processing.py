@@ -153,9 +153,13 @@ class TestAvisoL2PProcessing(unittest.TestCase):
         )
 
     def test_ssha_comment_explains_inter_mission_bias(self):
+        """AVISO's sea_level_anomaly already has inter_mission_bias subtracted
+        (verified against the documented SLA formula on AltiKa, CryoSat-2,
+        ERS-1, and Jason-1 granules), so the comment must say ssha includes it."""
         comment = self.daily_ds["ssha"].attrs.get("comment", "")
         self.assertIn("inter_mission_bias", comment)
-        self.assertIn("No AVISO inter-mission bias has been applied", comment)
+        self.assertIn("ssha includes AVISO's inter-mission bias", comment)
+        self.assertNotIn("No AVISO inter-mission bias has been applied", comment)
 
     def test_date_subsetting(self):
         if len(self.daily_ds["time"]) == 0:

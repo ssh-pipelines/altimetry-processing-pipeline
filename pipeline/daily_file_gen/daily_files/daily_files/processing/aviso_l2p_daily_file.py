@@ -10,10 +10,11 @@ from daily_files.processing.daily_file import DailyFile
 from daily_files.processing.dtu21 import get_dtu21_interpolator
 
 _SSHA_BIAS_COMMENT = (
-    "No AVISO inter-mission bias has been applied to ssha; the per-record "
+    "ssha includes AVISO's inter-mission bias, which AVISO subtracts in "
+    "sea_level_anomaly to tie each mission to TOPEX/Poseidon; the per-record "
     "`inter_mission_bias` array is retained on the dataset as an auxiliary "
-    "variable. Cross-mission calibration is performed downstream against "
-    "reference-mission daily files."
+    "variable. The residual offset against the reference mission is measured "
+    "at reference-mission crossovers and removed downstream."
 )
 
 
@@ -25,8 +26,10 @@ class AvisoL2PDailyFile(DailyFile):
     MSS handling (see ADR 0002): the L2P file's `mean_sea_surface` is swapped
     to project-canonical DTU21 by bilinear interpolation of a bundled global
     DTU21 grid at each granule's (lat, lon). AVISO's `inter_mission_bias` is
-    retained on the output as an auxiliary variable but NOT applied to ssha;
-    cross-mission calibration runs downstream against reference-mission files.
+    already subtracted in `sea_level_anomaly`, which ssha is read from unchanged;
+    the array is retained on the output as an auxiliary variable. The residual
+    offset against the reference mission is `common.intermission_bias`, removed
+    downstream.
     """
 
     TARGET_MSS = "DTU21"

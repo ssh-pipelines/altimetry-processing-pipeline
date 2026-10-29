@@ -47,7 +47,7 @@ flowchart TB
         CRYO["<b>Cryosat-2</b><br/>TBD → TBD"]
         ENVI["<b>Envisat</b><br/>TBD → TBD"]
         ERS2["<b>ERS-2</b><br/>TBD → TBD"]
-        ERS1["<b>ERS-1</b><br/>TBD → TBD"]
+        ERS1["<b>ERS-1</b><br/>1992-10-25 → 1996-06-01"]
         NSSHREF[/"NASA-SSH reference-mission along-track product<br/><code>products/NASA-SSH/along_track/</code><br/><i>required for crossovers</i>"/]
 
         HY2B ~~~ SARAL

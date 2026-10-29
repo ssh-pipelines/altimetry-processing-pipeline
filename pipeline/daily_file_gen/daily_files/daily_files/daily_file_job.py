@@ -68,6 +68,12 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
         ingestor=AvisoL2PIngestor,
         processor=AvisoL2PDailyFile,
     ),
+    "ERS1": SourcePipeline(
+            downloader=HttpDownloader,
+            downloader_kwargs={"session_fn": build_aviso_session},
+            ingestor=AvisoL2PIngestor,
+            processor=AvisoL2PDailyFile,
+        ),
 }
 
 

@@ -7,9 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-High-latitude (S3B) support is still a work in progress and is not yet enabled in
-production. The entries below ship in the code but remain unannounced until that
-source is fully supported.
+## [3.0.0] - 2026-10-26
+
+### Added
+- `common.sample_period`, the seconds between a Source's along-track samples,
+  defaulting to `1.0` and declared explicitly as `1.0` for GSFC, S6, S6B, and S3B.
+  It sets the smoothing filter's tap spacing (see Fixed). Like `ground_speed`, a
+  populated value takes a redeploy to reach any stage.
+- **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published
+  product's `enabled` contributors, mints the one `run_id` both tiers share, computes
+  the product tier's manifest address, decides whether the line has a product tier at
+  all, and records the run's invocation parameters. Containerized rather than a zip
+  infra Lambda: it exists to read the source registry, which a self-contained zip
+  target does not ship.
+
+  **It raises on an empty fan-out**, with distinct messages for a published product no
+  registered source resolves to (a typo) and one whose sources are all disabled (an
+  `enabled` flag). A run over zero contributors would otherwise succeed having
+  produced nothing — indistinguishable downstream from a week with no new upstream
+  data.
+- `utilities/schedules.yaml` and a paired test: every schedule names a resolvable
+  published product with an enabled contributor, and every enabled source's line has
+  a schedule. The two failure modes between `enabled` and a schedule are silent in
+  opposite directions — an enabled source with no schedule never runs, an enabled
+  schedule with no enabled contributor runs and does nothing.
+- Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
+  against the finalized NASA-SSH P3 reference mission instead of themselves, selected by
+  `crossover_type: reference` in a source's `xover` config. The reference SSH is
+  time-interpolated to each high-lat crossover time, and the output carries a distinct
+  schema (high-lat side + interpolated reference `ssh2` + before/after bracket) and a
+  `crossover_type` global attribute. Existing `self` crossovers (S6/GSFC) are unchanged.
+  See ADR-0006.
+- Reference-crossover OER path: the `oer` stage now reduces orbit error for
+  `high_latitude` sources against the reference mission, dispatched from `product_type`.
+  It fits a single unstacked `dssh = ssh1 - ssh2` keyed by the high-lat trackid (the
+  reference side is fixed truth, not a second observation, so no sign-flipped stacking),
+  subtracts a per-source `intermission_bias` before the fit, disables the 0.3 m
+  `ssh_max_error` gate, and uses a centered crossover-fetch window. Self-crossover
+  output (S6/GSFC) is unchanged.
+- Reference-crossover support in the `bad_pass` stage: dispatches self vs reference from
+  `product_type` and adds a reference load path (unstacked `dssh = ssh1 - ssh2`, centered
+  window) so `high_latitude` sources no longer error. Self-crossover flagging is unchanged.
+- Intermission-bias absolute correction in the `finalizer`: for `high_latitude` sources it
+  subtracts the per-source `intermission_bias` from `ssha`/`ssha_smoothed`, tying the level
+  to the reference datum (idempotent via `intermission_bias_applied`). Adds the S3B
+  `finalizer` config. No-op for reference sources.
+- High-latitude simple grids: registers the `simple_grid_high_latitude` product so the
+  `simple_grids` stage runs on `high_latitude` sources (output `_alt_hilat_simple_grid_`).
+- Per-source `intermission_bias` in the `common` section of source configs, consumed by
+  the high-latitude OER bias removal and the finalizer datum correction.
+- `tools/compute_intermission_bias.py` derives the per-source `intermission_bias`
+  constant from a source's L2 files.
+- Retry/backoff on the shared AVISO session (`utilities.aviso_auth`): an `HTTPAdapter`
+  with exponential backoff + jitter (5 attempts, `backoff_max=60`) retries transient
+  connect/read errors and 429/5xx responses, since AVISO's THREDDS server intermittently
+  drops connections.
 
 ### Changed
 - **Pipeline runs are triggered by published product, not by source.** The trigger
@@ -19,7 +71,7 @@ source is fully supported.
   chain, publication) and a *product tier* run once over the line (simple grids,
   their promotion, ENSO, indicators).
 
-  **The 16 EventBridge schedules must be updated to the new input shape**; nothing
+  **Existing EventBridge schedules must be updated to the new input shape**; nothing
   in the repo deploys them. They are now mirrored in `utilities/schedules.yaml` so
   the trigger shape is reviewable, with a test pairing them against the source
   registry in both directions.
@@ -142,42 +194,11 @@ source is fully supported.
   `SMOKE_PRODUCT` (`pipeline.sh --smoke`). The pre-check asks the registry which
   Sources contribute to the line and plans each one, since a product-keyed run
   fans out over all of them and any contributor with real work would mutate data.
-
-### Added
-- `common.sample_period`, the seconds between a Source's along-track samples,
-  defaulting to `1.0` and declared explicitly as `1.0` for GSFC, S6, S6B, and S3B.
-  It sets the smoothing filter's tap spacing (see Fixed). Like `ground_speed`, a
-  populated value takes a redeploy to reach any stage.
-- ERS-1 as a `high_latitude` source (`utilities/sources/ERS1.yaml`), 1992-10-25 through
-  1996-06-01 from the AVISO `dataset-l2p-uncross-calibrated-ntc-sla-e1` collection.
-  Its constants are measured: `sample_period` 0.980468 s, `ground_speed` 6.7267 km/s,
-  and `intermission_bias` 0.0177 m over 1,231,056 reference crossovers. It is
-  **disabled** (`enabled: false`, schedule staged with `cron: TBD`) until the
-  high-latitude metadata values are settled. The 1993-12-21 to 1994-04-09 ice phase
-  has no upstream data and produces empty daily files. The bias against NASA-SSH
-  steps by about 11 mm between orbit phases (0.0209 m in the 35-day phases, 0.0102 m
-  in the geodetic phase). A single constant is kept because the reference OER fits
-  each day's offset regardless of the configured value.
-- `tools/compute_ground_speed.py` also measures `sample_period`, as the median
-  across passes of each pass's median non-gap time step, and warns when the
-  configured value differs.
-- **`start_run`**, the Lambda that opens a product-keyed run. Resolves the published
-  product's `enabled` contributors, mints the one `run_id` both tiers share, computes
-  the product tier's manifest address, decides whether the line has a product tier at
-  all, and records the run's invocation parameters. Containerized rather than a zip
-  infra Lambda: it exists to read the source registry, which a self-contained zip
-  target does not ship.
-
-  **It raises on an empty fan-out**, with distinct messages for a published product no
-  registered source resolves to (a typo) and one whose sources are all disabled (an
-  `enabled` flag). A run over zero contributors would otherwise succeed having
-  produced nothing — indistinguishable downstream from a week with no new upstream
-  data.
-- `utilities/schedules.yaml` and a paired test: every schedule names a resolvable
-  published product with an enabled contributor, and every enabled source's line has
-  a schedule. The two failure modes between `enabled` and a schedule are silent in
-  opposite directions — an enabled source with no schedule never runs, an enabled
-  schedule with no enabled contributor runs and does nothing.
+- The `xover` `Crossover` god-object is decomposed into composable modules (windowed
+  tracks, S3/NetCDF loader, crossover search, results accumulator, and a
+  `CrossoverProcessor`/`CrossoverSpec` registry that dispatches on `crossover_type`).
+  Self-crossover output is preserved bit-for-bit.
+- `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
 
 ### Removed
 - `tools/manifest_generation/unifier_manifest.py`. It read a nonexistent
@@ -223,54 +244,6 @@ source is fully supported.
   and therefore evaluated at module import, so a warm Lambda container kept planning
   simple grids against the date it started on — a container alive for two weeks
   planned two Mondays behind, and dropped the Mondays it had grown past.
-- An AVISO host that drops connections now fails the `daily_files` job instead of
-  timing out the Lambda. `HttpDownloader` retried connection errors the session's
-  adapter had already retried, 30 connect attempts at up to 120 s each, so the job
-  never reached the fail-closed path that lets the date replan. Connection errors
-  and timeouts now re-raise once the adapter gives up, and the request timeout is
-  `(connect=15, read=30)` seconds.
-
-### Added
-- Reference-mission crossovers: `high_latitude` sources (e.g. S3B) are now crossed
-  against the finalized NASA-SSH P3 reference mission instead of themselves, selected by
-  `crossover_type: reference` in a source's `xover` config. The reference SSH is
-  time-interpolated to each high-lat crossover time, and the output carries a distinct
-  schema (high-lat side + interpolated reference `ssh2` + before/after bracket) and a
-  `crossover_type` global attribute. Existing `self` crossovers (S6/GSFC) are unchanged.
-  See ADR-0006.
-- Reference-crossover OER path: the `oer` stage now reduces orbit error for
-  `high_latitude` sources against the reference mission, dispatched from `product_type`.
-  It fits a single unstacked `dssh = ssh1 - ssh2` keyed by the high-lat trackid (the
-  reference side is fixed truth, not a second observation, so no sign-flipped stacking),
-  subtracts a per-source `intermission_bias` before the fit, disables the 0.3 m
-  `ssh_max_error` gate, and uses a centered crossover-fetch window. Self-crossover
-  output (S6/GSFC) is unchanged.
-- Reference-crossover support in the `bad_pass` stage: dispatches self vs reference from
-  `product_type` and adds a reference load path (unstacked `dssh = ssh1 - ssh2`, centered
-  window) so `high_latitude` sources no longer error. Self-crossover flagging is unchanged.
-- Intermission-bias absolute correction in the `finalizer`: for `high_latitude` sources it
-  subtracts the per-source `intermission_bias` from `ssha`/`ssha_smoothed`, tying the level
-  to the reference datum (idempotent via `intermission_bias_applied`). Adds the S3B
-  `finalizer` config. No-op for reference sources.
-- High-latitude simple grids: registers the `simple_grid_high_latitude` product so the
-  `simple_grids` stage runs on `high_latitude` sources (output `_alt_hilat_simple_grid_`).
-- Per-source `intermission_bias` in the `common` section of source configs, consumed by
-  the high-latitude OER bias removal and the finalizer datum correction.
-- `tools/compute_intermission_bias.py` derives the per-source `intermission_bias`
-  constant from a source's L2 files.
-- Retry/backoff on the shared AVISO session (`utilities.aviso_auth`): an `HTTPAdapter`
-  with exponential backoff + jitter (5 attempts, `backoff_max=60`) retries transient
-  connect/read errors and 429/5xx responses, since AVISO's THREDDS server intermittently
-  drops connections.
-
-### Changed
-- The `xover` `Crossover` god-object is decomposed into composable modules (windowed
-  tracks, S3/NetCDF loader, crossover search, results accumulator, and a
-  `CrossoverProcessor`/`CrossoverSpec` registry that dispatches on `crossover_type`).
-  Self-crossover output is preserved bit-for-bit.
-- `S3B` `start_date` moved to `2018-11-24` (from `2018-04-25`).
-
-### Fixed
 - Dates with no upstream granules generate empty along-track files again. 
   `pipeline_init` now plans every date from the start of the range through the last date with 
   granules, emitting an empty `granules` list for the gaps, which `daily_files` turns into an 
@@ -428,7 +401,8 @@ source is fully supported.
 Releases before 2.2.0 predate this changelog; see the git tags for their contents:
 [v2.1.0], [v2.0.0], [v1.1.0].
 
-[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.4.0...v3.0.0
 [2.4.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.1.0...v2.2.0

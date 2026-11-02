@@ -44,17 +44,17 @@ xover = [
     "dask==2025.5.1",
 ]
 pipeline_init = [
-    "boto3==1.28.84",
+    "boto3==1.43.123",
     "python-cmr==0.9.0",
 ]
 publisher = [
-    "boto3==1.28.84",
+    "boto3==1.43.123",
 ]
 run_summary = [
-    "boto3==1.28.84",
+    "boto3==1.43.123",
 ]
 start_run = [
-    "boto3==1.28.84",
+    "boto3==1.43.123",
 ]
 enso = [
     "cartopy==0.24.1",

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Bumped `certifi` 2026.6.17 → 2026.10.23 and `boto3` pin 1.28.84 → 1.43.123.
+- Images no longer carry `uv.lock` or the exported `requirements.txt`. The lockfile
+  is bind-mounted for the export step instead of copied into `/var/task`. ECR
+  scanning reported every package it lists against every image, so `pillow` (an
+  `enso`-only dependency) was flagged on all of them. Image builds now need
+  BuildKit (`docker buildx build`), which the build scripts already use.
+
 ## [3.0.0] - 2026-10-26
 
 ### Added

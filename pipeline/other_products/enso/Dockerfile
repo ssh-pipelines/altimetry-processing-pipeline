@@ -13,11 +13,13 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 # Stage deps from the `enso` extra in the repo-root pyproject.toml, resolved
 # via uv.lock. Exported + installed in a cached layer that only busts on
 # pyproject.toml / uv.lock changes (not on stage or shared-package edits).
-COPY pyproject.toml uv.lock ./
-RUN uv export --frozen --no-emit-project --no-hashes --extra enso \
-        -o requirements.txt \
+RUN --mount=type=bind,source=pyproject.toml,target=/tmp/lock/pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=/tmp/lock/uv.lock \
+    uv export --project /tmp/lock --frozen --no-emit-project --no-hashes \
+        --extra enso -o /tmp/requirements.txt \
     && pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
 
 # Create cartopy data directory and set permissions
 RUN mkdir -p $CARTOPY_DATA_DIR && chmod -R a+rwx $CARTOPY_DATA_DIR
@@ -30,6 +32,7 @@ RUN python cartopy_setup.py
 
 # Shared package. Its deps are already satisfied above, so --no-deps keeps this
 # a tiny layer that rebuilds only when utilities/ changes.
+COPY pyproject.toml ./
 COPY utilities/ utilities/
 RUN pip install --no-deps .
 

@@ -64,6 +64,20 @@ class TestCatalogConsistency(unittest.TestCase):
                 f"{t.name}: heavy={t.heavy} but Dockerfile parameterized={parameterized}",
             )
 
+    def test_lockfile_does_not_ship_in_image(self):
+        # uv.lock lists every stage's deps, and ECR scanning flags each package in
+        # a manifest left in the image, installed or not (pillow was reported on
+        # every image though only enso installs it). Heavy stages inherit
+        # pipeline_runtime's filesystem, so the base is held to this as well.
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            for line in text.splitlines():
+                if line.startswith("COPY "):
+                    self.assertNotIn("uv.lock", line, f"{t.name}: {line}")
+            self.assertNotIn("-o requirements.txt", text, f"{t.name}: export lands in the image")
+
 
 class TestNamingHelpers(unittest.TestCase):
     def setUp(self):

@@ -146,7 +146,7 @@ A prod build is gated (in `prod/build_and_push.sh`): (1) clean working tree, (2)
    Renders `state_machines/*.asl.json` for prod and deploys them (after the Lambdas), stamping each with the release `version` tag and verifying the live definition matches what was rendered.
 
 8. **Cleanup (default ON)**
-   After a successful release, removes the prod image tagged with the release version and all dev-tagged images for each image.
+   After a successful release, removes the local Docker copies of the prod image tagged with the release version and of all dev-tagged images for each image. ECR is not touched; old dev images there expire through the repositories' lifecycle policy.
 
 ---
 

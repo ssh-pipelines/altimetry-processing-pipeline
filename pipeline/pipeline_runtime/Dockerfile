@@ -9,8 +9,15 @@ FROM public.ecr.aws/lambda/python:3.11
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 
-COPY pyproject.toml uv.lock ./
-RUN uv export --frozen --no-emit-project --no-hashes --extra pipeline_runtime \
-        -o requirements.txt \
+#
+# The lockfile is bind-mounted rather than copied, and the export goes to /tmp,
+# so neither lands in the image: it lists every stage's deps, and ECR scanning
+# reports each one against any image that carries it, installed or not. Stage
+# images inherit this filesystem, so the same holds for all of them.
+RUN --mount=type=bind,source=pyproject.toml,target=/tmp/lock/pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=/tmp/lock/uv.lock \
+    uv export --project /tmp/lock --frozen --no-emit-project --no-hashes \
+        --extra pipeline_runtime -o /tmp/requirements.txt \
     && pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt

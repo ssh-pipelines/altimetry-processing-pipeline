@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `tools/local_daily_files.py` builds P1 daily files for a THREDDS Source on local disk,
+  using the same discovery (`ThreddsEnumerator`) and processing (`DailyFileJob`) as the
+  Lambdas, so high-latitude onboarding pass 1 needs no deploy or AWS run. Its output
+  feeds `compute_ground_speed.py --daily-dir`.
+
 ## [3.0.0] - 2026-10-26
 
 ### Added

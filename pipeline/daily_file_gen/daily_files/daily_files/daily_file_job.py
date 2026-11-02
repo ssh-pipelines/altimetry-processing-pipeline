@@ -74,6 +74,12 @@ SOURCE_REGISTRY: dict[str, SourcePipeline] = {
             ingestor=AvisoL2PIngestor,
             processor=AvisoL2PDailyFile,
         ),
+    "C2": SourcePipeline(
+        downloader=HttpDownloader,
+        downloader_kwargs={"session_fn": build_aviso_session},
+        ingestor=AvisoL2PIngestor,
+        processor=AvisoL2PDailyFile,
+    ),
 }
 
 
@@ -195,9 +201,11 @@ def upload_ds(daily_ds: xr.Dataset, job: DailyFileJob, bucket: str):
     daily_ds.close()
 
 
-def start_job(date: str, source: str, bucket: str, granules: list[str]):
-    job = DailyFileJob(date, source)
+def build_daily_ds(job: DailyFileJob, granules: list[str], bucket: str | None) -> xr.Dataset:
+    """The P1 dataset for one job, provenance stamped, not yet written anywhere.
 
+    Split from start_job so tools/local_daily_files.py can write P1 to local disk.
+    """
     acquired = job.acquire(granules, bucket)
 
     if acquired:
@@ -212,5 +220,10 @@ def start_job(date: str, source: str, bucket: str, granules: list[str]):
         source_files=daily_ds.attrs.get("source_files", ""),
         granule_count=len(granules),
     )
+    return daily_ds
 
+
+def start_job(date: str, source: str, bucket: str, granules: list[str]):
+    job = DailyFileJob(date, source)
+    daily_ds = build_daily_ds(job, granules, bucket)
     upload_ds(daily_ds, job, bucket)

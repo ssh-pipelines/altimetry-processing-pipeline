@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-03
+
 ### Changed
 - `s3fs` pinned to 2026.6.0, and `boto3` unpinned in the `pipeline_init`, `publisher`, 
   `run_summary`, and `start_run` extras. s3fs now runs on aiobotocore (botocore 

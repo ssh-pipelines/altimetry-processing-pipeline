@@ -8,7 +8,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 # on pyproject.toml / uv.lock changes (not on stage or shared-package edits).
 RUN --mount=type=bind,source=pyproject.toml,target=/tmp/lock/pyproject.toml \
     --mount=type=bind,source=uv.lock,target=/tmp/lock/uv.lock \
-    uv export --project /tmp/lock --frozen --no-emit-project --no-hashes \
+    uv export --project /tmp/lock --frozen --no-dev --no-emit-project --no-hashes \
         --extra finalizer -o /tmp/requirements.txt \
     && pip install --upgrade pip \
     && pip install -r /tmp/requirements.txt \

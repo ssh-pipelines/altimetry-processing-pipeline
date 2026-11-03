@@ -78,6 +78,16 @@ class TestCatalogConsistency(unittest.TestCase):
                     self.assertNotIn("uv.lock", line, f"{t.name}: {line}")
             self.assertNotIn("-o requirements.txt", text, f"{t.name}: export lands in the image")
 
+    def test_export_excludes_dev_group(self):
+        # uv export includes [dependency-groups] dev unless told otherwise, which
+        # put pytest/coverage into every Lambda image.
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            self.assertIn("uv export", text, t.name)
+            self.assertIn("--no-dev", text, f"{t.name}: uv export without --no-dev")
+
 
 class TestNamingHelpers(unittest.TestCase):
     def setUp(self):

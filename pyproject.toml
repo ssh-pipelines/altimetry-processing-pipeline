@@ -6,7 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "utilities"
 version = "0.1.0"
 requires-python = ">=3.11, <3.14"
-dependencies = ["s3fs", "boto3", "pyyaml"]
+# s3fs is pinned because every stage's S3 access goes through it and the lock
+# resolves one version for all images. It runs on aiobotocore, which accepts
+# only a narrow botocore range, so boto3 stays unpinned here and in the stage
+# extras and aiobotocore picks it.
+dependencies = ["s3fs==2026.6.0", "boto3", "pyyaml"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -44,17 +48,17 @@ xover = [
     "dask==2025.5.1",
 ]
 pipeline_init = [
-    "boto3==1.43.123",
+    "boto3",
     "python-cmr==0.9.0",
 ]
 publisher = [
-    "boto3==1.43.123",
+    "boto3",
 ]
 run_summary = [
-    "boto3==1.43.123",
+    "boto3",
 ]
 start_run = [
-    "boto3==1.43.123",
+    "boto3",
 ]
 enso = [
     "cartopy==0.24.1",

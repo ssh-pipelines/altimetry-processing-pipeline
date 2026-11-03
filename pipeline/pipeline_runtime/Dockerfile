@@ -16,7 +16,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 # images inherit this filesystem, so the same holds for all of them.
 RUN --mount=type=bind,source=pyproject.toml,target=/tmp/lock/pyproject.toml \
     --mount=type=bind,source=uv.lock,target=/tmp/lock/uv.lock \
-    uv export --project /tmp/lock --frozen --no-emit-project --no-hashes \
+    uv export --project /tmp/lock --frozen --no-dev --no-emit-project --no-hashes \
         --extra pipeline_runtime -o /tmp/requirements.txt \
     && pip install --upgrade pip \
     && pip install -r /tmp/requirements.txt \

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `s3fs` pinned to 2026.6.0, and `boto3` unpinned in the `pipeline_init`, `publisher`, 
+  `run_summary`, and `start_run` extras. s3fs now runs on aiobotocore (botocore 
+  1.43.117), which adds `aiohttp` to every image.
+- Images no longer install the `dev` dependency group. `uv export` includes it by
+  default, so every Lambda image shipped `pytest`, `pytest-cov`, and `coverage`;
+  the export now passes `--no-dev`.
+
 ### Security
 - Bumped `certifi` 2026.6.17 → 2026.10.23 and `boto3` pin 1.28.84 → 1.43.123.
 - Images no longer carry `uv.lock` or the exported `requirements.txt`. The lockfile

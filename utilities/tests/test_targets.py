@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,8 @@ ALL_CONTAINER = HEAVY | LIGHT_CONTAINER | BASE_IMAGE
 ALL_NAMES = ALL_CONTAINER | ZIP
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+LAMBDA_PYTHON = "3.12"
 
 
 class TestCatalogConsistency(unittest.TestCase):
@@ -77,6 +80,21 @@ class TestCatalogConsistency(unittest.TestCase):
                 if line.startswith("COPY "):
                     self.assertNotIn("uv.lock", line, f"{t.name}: {line}")
             self.assertNotIn("-o requirements.txt", text, f"{t.name}: export lands in the image")
+
+    def test_images_share_one_lambda_python_base(self):
+        # Heavy stages fall back to their ARG BASE_IMAGE default when built
+        # outside the wrapper scripts, and daily_files copies libraries compiled
+        # in a c_builder stage into a pipeline_runtime image, so every reference
+        # has to name the same base.
+        tags = set()
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            found = re.findall(r"public\.ecr\.aws/lambda/python:(\S+)", text)
+            self.assertTrue(found, f"{t.name}: no lambda/python base")
+            tags.update(found)
+        self.assertEqual(tags, {LAMBDA_PYTHON})
 
     def test_export_excludes_dev_group(self):
         # uv export includes [dependency-groups] dev unless told otherwise, which

@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.12
 FROM ${BASE_IMAGE}
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv

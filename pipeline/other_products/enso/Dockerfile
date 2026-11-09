@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.12
 FROM ${BASE_IMAGE}
 
 ARG ROOT_DIR=pipeline/other_products/enso

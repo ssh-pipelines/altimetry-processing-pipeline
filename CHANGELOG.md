@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-17
+
 ### Changed
 - Every Lambda image is built on `public.ecr.aws/lambda/python:3.12` (Amazon
   Linux 2023, glibc 2.34) instead of `python:3.11` (Amazon Linux 2). Python 3.11
@@ -17,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   port agrees with the C to a few nm
   ([ADR 0012](docs/adr/0012-orbit-swap-in-numpy.md)).
 - S6 offset recomputed against GSFC V6.1 with S6 on `ssha_nr`, it goes from 0.0291
-  to 0.0313 m, from 27 weekly grids, Jun–Dec 2025
+  to 0.0313 m, from 27 weekly grids, Jun–Dec 2025.
 
 ### Fixed
 - The S6 orbit swap applied its correction to `ku/ssha` (ocean retracker) and
@@ -456,7 +458,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Releases before 2.2.0 predate this changelog; see the git tags for their contents:
 [v2.1.0], [v2.0.0], [v1.1.0].
 
-[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.1...v3.1.0
+[3.0.1]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.4.0...v3.0.0
 [2.4.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...v2.3.0

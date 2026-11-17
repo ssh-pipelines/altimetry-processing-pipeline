@@ -35,7 +35,7 @@ daily_files:
     sigma: 15
 
 finalizer:
-  offset: 0.0291
+  offset: 0.0313
   pass_flag:
     mean_num: 15.0
     rms_num: 25.0

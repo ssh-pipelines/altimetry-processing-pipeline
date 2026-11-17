@@ -187,6 +187,10 @@ _Avoid_: lambda error, timeout (when meant generically)
 A subtype of **code failure** where the underlying cause is upstream credentials — typically a `ClientError` / `HTTPError` with 401/403 from PODAAC, or `podaac_auth` itself raising. Distinguished from generic code failures because the action is to rotate creds or check that `podaac_auth` ran, not to fix code.
 _Avoid_: credentials error
 
+**Tolerated failure**:
+An item failure that a Distributed Map with a failure tolerance absorbed, so the run continues without that date. Only the `daily_file` Map has one. Later stages hand the date on as a `skipped` **Job outcome**, and the **Run summary** reports it with the `daily_file` error read from `FAILED_n.json`. It does not reach **failure_handling**, which only sees runs that failed.
+_Avoid_: partial failure, soft failure
+
 **failure_handling**:
 The Lambda invoked from a parent state machine's `Catch` that classifies failed items as **Code failure** / **Runtime failure** / **Auth failure**, deduplicates them by `(category, errorType, errorMessage)`, and publishes one SNS notification per failed pipeline run. Reads the Distributed Map's `ResultWriter` output from S3 to surface per-item detail; degrades to the top-level `Cause` when no per-item output exists (`pipeline_init` failures, `ItemReader` failures, runtime failures without item context). See [ADR 0003](adr/0003-failure-surfacing.md).
 _Avoid_: error_handler, on_failure

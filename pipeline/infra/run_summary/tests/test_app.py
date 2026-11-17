@@ -34,6 +34,7 @@ def _summary():
 
 def _stub(mock_sum):
     mock_sum.gather.return_value = ({}, {}, {}, [])
+    mock_sum.read_failures.return_value = []
     mock_sum.build_summary.return_value = _summary()
     mock_sum.summary_key.return_value = "runs/summary.json"
     mock_sum.render_notification.return_value = ("subject", "message")
@@ -94,6 +95,20 @@ class TestRunSummaryHandler(unittest.TestCase):
             mock_sum.gather.call_args.args[2:],
             ("NASA-SSH", "20250528T120000", ["GSFC", "S6"]),
         )
+
+    @patch("app.sns")
+    @patch("app.s3")
+    @patch("app.summarizer")
+    def test_tolerated_failures_reach_the_summary(self, mock_sum, _s3, _sns):
+        _stub(mock_sum)
+        failures = [{"stage": "daily_file", "date": "2026-11-14", "source": "S6",
+                     "errorType": "OrbitSwapError", "errorMessage": "404"}]
+        mock_sum.read_failures.return_value = failures
+        handler(EVENT, None)
+        self.assertEqual(
+            mock_sum.read_failures.call_args.args[2:], (["GSFC", "S6"], "20250528T120000")
+        )
+        self.assertEqual(mock_sum.build_summary.call_args.kwargs["failures"], failures)
 
     @patch("app.sns")
     @patch("app.s3")

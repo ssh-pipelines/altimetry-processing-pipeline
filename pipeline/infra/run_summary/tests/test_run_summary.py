@@ -785,5 +785,145 @@ class TestBuildSummaryParameters(unittest.TestCase):
         self.assertEqual(summary["parameters"], {})
 
 
+# ---------------------------------------------------------------------------
+# Tolerated failures (daily_file FAILED_*.json)
+# ---------------------------------------------------------------------------
+
+def _packaged_failed_entry(date, source, error_type, error_message):
+    """A FAILED_*.json entry for a handler that raised PipelineError: the Cause is
+    the Lambda error, whose errorMessage is the handler's packaged JSON."""
+    item = {"date": date, "source": source, "bucket": "b", "granules": ["g1"]}
+    packaged = json.dumps({
+        "status": "error", "errorType": error_type,
+        "errorMessage": error_message, "input": item,
+    })
+    cause = json.dumps({"errorType": "PipelineError", "errorMessage": packaged,
+                        "stackTrace": []})
+    return {"Input": json.dumps(item), "Error": "PipelineError", "Cause": cause,
+            "Status": "FAILED"}
+
+
+ORBIT_404 = ("Orbit swap failed for S6A_x.nc: 404 Client Error: Not Found for url: "
+             "https://sideshow.jpl.nasa.gov/.../2026-11-14_s6an_jplmoe.pos.gz")
+
+
+class TestReadFailures(unittest.TestCase):
+
+    def test_handler_packaged_failure_is_unwrapped(self):
+        prefix = "pipeline_runs/S6/R1/results/daily_file/"
+        s3 = FakeS3({
+            prefix + "m/FAILED_0.json": json.dumps([
+                _packaged_failed_entry("2026-11-14", "S6", "OrbitSwapError", ORBIT_404),
+            ]).encode(),
+            prefix + "m/SUCCEEDED_0.json": b"[]",
+        })
+        failures = summarizer.read_failures(s3, "b", ["S6"], "R1")
+        self.assertEqual(failures, [{
+            "stage": "daily_file", "date": "2026-11-14", "source": "S6",
+            "errorType": "OrbitSwapError", "errorMessage": ORBIT_404,
+        }])
+
+    def test_runtime_kill_takes_date_from_entry_input(self):
+        """A timeout never reaches the handler's packaging; Step Functions still
+        records the item's Input."""
+        prefix = "pipeline_runs/S6/R1/results/daily_file/"
+        entry = {
+            "Input": json.dumps({"date": "2026-11-15", "source": "S6"}),
+            "Error": "Sandbox.Timedout",
+            "Cause": "Task timed out after 900.00 seconds",
+        }
+        s3 = FakeS3({prefix + "m/FAILED_0.json": json.dumps([entry]).encode()})
+        (failure,) = summarizer.read_failures(s3, "b", ["S6"], "R1")
+        self.assertEqual(failure["date"], "2026-11-15")
+        self.assertEqual(failure["errorType"], "Sandbox.Timedout")
+        self.assertIn("timed out", failure["errorMessage"])
+
+    def test_read_per_contributor(self):
+        s3 = FakeS3({
+            f"pipeline_runs/{src}/R1/results/daily_file/m/FAILED_0.json": json.dumps([
+                _packaged_failed_entry("2026-01-01", src, "ValueError", "x"),
+            ]).encode()
+            for src in ("GSFC", "S6")
+        })
+        failures = summarizer.read_failures(s3, "b", ["GSFC", "S6"], "R1")
+        self.assertEqual(sorted(f["source"] for f in failures), ["GSFC", "S6"])
+
+    def test_no_failed_files_is_empty(self):
+        self.assertEqual(summarizer.read_failures(FakeS3(), "b", ["S6"], "R1"), [])
+
+    def test_unreadable_failed_file_is_skipped(self):
+        prefix = "pipeline_runs/S6/R1/results/daily_file/"
+        s3 = FakeS3({prefix + "m/FAILED_0.json": b"not json"})
+        self.assertEqual(summarizer.read_failures(s3, "b", ["S6"], "R1"), [])
+
+
+class TestFailuresInSummary(unittest.TestCase):
+
+    def _failure(self, date="2026-11-14"):
+        return {"stage": "daily_file", "date": date, "source": "S6",
+                "errorType": "OrbitSwapError", "errorMessage": ORBIT_404}
+
+    def _outcomes(self):
+        return {
+            "finalizer": [
+                _outcome("finalizer", "2026-11-13", "daily_file_p3", "k1"),
+                _outcome("finalizer", "2026-11-14", "daily_file_p3", None, status="skipped",
+                         skip_reason=job_outcome.MISSING_UPSTREAM),
+            ],
+        }
+
+    def test_failure_replaces_downstream_skip_reason(self):
+        specs = summarizer.PRODUCT_PIPELINES["along_track"]["deliverables"]
+        section = summarizer.reconcile_pipeline(
+            specs, ["2026-11-13", "2026-11-14"], self._outcomes(), [self._failure()]
+        )
+        (missing,) = section["missing"]
+        self.assertEqual(missing["date"], "2026-11-14")
+        self.assertTrue(missing["reason"].startswith("daily_file failed: OrbitSwapError: Orbit swap"))
+
+    def test_failure_explains_a_date_with_no_outcome(self):
+        specs = summarizer.PRODUCT_PIPELINES["along_track"]["deliverables"]
+        section = summarizer.reconcile_pipeline(specs, ["2026-11-14"], {}, [self._failure()])
+        self.assertIn("OrbitSwapError", section["missing"][0]["reason"])
+
+    def test_long_message_is_truncated(self):
+        f = dict(self._failure(), errorMessage="x" * 1000)
+        reason = summarizer._failure_reason(f)
+        self.assertLess(len(reason), 260)
+        self.assertTrue(reason.endswith("…"))
+
+    def test_failures_are_carried_and_rendered(self):
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["S6"],
+            {"along_track": [{"date": "2026-11-13"}, {"date": "2026-11-14"}]},
+            {"along_track": self._outcomes()},
+            failures=[self._failure()], completed_at="t",
+        )
+        self.assertEqual(summary["failures"], [self._failure()])
+        subject, body = summarizer.render_notification(summary)
+        self.assertIn("1 failed", subject)
+        self.assertIn("Failed items (1 date not produced):", body)
+        self.assertIn("2026-11-14 S6 — daily_file failed: OrbitSwapError", body)
+
+    def test_gridded_section_does_not_attribute_source_failures(self):
+        """A grid's date is a window over many daily dates, so a daily_file
+        failure on one of them is not that grid's reason."""
+        summary = summarizer.build_summary(
+            "NASA-SSH", "R1", ["S6"], {"gridded": [{"date": "2026-11-14"}]}, {},
+            failures=[self._failure()], completed_at="t",
+        )
+        self.assertEqual(
+            summary["product_pipelines"]["gridded"]["missing"],
+            [{"date": "2026-11-14", "reason": "no outcome"}],
+        )
+
+    def test_clean_run_subject_unchanged(self):
+        summary = summarizer.build_summary("NASA-SSH", "R1", ["S6"], {}, {}, completed_at="t")
+        self.assertEqual(summary["failures"], [])
+        subject, body = summarizer.render_notification(summary)
+        self.assertEqual(subject, "Pipeline success: NASA-SSH / R1")
+        self.assertNotIn("Failed items", body)
+
+
 if __name__ == "__main__":
     unittest.main()

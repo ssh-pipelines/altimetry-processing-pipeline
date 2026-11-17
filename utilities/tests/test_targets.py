@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,8 @@ ALL_CONTAINER = HEAVY | LIGHT_CONTAINER | BASE_IMAGE
 ALL_NAMES = ALL_CONTAINER | ZIP
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+LAMBDA_PYTHON = "3.12"
 
 
 class TestCatalogConsistency(unittest.TestCase):
@@ -63,6 +66,44 @@ class TestCatalogConsistency(unittest.TestCase):
                 t.heavy, parameterized,
                 f"{t.name}: heavy={t.heavy} but Dockerfile parameterized={parameterized}",
             )
+
+    def test_lockfile_does_not_ship_in_image(self):
+        # uv.lock lists every stage's deps, and ECR scanning flags each package in
+        # a manifest left in the image, installed or not (pillow was reported on
+        # every image though only enso installs it). Heavy stages inherit
+        # pipeline_runtime's filesystem, so the base is held to this as well.
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            for line in text.splitlines():
+                if line.startswith("COPY "):
+                    self.assertNotIn("uv.lock", line, f"{t.name}: {line}")
+            self.assertNotIn("-o requirements.txt", text, f"{t.name}: export lands in the image")
+
+    def test_images_share_one_lambda_python_base(self):
+        # Heavy stages fall back to their ARG BASE_IMAGE default when built
+        # outside the wrapper scripts, so that default has to match the base
+        # pipeline_runtime is built on.
+        tags = set()
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            found = re.findall(r"public\.ecr\.aws/lambda/python:(\S+)", text)
+            self.assertTrue(found, f"{t.name}: no lambda/python base")
+            tags.update(found)
+        self.assertEqual(tags, {LAMBDA_PYTHON})
+
+    def test_export_excludes_dev_group(self):
+        # uv export includes [dependency-groups] dev unless told otherwise, which
+        # put pytest/coverage into every Lambda image.
+        for t in reg.targets():
+            if t.packaging is not Packaging.CONTAINER:
+                continue
+            text = (REPO_ROOT / t.path / "Dockerfile").read_text()
+            self.assertIn("uv export", text, t.name)
+            self.assertIn("--no-dev", text, f"{t.name}: uv export without --no-dev")
 
 
 class TestNamingHelpers(unittest.TestCase):

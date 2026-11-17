@@ -203,9 +203,11 @@ uv run ruff check .            # config lives in [tool.ruff] in pyproject.toml
 
 ### Building images:
 
-Images must be built from the root directory context. Each stage Dockerfile
-exports its extra's locked dependencies with `uv` and installs the shared
-`utilities` package, so no per-stage `requirements.txt` is needed.
+Images must be built from the root directory context with BuildKit
+(`docker buildx build`). Each stage Dockerfile exports its extra's locked
+dependencies with `uv` from a bind-mounted `uv.lock`, which keeps the lockfile out
+of the image, and installs the shared `utilities` package, so no per-stage
+`requirements.txt` is needed.
 
 ex:
 ```

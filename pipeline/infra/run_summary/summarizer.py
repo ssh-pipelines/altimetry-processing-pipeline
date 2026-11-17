@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 # longer one Source's. Job outcomes are untouched and stay at their own v1.
 RUN_SUMMARY_SCHEMA_VERSION = 2
 
+# Stages whose Distributed Map tolerates failed items, so a run can succeed with
+# some of their dates failed. Their FAILED_*.json entries are the only record of
+# why those dates are missing. Every other Map fails the run on any failed item,
+# and failure_handling reports it.
+TOLERANT_STAGES = ("daily_file",)
+
+# Error messages are cut to this length in a missing-date reason.
+_MAX_REASON_CHARS = 200
+
 # Which tier owns each Product pipeline's run path. The along-track manifests and
 # ResultWriter outputs live under each *contributor's* leg; the gridded ones under
 # the published product's.
@@ -128,15 +137,32 @@ def _provenance_incomplete(successes: list[dict]) -> int:
     )
 
 
+def _failure_reason(failure: dict) -> str:
+    reason = f"{failure['stage']} failed: {failure.get('errorType') or 'Unknown'}"
+    message = failure.get("errorMessage") or ""
+    if len(message) > _MAX_REASON_CHARS:
+        message = message[: _MAX_REASON_CHARS - 1] + "…"
+    return f"{reason}: {message}" if message else reason
+
+
 def reconcile_pipeline(
     deliverable_specs: list[dict],
     expected_dates: list[str],
     outcomes_by_stage: dict[str, list[dict]],
+    failures: list[dict] | None = None,
 ) -> dict:
     """Reconcile one Product pipeline into its Run-summary section.
 
     `outcomes_by_stage` maps a stage name to its list of **Job outcome** dicts.
+    `failures` are tolerated upstream failures (see `read_failures`); a missing
+    date that one of them explains is reported with that error instead of the
+    downstream stage's generic skip reason or "no outcome".
     """
+    failure_by_date: dict[str, dict] = {}
+    for f in failures or []:
+        if f.get("date"):
+            failure_by_date.setdefault(f["date"], f)
+
     expected = set(expected_dates)
     deliverables: dict[str, dict] = {}
     anchor_accounted: dict[str, str | None] = {}  # date -> skip reason (None == produced)
@@ -171,10 +197,15 @@ def reconcile_pipeline(
 
     missing = []
     for date in sorted(expected):
-        if date not in anchor_accounted:
-            missing.append({"date": date, "reason": "no outcome"})
-        elif anchor_accounted[date] is not None:
-            missing.append({"date": date, "reason": anchor_accounted[date]})
+        if date in anchor_accounted and anchor_accounted[date] is None:
+            continue
+        if date in failure_by_date:
+            reason = _failure_reason(failure_by_date[date])
+        elif date not in anchor_accounted:
+            reason = "no outcome"
+        else:
+            reason = anchor_accounted[date]
+        missing.append({"date": date, "reason": reason})
 
     return {
         "expected": len(expected),
@@ -234,6 +265,7 @@ def build_summary(
     *,
     run_params: dict | None = None,
     bad_pass_results: list[dict] | None = None,
+    failures: list[dict] | None = None,
     completed_at: str | None = None,
 ) -> dict:
     """Assemble the Run summary artifact.
@@ -242,11 +274,13 @@ def build_summary(
     across contributors on the along-track side; `outcomes` maps a Product-pipeline
     name to its `{stage: [outcome, ...]}`, likewise concatenated; `run_params` is
     `start_run`'s invocation sidecar (or `{}` for legacy runs without one);
-    `bad_pass_results` are the bad_pass stage's raw Job results (or `[]`). All are
-    passed in (already loaded) so this stays pure and testable.
+    `bad_pass_results` are the bad_pass stage's raw Job results (or `[]`);
+    `failures` are the source tier's tolerated item failures (see `read_failures`).
+    All are passed in (already loaded) so this stays pure and testable.
     """
     completed_at = completed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     keys = manifest_keys(published_product, run_id, contributors)
+    failures = failures or []
 
     product_pipelines = {}
     for name, cfg in applicable_pipelines(published_product).items():
@@ -254,6 +288,7 @@ def build_summary(
             cfg["deliverables"],
             manifest_dates(manifests.get(name, [])),
             outcomes.get(name, {}),
+            failures if cfg["tier"] == SOURCE_TIER else None,
         )
         # A list on the along-track side: naming only one of several contributors'
         # manifests would point a reader at an incomplete picture of the run.
@@ -269,6 +304,7 @@ def build_summary(
         "parameters": run_params or {},
         "product_pipelines": product_pipelines,
         "bad_passes": summarize_bad_passes(bad_pass_results or []),
+        "failures": sorted(failures, key=lambda f: (f.get("date") or "", f.get("source") or "")),
     }
 
 
@@ -334,6 +370,82 @@ def _outcome_from_entry(entry: dict) -> dict | None:
     if "status" not in output and isinstance(output.get("Payload"), dict):
         output = output["Payload"]
     return output
+
+
+def _json_or_none(value):
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _failure_from_entry(entry: dict, stage: str) -> dict | None:
+    """One FAILED_*.json entry as `{stage, date, source, errorType, errorMessage}`.
+
+    A handler-packaged failure nests twice: the entry's `Cause` is the Lambda error
+    `{errorType: "PipelineError", errorMessage}`, and that `errorMessage` is the
+    handler's own `{errorType, errorMessage, input}`. A runtime kill (timeout, OOM)
+    has only the outer layer. The date comes from the entry's `Input`, which Step
+    Functions records for every item either way.
+    """
+    if not isinstance(entry, dict):
+        return None
+    item = _json_or_none(entry.get("Input")) or {}
+    error_type = entry.get("Error") or ""
+    error_message = entry.get("Cause") or ""
+    cause = _json_or_none(entry.get("Cause"))
+    if isinstance(cause, dict):
+        error_type = cause.get("errorType") or error_type
+        error_message = cause.get("errorMessage") or ""
+        packaged = _json_or_none(error_message)
+        if isinstance(packaged, dict) and "errorType" in packaged:
+            error_type = packaged["errorType"]
+            error_message = packaged.get("errorMessage") or ""
+            item = packaged.get("input") or item
+    if not isinstance(item, dict):
+        item = {}
+    return {
+        "stage": stage,
+        "date": item.get("date"),
+        "source": item.get("source"),
+        "errorType": error_type or "Unknown",
+        "errorMessage": error_message,
+    }
+
+
+def read_failures(
+    s3, bucket: str, contributors: list[str], run_id: str
+) -> list[dict]:
+    """Item failures the source tier's tolerant Maps (`TOLERANT_STAGES`) absorbed.
+
+    Read per contributor like the rest of the source tier. A run that reaches
+    run_summary succeeded overall, so these are the dates it gave up on.
+    """
+    failures: list[dict] = []
+    for source in contributors:
+        for stage in TOLERANT_STAGES:
+            prefix = stage_results_prefix(source, run_id, stage)
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    if "/FAILED_" not in obj["Key"]:
+                        continue
+                    try:
+                        body = s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read()
+                        entries = json.loads(body)
+                    except Exception as e:
+                        logger.warning("Could not read FAILED file %s: %s", obj["Key"], e)
+                        continue
+                    if isinstance(entries, dict):
+                        entries = entries.get("Items", [])
+                    for entry in entries if isinstance(entries, list) else []:
+                        failure = _failure_from_entry(entry, stage)
+                        if failure is not None:
+                            failure["source"] = failure["source"] or source
+                            failures.append(failure)
+    return failures
 
 
 def read_run_params(s3, bucket: str, published_product: str, run_id: str) -> dict:
@@ -523,6 +635,20 @@ def _bad_pass_lines(bp: dict) -> list[str]:
     return lines
 
 
+def _failure_lines(failures: list[dict]) -> list[str]:
+    """One line per tolerated failure, so a run that dropped dates says which and
+    why above the per-pipeline detail."""
+    if not failures:
+        return []
+    n = len(failures)
+    lines = [f"Failed items ({n} date{'s' if n != 1 else ''} not produced):"]
+    for f in failures[:_MAX_LISTED]:
+        lines.append(f"  {f.get('date') or '?'} {f.get('source') or ''} — {_failure_reason(f)}")
+    if n > _MAX_LISTED:
+        lines.append(f"  … ({n} total)")
+    return lines + [""]
+
+
 def render_notification(summary: dict) -> tuple[str, str]:
     """(subject, body) for the success SNS, rendered from the Run summary artifact."""
     published = summary["published_product"]
@@ -542,6 +668,8 @@ def render_notification(summary: dict) -> tuple[str, str]:
         _params_line(summary),
         "",
     ]
+    failures = summary.get("failures") or []
+    lines += _failure_lines(failures)
 
     for name, section in summary["product_pipelines"].items():
         lines.append(f"{name} (expected {section['expected']}):")
@@ -558,7 +686,11 @@ def render_notification(summary: dict) -> tuple[str, str]:
             lines.append(_missing_line(section["missing"]))
         lines.append("")
 
-    subject = f"Pipeline success: {published} / {run_id}"[:100]
+    if failures:
+        # Says so in the subject: a run that dropped dates is not a clean success.
+        subject = f"Pipeline success, {len(failures)} failed: {published} / {run_id}"[:100]
+    else:
+        subject = f"Pipeline success: {published} / {run_id}"[:100]
     return subject, "\n".join(lines).rstrip()
 
 

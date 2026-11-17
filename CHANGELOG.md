@@ -12,6 +12,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   using the same discovery (`ThreddsEnumerator`) and processing (`DailyFileJob`) as the
   Lambdas, so high-latitude onboarding pass 1 needs no deploy or AWS run. Its output
   feeds `compute_ground_speed.py --daily-dir`.
+  
+## [3.1.0] - 2026-11-17
+
+### Changed
+- Every Lambda image is built on `public.ecr.aws/lambda/python:3.12` (Amazon
+  Linux 2023, glibc 2.34) instead of `python:3.11` (Amazon Linux 2). Python 3.11
+  is no longer supported: `requires-python` is `>=3.12` and CI runs 3.12.
+- The S6 orbit swap runs in numpy (`daily_files/ingestion/orbit_swap.py`) instead
+  of the `interpPosGoaToNetCDFtimes.e` C executable, so the `daily_files` image no
+  longer compiles netCDF-C or bundles shared libraries on `LD_LIBRARY_PATH`. The
+  port agrees with the C to a few nm
+  ([ADR 0012](docs/adr/0012-orbit-swap-in-numpy.md)).
+- S6 offset recomputed against GSFC V6.1 with S6 on `ssha_nr`, it goes from 0.0291
+  to 0.0313 m, from 27 weekly grids, Jun–Dec 2025.
+
+### Fixed
+- The S6 orbit swap applied its correction to `ku/ssha` (ocean retracker) and
+  stored the result as `ssha_nr`. It now applies it to `ku/ssha_nr`, so S6 P1
+  `ssha` follows the numerical retracker's values and fill pattern. On
+  2026-09-05, `ssha` on good samples moved by a median of 0.8 mm (5–95%: −2.7
+  to +3.9 mm), 1,811 samples gained a valid value, 91 lost one, and `nasa_flag`
+  changed on 140.
+- An S6 orbit swap that fails (orbit file not downloadable or not spanning the
+  pass, length mismatch, any exception) now fails the `daily_files` job with
+  `OrbitSwapError`. It previously kept that pass's unswapped `ssha_nr` and logged
+  a warning, so a daily file could mix orbits unnoticed.
+- The JPL orbit download retries connection errors, read timeouts, and 429/5xx
+  with exponential backoff (up to five attempts), and re-fetches a truncated
+  gzip. It previously made one attempt with a 60 s timeout.
+- A date the `daily_file` Map tolerated as failed no longer fails the run at the
+  finalizer, which logged the missing P2 and then crashed on an unbound local.
+  The finalizer and the along-track publisher now return a `skipped` Job outcome
+  for it. `run_summary` reads `daily_file`'s `FAILED_*.json` and reports each
+  dropped date with its error, in the `missing` list, a new top-level `failures`
+  key, and the notification, whose subject reads `Pipeline success, N failed`.
+
+### Security
+- `pillow` unpinned from 11.3.0, which was the last release with wheels for the
+  AL2 glibc; it now resolves to 13.0.0.
+
+## [3.0.1] - 2026-11-03
+
+### Changed
+- `s3fs` pinned to 2026.6.0, and `boto3` unpinned in the `pipeline_init`, `publisher`, 
+  `run_summary`, and `start_run` extras. s3fs now runs on aiobotocore (botocore 
+  1.43.117), which adds `aiohttp` to every image.
+- Images no longer install the `dev` dependency group. `uv export` includes it by
+  default, so every Lambda image shipped `pytest`, `pytest-cov`, and `coverage`;
+  the export now passes `--no-dev`.
+
+### Security
+- Bumped `certifi` 2026.6.17 → 2026.10.23 and `boto3` pin 1.28.84 → 1.43.123.
+- Images no longer carry `uv.lock` or the exported `requirements.txt`. The lockfile
+  is bind-mounted for the export step instead of copied into `/var/task`. ECR
+  scanning reported every package it lists against every image, so `pillow` (an
+  `enso`-only dependency) was flagged on all of them. Image builds now need
+  BuildKit (`docker buildx build`), which the build scripts already use.
 
 ## [3.0.0] - 2026-10-26
 
@@ -407,7 +464,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Releases before 2.2.0 predate this changelog; see the git tags for their contents:
 [v2.1.0], [v2.0.0], [v1.1.0].
 
-[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.1...v3.1.0
+[3.0.1]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.4.0...v3.0.0
 [2.4.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/ssh-pipelines/altimetry-processing-pipeline/compare/v2.2.0...v2.3.0

@@ -20,7 +20,7 @@ from finalization.finalizer import (
 )
 
 # Test constant matching the S6 config value
-S6_OFFSET = 0.0291
+S6_OFFSET = 0.0313
 # Test constant matching the S3B common.intermission_bias value
 S3B_BIAS = 0.0209
 
@@ -774,6 +774,46 @@ class TestProcessResult(unittest.TestCase, _ProcessTestMixin):
 # ---------------------------------------------------------------------------
 # Tests — handler returns a Job outcome
 # ---------------------------------------------------------------------------
+
+class TestMissingP2(unittest.TestCase):
+    """daily_files' Map tolerates failed dates, so the finalizer sees dates with no
+    P2. It used to log the FileNotFoundError and then crash on an unbound local,
+    failing the whole run with an error that named the wrong stage."""
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_process_raises_missing_daily_file(self, mock_aws):
+        from finalization.finalizer import MissingDailyFile
+
+        mock_aws.fs.exists.side_effect = [False, False]  # bad-pass file, then P2
+        f = Finalizer(date(2026, 11, 14), "S6", "b")
+        with self.assertRaises(MissingDailyFile):
+            f.process("b")
+        mock_aws.fs.upload.assert_not_called()
+
+    @patch("finalization.finalizer.aws_manager")
+    def test_handler_returns_skipped_outcome(self, mock_aws):
+        from app import handler
+
+        from utilities.job_outcome import MISSING_UPSTREAM
+
+        mock_aws.fs.exists.side_effect = [False, False]
+        result = handler({"bucket": "b", "date": "2026-11-14", "source": "S6"}, None)
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["stage"], "finalizer")
+        self.assertEqual(result["date"], "2026-11-14")
+        self.assertEqual(result["outputs"], [])
+        self.assertEqual(result["metadata"]["skip_reason"], MISSING_UPSTREAM)
+
+    @patch("app.Finalizer")
+    def test_other_errors_still_fail_the_item(self, mock_finalizer_cls):
+        from app import handler
+
+        from utilities.errors import PipelineError
+
+        mock_finalizer_cls.return_value.process.side_effect = OSError("HDF error")
+        with self.assertRaises(PipelineError):
+            handler({"bucket": "b", "date": "2026-11-14", "source": "S6"}, None)
+
 
 class TestFinalizerHandlerOutcome(unittest.TestCase):
 

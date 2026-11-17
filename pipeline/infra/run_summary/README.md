@@ -22,10 +22,39 @@ envelope `{bucket, published_product, run_id, contributors}` it:
 4. reads the diagnostic **bad_pass** stage's results (`results/bad_pass/` ResultWriter,
    per contributor — bad_pass runs inside each along-track chain) and aggregates the
    flagged-pass counts per date;
-5. reconciles expected vs produced per **Product pipeline**, collecting `missing`
+5. reads the `daily_file` stage's `FAILED_*.json` per contributor (see *Tolerated
+   failures*);
+6. reconciles expected vs produced per **Product pipeline**, collecting `missing`
    (and skip reasons) and a per-deliverable `provenance_incomplete` count;
-6. writes the **Run summary** to `pipeline_runs/{published_product}/{run_id}/summary.json`;
-7. renders and publishes the success SNS.
+7. writes the **Run summary** to `pipeline_runs/{published_product}/{run_id}/summary.json`;
+8. renders and publishes the success SNS.
+
+## Tolerated failures
+
+The `daily_file` Map is the only one with a failure tolerance
+(`ToleratedFailurePercentage: 5`), so a run can succeed with some dates failed
+there. Every later Map fails the run on any failed item, and `failure_handling`
+reports those. The dates a run dropped are recorded only in `daily_file`'s
+`FAILED_*.json`, which `read_failures` reads for each contributor
+(`TOLERANT_STAGES` in `summarizer.py`). It unwraps the handler's packaged
+`{errorType, errorMessage, input}` where present, and otherwise uses the raw Step
+Functions error and the entry's `Input`, as for a timeout.
+
+The downstream stages hand such a date on as `skipped` with
+`skip_reason: "upstream stage produced no input"`: the finalizer because it has no P2,
+the publisher because it has no P3. In the along-track `missing` list,
+reconciliation replaces that reason with the upstream error, for example
+`daily_file failed: OrbitSwapError: Orbit swap failed for …: 404 Client Error`.
+The gridded section does not take these reasons. A grid's date is a window over
+many daily dates, so one failed daily date does not explain a missing grid.
+
+`summary.json` also lists the failures under a top-level `failures` key, as
+`{stage, date, source, errorType, errorMessage}`. The notification lists them
+above the per-pipeline sections, and its subject reads
+`Pipeline success, N failed: …` instead of `Pipeline success: …`.
+
+The top-level key is new, and `schema_version` stays at 2. The addition is
+additive and nothing reads `summary.json` programmatically.
 
 ## A run is one Published product's, not one Source's
 

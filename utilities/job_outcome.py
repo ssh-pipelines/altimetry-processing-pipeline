@@ -25,6 +25,10 @@ SCHEMA_VERSION = 1
 SUCCESS = "success"
 SKIPPED = "skipped"
 
+# skip_reason for a date whose input an earlier stage failed to write. run_summary
+# replaces it with that stage's error when it can find one.
+MISSING_UPSTREAM = "upstream stage produced no input"
+
 
 @dataclass(frozen=True)
 class Output:

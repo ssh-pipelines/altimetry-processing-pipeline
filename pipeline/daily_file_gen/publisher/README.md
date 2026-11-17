@@ -25,6 +25,12 @@ For each processing date, the Lambda:
    artifact's own outcome carries the authoritative flag, and `run_summary`
    reports absence as "unknown".
 
+An along-track P3 that does not exist (`NoSuchKey`) returns a `skipped` outcome
+with `skip_reason: "upstream stage produced no input"` rather than failing. The
+date was dropped by the `daily_file` Map, which tolerates failures, and
+`run_summary` reports why. A missing staged grid still raises, because nothing
+upstream of grid promotion tolerates a failed date.
+
 | `family` | reads | writes |
 |---|---|---|
 | `along_track` | `daily_files/p3/{contributor}/{year}/` | `products/{publish_as}/along_track/{year}/` |
@@ -150,6 +156,7 @@ From the repo root (after `uv sync --extra dev`):
 | `TestUnknownFamily`                  | An unrecognized family raises                                      |
 | `TestPublisherHandler`               | Both families issue the right `copy_object`                        |
 | `TestPublisherJobOutcome`            | Outcome shape, per-family `kind`, and the deliberate absence of `provenance_complete` |
+| `TestPublisherMissingSource`         | A missing along-track P3 is skipped; other `ClientError`s and a missing staged grid still raise |
 | `TestPublisherRejectsIncompleteEvents` | Missing `family` / `publish_as` / `date` raise                    |
 
 ## Dependencies

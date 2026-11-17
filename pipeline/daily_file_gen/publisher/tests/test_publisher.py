@@ -3,6 +3,10 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 from app import handler, resolve_keys
+from botocore.exceptions import ClientError
+
+from utilities.errors import PipelineError
+from utilities.job_outcome import MISSING_UPSTREAM
 
 # ---------------------------------------------------------------------------
 # Tests — key resolution per family
@@ -201,6 +205,41 @@ class TestPublisherJobOutcome(unittest.TestCase):
         mock_boto3.client.return_value = MagicMock()
         result = handler(_event(), None)
         self.assertNotIn("provenance_complete", result["metadata"])
+
+
+def _client_error(code):
+    return ClientError({"Error": {"Code": code, "Message": code}}, "CopyObject")
+
+
+class TestPublisherMissingSource(unittest.TestCase):
+    """A date daily_files failed has no P3; the finalizer skips it and the
+    publisher must too, so the run reaches run_summary and reports it there."""
+
+    @patch("app.boto3")
+    def test_missing_along_track_p3_is_skipped(self, mock_boto3):
+        mock_boto3.client.return_value.copy_object.side_effect = _client_error("NoSuchKey")
+        result = handler(_event(), None)
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["outputs"], [])
+        self.assertEqual(result["metadata"]["skip_reason"], MISSING_UPSTREAM)
+        self.assertEqual(
+            result["metadata"]["copied_from"],
+            "daily_files/p3/S6/2025/S6_alt_ref_at_v1_1_20250210.nc",
+        )
+
+    @patch("app.boto3")
+    def test_other_client_errors_still_fail(self, mock_boto3):
+        mock_boto3.client.return_value.copy_object.side_effect = _client_error("AccessDenied")
+        with self.assertRaises(PipelineError):
+            handler(_event(), None)
+
+    @patch("app.boto3")
+    def test_missing_staged_grid_still_fails(self, mock_boto3):
+        """A staged grid is only missing if simple_grids broke, whose Map has no
+        tolerance, so this is not an expected gap."""
+        mock_boto3.client.return_value.copy_object.side_effect = _client_error("NoSuchKey")
+        with self.assertRaises(PipelineError):
+            handler(_event(family="simple_grid", contributors=[]), None)
 
 
 class TestPublisherRejectsIncompleteEvents(unittest.TestCase):

@@ -6,8 +6,10 @@ from unittest.mock import patch
 
 import netCDF4 as nc
 import numpy as np
+import requests
 from daily_files.ingestion import s6_ingest
 from daily_files.ingestion.ingest import IngestedData
+from daily_files.ingestion.orbit_swap import OrbitSwapError
 from daily_files.ingestion.s6_ingest import S6Ingestor
 
 _DATA_01_VARS = [
@@ -86,28 +88,39 @@ class TestS6Ingest(unittest.TestCase):
         ingested = self._ingest_with_swap(swap_return=swapped)
         np.testing.assert_allclose(ingested.ssha, swapped)
 
-    def test_orbit_swap_skipped_when_no_orbit_file(self):
-        # fetch() returns None -> original ssha_nr retained (not the swapped values).
-        ingested = self._ingest_with_swap(swap_return=np.arange(6), fetch_return=None)
-        self.assertEqual(len(ingested.ssha), 6)
-        self.assertFalse(np.array_equal(ingested.ssha, np.arange(6)))
+    # Unswapped ssha_nr must never reach a daily file, so every swap failure
+    # fails the job rather than falling back to the original values.
+    def test_orbit_download_failure_fails_job(self):
+        buf = _make_s6_bytes(cycle=252, pass_num=211, n=6)
+        with patch.object(s6_ingest, "OrbitFetcher") as mock_of, \
+                patch.object(s6_ingest, "run_orbit_swap") as mock_swap:
+            mock_of.return_value.fetch.side_effect = requests.HTTPError("404 Not Found")
+            with self.assertRaisesRegex(OrbitSwapError, "404"):
+                S6Ingestor().ingest([buf], filenames=["S6_test_pass.nc"])
+        mock_swap.assert_not_called()
 
-    def test_orbit_swap_skipped_when_swap_returns_none(self):
-        ingested = self._ingest_with_swap(swap_return=None)
-        self.assertEqual(len(ingested.ssha), 6)
+    def test_orbit_swap_length_mismatch_fails_job(self):
+        with self.assertRaisesRegex(OrbitSwapError, "length mismatch"):
+            self._ingest_with_swap(swap_return=np.arange(3))
 
-    def test_orbit_swap_skipped_on_length_mismatch(self):
-        # Swapped array shorter than ssha_nr -> discarded, original retained.
-        ingested = self._ingest_with_swap(swap_return=np.arange(3))
-        self.assertEqual(len(ingested.ssha), 6)
-
-    def test_orbit_swap_error_falls_back_to_original(self):
+    def test_orbit_swap_error_fails_job(self):
         buf = _make_s6_bytes(cycle=252, pass_num=211, n=6)
         with patch.object(s6_ingest, "OrbitFetcher") as mock_of, \
                 patch.object(s6_ingest, "run_orbit_swap", side_effect=RuntimeError("boom")):
             mock_of.return_value.fetch.return_value = "/fake/orbit.nc"
-            ingested = S6Ingestor().ingest([buf], filenames=["S6_test_pass.nc"])
-        self.assertEqual(len(ingested.ssha), 6)
+            with self.assertRaisesRegex(OrbitSwapError, "boom"):
+                S6Ingestor().ingest([buf], filenames=["S6_test_pass.nc"])
+
+    def test_orbit_swap_error_fails_job_despite_good_files(self):
+        # One failed pass among good ones still fails the whole job.
+        good = _make_s6_bytes(cycle=252, pass_num=211, n=6)
+        bad = _make_s6_bytes(cycle=252, pass_num=212, n=6)
+        with patch.object(s6_ingest, "OrbitFetcher") as mock_of, \
+                patch.object(s6_ingest, "run_orbit_swap",
+                             side_effect=[np.arange(6.0), OrbitSwapError("outside span")]):
+            mock_of.return_value.fetch.return_value = "/fake/orbit.nc"
+            with self.assertRaises(OrbitSwapError):
+                S6Ingestor().ingest([good, bad], filenames=["a.nc", "b.nc"])
 
 
 if __name__ == "__main__":

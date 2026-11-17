@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Iterable, TextIO
 
 import netCDF4 as nc
@@ -8,7 +7,7 @@ import xarray as xr
 
 from daily_files.fetching.orbit_fetcher import OrbitFetcher
 from daily_files.ingestion.ingest import IngestedData, Ingestor
-from daily_files.ingestion.orbit_swap import run_orbit_swap
+from daily_files.ingestion.orbit_swap import OrbitSwapError, run_orbit_swap
 
 
 class S6Ingestor(Ingestor):
@@ -29,6 +28,8 @@ class S6Ingestor(Ingestor):
             try:
                 ds = self._open_with_orbit_swap(file_obj, filename, orbit_fetcher)
                 opened_files.append(ds)
+            except OrbitSwapError:
+                raise
             except Exception as e:
                 logging.warning(f"Unable to open file object {i}: {e}")
 
@@ -58,9 +59,9 @@ class S6Ingestor(Ingestor):
     ) -> xr.Dataset:
         """Read a pass file and apply orbit swap if filename + fetcher are provided.
 
-        The raw bytes are read once and used both for the netCDF4 in-memory parse
-        and (if orbit swap is requested) written to /tmp/ for the C executable.
-        Falls back to the original ssha_nr if any step of the orbit swap fails.
+        The raw bytes are read once and parsed in memory by both the extraction
+        and the orbit swap. Any failure of the swap raises OrbitSwapError, which
+        fails the job: a daily file is never a mix of swapped and unswapped passes.
         """
         data = file_obj.read()
         ds = self._extract_grouped_data(data)
@@ -68,41 +69,20 @@ class S6Ingestor(Ingestor):
         if filename is None or orbit_fetcher is None:
             return ds
 
-        tmp_nc = f"/tmp/{filename}"
         try:
-            with open(tmp_nc, "wb") as f:
-                f.write(data)
-
             orbit_path = orbit_fetcher.fetch(filename)
-            if orbit_path is None:
-                logging.warning(f"No orbit file for {filename}, using original ssha_nr")
-                return ds
-
-            swapped = run_orbit_swap(tmp_nc, orbit_path)
-            if swapped is None:
-                logging.warning(
-                    f"Orbit swap returned no data for {filename}, using original ssha_nr"
-                )
-                return ds
-
-            if len(swapped) != len(ds["ssha_nr"]):
-                logging.warning(
-                    f"Orbit swap length mismatch for {filename} "
-                    f"(expected {len(ds['ssha_nr'])}, got {len(swapped)}), "
-                    "using original ssha_nr"
-                )
-                return ds
-
-            ds["ssha_nr"] = xr.DataArray(swapped, dims="time", attrs=ds["ssha_nr"].attrs)
-            logging.info(f"Orbit swap applied for {filename}")
+            swapped = run_orbit_swap(data, orbit_path)
         except Exception as e:
-            logging.warning(
-                f"Orbit swap error for {filename}: {e}. Using original ssha_nr."
-            )
-        finally:
-            if os.path.exists(tmp_nc):
-                os.remove(tmp_nc)
+            raise OrbitSwapError(f"Orbit swap failed for {filename}: {e}") from e
 
+        if len(swapped) != len(ds["ssha_nr"]):
+            raise OrbitSwapError(
+                f"Orbit swap length mismatch for {filename} "
+                f"(expected {len(ds['ssha_nr'])}, got {len(swapped)})"
+            )
+
+        ds["ssha_nr"] = xr.DataArray(swapped, dims="time", attrs=ds["ssha_nr"].attrs)
+        logging.info(f"Orbit swap applied for {filename}")
         return ds
 
     def _extract_grouped_data(self, data: bytes) -> xr.Dataset:

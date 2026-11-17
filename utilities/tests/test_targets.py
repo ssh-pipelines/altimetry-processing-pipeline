@@ -83,9 +83,8 @@ class TestCatalogConsistency(unittest.TestCase):
 
     def test_images_share_one_lambda_python_base(self):
         # Heavy stages fall back to their ARG BASE_IMAGE default when built
-        # outside the wrapper scripts, and daily_files copies libraries compiled
-        # in a c_builder stage into a pipeline_runtime image, so every reference
-        # has to name the same base.
+        # outside the wrapper scripts, so that default has to match the base
+        # pipeline_runtime is built on.
         tags = set()
         for t in reg.targets():
             if t.packaging is not Packaging.CONTAINER:

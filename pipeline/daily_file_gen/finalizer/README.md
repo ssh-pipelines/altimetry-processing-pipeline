@@ -89,7 +89,7 @@ Current sources:
 | Source | Product Type   | Offset  | Intermission Bias | Start Date | End Date   |
 |--------|----------------|---------|-------------------|------------|------------|
 | GSFC   | reference      | 0.0     | 0.0               | 1992-10-25 | 2024-01-20 |
-| S6     | reference      | 0.0291  | 0.0               | 2024-01-21 |            |
+| S6     | reference      | 0.0313  | 0.0               | 2024-01-21 |            |
 | S6B    | reference      | 0.0     | 0.0               | 2025-11-26 |            |
 | S3B    | high_latitude  | 0.0     | 0.0209            | 2018-11-24 | 2026-04-10 |
 | ERS1   | high_latitude  | 0.0     | 0.0177            | 1992-10-25 | 1996-06-01 |

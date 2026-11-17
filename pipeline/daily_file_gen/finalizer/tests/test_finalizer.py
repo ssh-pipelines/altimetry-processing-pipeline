@@ -20,7 +20,7 @@ from finalization.finalizer import (
 )
 
 # Test constant matching the S6 config value
-S6_OFFSET = 0.0291
+S6_OFFSET = 0.0313
 # Test constant matching the S3B common.intermission_bias value
 S3B_BIAS = 0.0209
 

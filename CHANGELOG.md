@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer compiles netCDF-C or bundles shared libraries on `LD_LIBRARY_PATH`. The
   port agrees with the C to a few nm
   ([ADR 0012](docs/adr/0012-orbit-swap-in-numpy.md)).
+- S6 offset recomputed against GSFC V6.1 with S6 on `ssha_nr`, it goes from 0.0291 
+  to 0.0313 m, from 27 weekly grids, Jun–Dec 2025
 
 ### Fixed
 - The S6 orbit swap applied its correction to `ku/ssha` (ocean retracker) and

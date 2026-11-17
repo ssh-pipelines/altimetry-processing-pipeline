@@ -18,6 +18,7 @@ than an edit to it.
 | [0009](0009-publisher-stage-and-enabled.md) | The unifier generalizes into one `publisher` every source runs, family as an argument; the `unify` double gate is deleted rather than rekeyed because published identity is derivable, and `enabled` becomes the explicit production fact. | Accepted · 2026-10-14 |
 | [0010](0010-product-keyed-orchestration.md) | A trigger names a Published product, not a Source. The parent composes two independently optional tiers — a source tier Mapped over contributors, a product tier for the gridded products — each on its own run path under one shared `run_id`. Event-driven fan-in was rejected because it destroys run-scoped reconciliation. | Accepted · 2026-10-15 |
 | [0011](0011-count-based-smoother-gap-fill.md) | The smoother fills land gaps by counting omitted samples from each gap's length in local sample periods, replacing the integer-second grid. A uniform grid at one configured period was rejected because ERS-1 and Jason-1 clocks drift up to half a period within a pass. | Accepted · 2026-10-23 |
+| [0012](0012-orbit-swap-in-numpy.md) | The S6 orbit swap is ported from JPL's C program to numpy, removing the netCDF-C build and its bundled libraries, and now corrects `ssha_nr` rather than `ssha`. Keeping the C on AL2023 via SPAL or a source build was rejected: either ships unscanned shared libraries on `LD_LIBRARY_PATH`, and the port agrees with the C to a few nm. | Accepted · 2026-11-16
 
 ## Writing a new one
 

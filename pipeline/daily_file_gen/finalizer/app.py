@@ -3,10 +3,10 @@ import logging
 from datetime import datetime
 
 from finalization.config.source_config import get_available_sources, get_source_config
-from finalization.finalizer import Finalizer
+from finalization.finalizer import Finalizer, MissingDailyFile
 
 from utilities.errors import PipelineError
-from utilities.job_outcome import JobOutcome, Output
+from utilities.job_outcome import MISSING_UPSTREAM, JobOutcome, Output
 from utilities.products import published_identity
 from utilities.provenance import processing_complete
 
@@ -35,7 +35,18 @@ def handler(event, context):
 
         logging.info(f"Finalizing daily file for {date.isoformat()} (source={source})")
         finalizer = Finalizer(date, source, bucket)
-        result = finalizer.process(bucket)
+        try:
+            result = finalizer.process(bucket)
+        except MissingDailyFile as e:
+            # daily_files failed this date and was tolerated by its Map. Its own
+            # error is in that stage's FAILED_*.json, which run_summary reports.
+            logging.warning(f"Skipping {date.isoformat()}: {e}")
+            return JobOutcome.skipped(
+                stage="finalizer",
+                date=date.isoformat(),
+                source=source,
+                reason=MISSING_UPSTREAM,
+            ).to_dict()
 
         config = get_source_config(source)
         return JobOutcome.success(

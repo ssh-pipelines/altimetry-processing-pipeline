@@ -5,7 +5,7 @@
 # the locked deps to a requirements file and pip-install them in one cached
 # layer that only busts when pyproject.toml / uv.lock change — not when stage
 # code or the shared utilities package changes.
-FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.12
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 

@@ -42,7 +42,7 @@ a gigabyte for no functional benefit.
 ## How stage Dockerfiles use it
 
 ```dockerfile
-ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.12
 FROM ${BASE_IMAGE}
 ```
 

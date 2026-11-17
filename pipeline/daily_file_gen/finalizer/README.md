@@ -21,6 +21,8 @@ For each processing date, the Lambda:
 
 As a **deliverable stage** the handler returns a **Job outcome** (`utilities.job_outcome.JobOutcome`) declaring the P3 key it wrote — the success-side analog of the structured failure entry (ADR 0005). The Distributed Map's `ResultWriter` persists it to `SUCCEEDED_n.json`, and the `run_summary` Lambda reconciles it against the jobs manifest. The outcome's `metadata` carries the file's `processing_history`, a `provenance_complete` flag, the source's `product_type`, and the `published_product` this P3 feeds. The last is provenance only — it replaces the former `unify` flag, which used to gate the stage after it; publication is now derived and unconditional ([ADR 0009](../../../docs/adr/0009-publisher-stage-and-enabled.md)). An upload failure now **raises** (previously returned silently) so the failure path records it.
 
+A date with no P2 returns a `skipped` outcome with `skip_reason: "upstream stage produced no input"` instead of failing. The `daily_file` Map tolerates failed dates (an S6 orbit swap that cannot run, for one), so the finalizer is handed dates that have no P2. `run_summary` replaces the skip reason with the `daily_file` error for that date. Before, the missing file was logged and the stage then crashed on an unbound local, failing the whole run with an error that named the finalizer.
+
 ## Lambda input
 
 The Lambda receives one item from the jobs manifest per invocation:
@@ -121,6 +123,7 @@ From the repo root (after `uv sync --extra dev`):
 | `TestProcessAttributes`   | `product_generation_step`, `history`, `granule_id`, pass-flag attrs (including the per-crossover-type `pass_flag_notes`), attribute sort |
 | `TestProcessWithBadPasses`| Bad passes applied during `process()`                            |
 | `TestProcessS6B`          | Per-source upload path, granule ID uses source name              |
+| `TestMissingP2`           | A missing P2 raises `MissingDailyFile` and the handler returns a `skipped` outcome; other errors still fail the item |
 
 ## Dependencies
 

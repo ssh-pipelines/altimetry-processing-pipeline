@@ -43,6 +43,7 @@ def handler(event, context):
     manifests, outcomes, run_params, bad_pass_results = summarizer.gather(
         s3, bucket, published_product, run_id, contributors
     )
+    failures = summarizer.read_failures(s3, bucket, contributors, run_id)
     summary = summarizer.build_summary(
         published_product,
         run_id,
@@ -51,6 +52,7 @@ def handler(event, context):
         outcomes,
         run_params=run_params,
         bad_pass_results=bad_pass_results,
+        failures=failures,
     )
 
     key = summarizer.summary_key(published_product, run_id)

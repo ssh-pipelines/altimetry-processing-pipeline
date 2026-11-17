@@ -1,9 +1,9 @@
-ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.11
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:3.12
 FROM ${BASE_IMAGE}
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 
-RUN yum install gcc g++ gcc-c++ -y && yum -y clean all
+RUN dnf install -y gcc gcc-c++ && dnf clean all
 
 # Stage deps from the `simple_grids` extra in the repo-root pyproject.toml,
 # resolved via uv.lock. Exported + installed in a cached layer that only busts

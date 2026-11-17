@@ -16,9 +16,10 @@ import logging
 from datetime import datetime
 
 import boto3
+from botocore.exceptions import ClientError
 
 from utilities.errors import PipelineError
-from utilities.job_outcome import JobOutcome, Output
+from utilities.job_outcome import MISSING_UPSTREAM, JobOutcome, Output
 from utilities.pipeline_layout import (
     daily_file_key,
     published_along_track_key,
@@ -108,11 +109,25 @@ def handler(event, context):
         logging.info(f"Publishing s3://{bucket}/{src_key} -> s3://{bucket}/{dst_key}")
 
         s3 = boto3.client("s3")
-        s3.copy_object(
-            Bucket=bucket,
-            CopySource={"Bucket": bucket, "Key": src_key},
-            Key=dst_key,
-        )
+        try:
+            s3.copy_object(
+                Bucket=bucket,
+                CopySource={"Bucket": bucket, "Key": src_key},
+                Key=dst_key,
+            )
+        except ClientError as e:
+            # A P3 missing because daily_files failed the date (and the finalizer
+            # skipped it) is reported by run_summary, not raised a second time here.
+            if family != ALONG_TRACK or e.response.get("Error", {}).get("Code") != "NoSuchKey":
+                raise
+            logging.warning(f"Skipping {proc_date}: s3://{bucket}/{src_key} does not exist")
+            return JobOutcome.skipped(
+                stage="publisher",
+                date=date_obj.isoformat(),
+                source=publish_as,
+                reason=MISSING_UPSTREAM,
+                metadata={"family": family, "copied_from": src_key, "contributors": contributors},
+            ).to_dict()
 
         logging.info(f"Published {publish_as} {family} for {proc_date}")
         # No `provenance_complete`: this stage never opens the file, and the

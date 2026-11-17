@@ -18,6 +18,11 @@ from utilities.pipeline_layout import (
 )
 from utilities.provenance import append_to_nc, read_from_nc
 
+
+class MissingDailyFile(FileNotFoundError):
+    """The date's P2 was never written, because an upstream stage failed for it."""
+
+
 # product_type ↔ crossover_type (documented 1:1; mirrors the oer and bad_pass
 # stages' _CROSSOVER_TYPE_BY_PRODUCT_TYPE). A reference mission crosses against
 # itself; a high_latitude source crosses against the finalized reference mission.
@@ -128,7 +133,7 @@ class Finalizer:
             local_path = os.path.join("/tmp", os.path.basename(path))
             aws_manager.fs.get(path, local_path)
             return local_path
-        raise FileNotFoundError(f"{path} not found")
+        raise MissingDailyFile(f"{path} not found")
 
     def upload_df(self, local_path: str, dst_path: str):
         aws_manager.fs.upload(local_path, dst_path)
@@ -147,11 +152,7 @@ class Finalizer:
         logging.info(f"Processing {filename}")
         src_s3_path = self._build_src_path(bucket)
 
-        try:
-            local_filepath = self.get_daily_file(src_s3_path)
-        except Exception as e:
-            logging.info(e)
-
+        local_filepath = self.get_daily_file(src_s3_path)
         ds = nc.Dataset(local_filepath, "r+")
 
         pf = self.config.pass_flag

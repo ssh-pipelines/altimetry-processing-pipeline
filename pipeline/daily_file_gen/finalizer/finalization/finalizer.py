@@ -257,8 +257,12 @@ class Finalizer:
 
 
 def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
-    """
-    Set nasa_flag values to 1 where there are identified bad passes
+    """Remove bad passes from ssha_smoothed and record them in nasa_flag.
+
+    ssha_smoothed already excludes P1's nasa_flag, which was applied to the
+    smoother's input. Only the bad-pass points are NaN'd here; masking with the
+    full nasa_flag would also drop the smoother's gap-filled values at P1-flagged
+    points. nasa_flag is updated so a user can apply it to ssha.
     """
     # Get cycle and pass variables from the dataset
     cycle_var = ds.variables["cycle"][:].astype(int)
@@ -279,10 +283,8 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
         df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1)
     )
 
-    # Reapply nasa_flag to ssha_smoothed
     ssha_smoothed = ds.variables["ssha_smoothed"][:]
-    nasa_flag = ds.variables["nasa_flag"][:]
-    ssha_smoothed[nasa_flag == 1] = np.nan
+    ssha_smoothed[mask] = np.nan
     ds.variables["ssha_smoothed"][:] = ssha_smoothed
 
     return ds

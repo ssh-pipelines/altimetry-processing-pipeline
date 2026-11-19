@@ -264,6 +264,57 @@ class TestApplyBadPass(unittest.TestCase):
         ds.close()
 
 
+class TestApplyBadPassWithP1Flags(unittest.TestCase):
+    """A P2 file already carries nasa_flag from P1, applied before smoothing.
+
+    Points 0-2 are one bad pass (cycle 1, pass 1). Point 1 is also P1-flagged.
+    Point 4 is P1-flagged outside the bad pass: the smoother dropped it from its
+    input and gap-filled its value, which must survive finalization.
+    """
+
+    def setUp(self):
+        self.tmpfile = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        self.tmpfile.close()
+        ds = nc.Dataset(self.tmpfile.name, "w", format="NETCDF4")
+        ds.createDimension("obs", 6)
+        for name, dtype in [("cycle", "i4"), ("pass", "i4"), ("ssha", "f8"),
+                            ("ssha_smoothed", "f8"), ("nasa_flag", "i4")]:
+            ds.createVariable(name, dtype, ("obs",))
+        ds.variables["cycle"][:] = 1
+        ds.variables["pass"][:] = [1, 1, 1, 2, 2, 2]
+        ds.variables["ssha"][:] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+        ds.variables["ssha_smoothed"][:] = [0.11, 0.21, 0.31, 0.41, 0.51, 0.61]
+        ds.variables["nasa_flag"][:] = [0, 1, 0, 0, 1, 0]
+        ds.close()
+        self.bad_df = pd.DataFrame({"cycle": [1], "pass": [1]})
+
+    def tearDown(self):
+        os.remove(self.tmpfile.name)
+
+    def _apply(self):
+        ds = nc.Dataset(self.tmpfile.name, "r+")
+        apply_bad_pass(ds, self.bad_df)
+        out = {
+            name: np.ma.filled(ds.variables[name][:].astype(float), np.nan)
+            for name in ("ssha", "ssha_smoothed", "nasa_flag")
+        }
+        ds.close()
+        return out
+
+    def test_nasa_flag_is_p1_flag_or_bad_pass(self):
+        np.testing.assert_array_equal(self._apply()["nasa_flag"], [1, 1, 1, 0, 1, 0])
+
+    def test_ssha_is_never_masked(self):
+        np.testing.assert_array_equal(self._apply()["ssha"], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+
+    def test_bad_pass_points_removed_from_ssha_smoothed(self):
+        self.assertTrue(np.isnan(self._apply()["ssha_smoothed"][:3]).all())
+
+    def test_points_outside_bad_pass_keep_ssha_smoothed(self):
+        # Point 4 is P1-flagged: nasa_flag applies to ssha, not ssha_smoothed.
+        np.testing.assert_array_equal(self._apply()["ssha_smoothed"][3:], [0.41, 0.51, 0.61])
+
+
 # ---------------------------------------------------------------------------
 # Helpers for process() tests — set up mock AWS that serves a real netCDF file
 # ---------------------------------------------------------------------------

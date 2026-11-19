@@ -264,6 +264,98 @@ class TestApplyBadPass(unittest.TestCase):
         ds.close()
 
 
+class TestApplyBadPassWithP1Flags(unittest.TestCase):
+    """A P2 file already carries nasa_flag from P1, applied before smoothing.
+
+    Points 0-2 are one bad pass (cycle 1, pass 1). Point 1 is also P1-flagged.
+    Point 4 is P1-flagged outside the bad pass: the smoother dropped it from its
+    input and gap-filled its value, which must survive finalization.
+    """
+
+    def setUp(self):
+        self.tmpfile = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        self.tmpfile.close()
+        ds = nc.Dataset(self.tmpfile.name, "w", format="NETCDF4")
+        ds.createDimension("obs", 6)
+        for name, dtype in [("cycle", "i4"), ("pass", "i4"), ("ssha", "f8"),
+                            ("ssha_smoothed", "f8"), ("nasa_flag", "i4")]:
+            ds.createVariable(name, dtype, ("obs",))
+        ds.variables["cycle"][:] = 1
+        ds.variables["pass"][:] = [1, 1, 1, 2, 2, 2]
+        ds.variables["ssha"][:] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+        ds.variables["ssha_smoothed"][:] = [0.11, 0.21, 0.31, 0.41, 0.51, 0.61]
+        ds.variables["nasa_flag"][:] = [0, 1, 0, 0, 1, 0]
+        ds.close()
+        self.bad_df = pd.DataFrame({"cycle": [1], "pass": [1]})
+
+    def tearDown(self):
+        os.remove(self.tmpfile.name)
+
+    def _apply(self):
+        ds = nc.Dataset(self.tmpfile.name, "r+")
+        apply_bad_pass(ds, self.bad_df)
+        out = {
+            name: np.ma.filled(ds.variables[name][:].astype(float), np.nan)
+            for name in ("ssha", "ssha_smoothed", "nasa_flag")
+        }
+        ds.close()
+        return out
+
+    def test_nasa_flag_is_p1_flag_or_bad_pass(self):
+        np.testing.assert_array_equal(self._apply()["nasa_flag"], [1, 1, 1, 0, 1, 0])
+
+    def test_ssha_is_never_masked(self):
+        np.testing.assert_array_equal(self._apply()["ssha"], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+
+    def test_bad_pass_points_removed_from_ssha_smoothed(self):
+        self.assertTrue(np.isnan(self._apply()["ssha_smoothed"][:3]).all())
+
+    def test_points_outside_bad_pass_keep_ssha_smoothed(self):
+        # Point 4 is P1-flagged: nasa_flag applies to ssha, not ssha_smoothed.
+        np.testing.assert_array_equal(self._apply()["ssha_smoothed"][3:], [0.41, 0.51, 0.61])
+
+
+class TestApplyBadPassMatchesPairs(unittest.TestCase):
+    """A bad pass is a (cycle, pass) pair. With bad passes in two cycles, a
+    point whose cycle is one bad pass's and whose pass number is the other's
+    is not bad, as on a day that crosses a cycle boundary."""
+
+    def setUp(self):
+        self.tmpfile = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        self.tmpfile.close()
+        ds = nc.Dataset(self.tmpfile.name, "w", format="NETCDF4")
+        ds.createDimension("obs", 4)
+        for name, dtype in [("cycle", "i4"), ("pass", "i4"), ("ssha", "f8"),
+                            ("ssha_smoothed", "f8"), ("nasa_flag", "i4")]:
+            ds.createVariable(name, dtype, ("obs",))
+        ds.variables["cycle"][:] = [10, 10, 11, 11]
+        ds.variables["pass"][:] = [1, 254, 1, 254]
+        ds.variables["ssha"][:] = 0.1
+        ds.variables["ssha_smoothed"][:] = [0.11, 0.12, 0.13, 0.14]
+        ds.variables["nasa_flag"][:] = 0
+        ds.close()
+
+    def tearDown(self):
+        os.remove(self.tmpfile.name)
+
+    def test_only_listed_pairs_are_flagged(self):
+        ds = nc.Dataset(self.tmpfile.name, "r+")
+        apply_bad_pass(ds, pd.DataFrame({"cycle": [10, 11], "pass": [254, 1]}))
+        flags = ds.variables["nasa_flag"][:].tolist()
+        smoothed = np.ma.filled(ds.variables["ssha_smoothed"][:], np.nan)
+        ds.close()
+        self.assertEqual(flags, [0, 1, 1, 0])
+        np.testing.assert_array_equal(smoothed, [0.11, np.nan, np.nan, 0.14])
+
+    def test_fill_valued_cycle_matches_no_bad_pass(self):
+        ds = nc.Dataset(self.tmpfile.name, "r+")
+        ds.variables["cycle"][1] = np.ma.masked
+        apply_bad_pass(ds, pd.DataFrame({"cycle": [10, 11], "pass": [254, 1]}))
+        flags = ds.variables["nasa_flag"][:].tolist()
+        ds.close()
+        self.assertEqual(flags, [0, 0, 1, 0])
+
+
 # ---------------------------------------------------------------------------
 # Helpers for process() tests — set up mock AWS that serves a real netCDF file
 # ---------------------------------------------------------------------------

@@ -210,6 +210,7 @@ class XoverProcessor:
             "source": self.source,
             "bad_passes": bad_passes,
         }
-        if bad_passes:
-            self.write_results_to_s3(formatted_results, bucket)
+        # Written even when empty: a reprocess that finds none must replace the
+        # date's earlier file, which the finalizer would otherwise keep applying.
+        self.write_results_to_s3(formatted_results, bucket)
         return formatted_results

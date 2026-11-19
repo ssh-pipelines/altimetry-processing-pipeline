@@ -32,7 +32,7 @@ For each processing date, the Lambda:
 3. **Flags bad passes** by grouping crossover points by track ID (`cycle * 10000 + pass`) and checking two thresholds:
    - **Mean**: If `n > 15` points and `|mean(dssh)| > 0.1` m
    - **RMS**: If `n > 25` points and `std(dssh) > 0.27` m
-4. **Writes results** to `s3://{bucket}/bad_passes/{source}/{date}.json` (only when bad passes are found).
+4. **Writes results** to `s3://{bucket}/bad_passes/{source}/{date}.json` for every date, with `"bad_passes": []` when none are found. Writing the empty result replaces any earlier file for that date, so a reprocess that clears a date's bad passes stops the finalizer applying the old ones.
 
 The logic lives in `XoverProcessor` (`bad_passes/bad_pass_flag.py`); the product-type
 dispatch and reference window come from `BadPassConfig` (`bad_passes/config/source_config.py`).

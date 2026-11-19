@@ -264,16 +264,15 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
     full nasa_flag would also drop the smoother's gap-filled values at P1-flagged
     points. nasa_flag is updated so a user can apply it to ssha.
     """
-    # Get cycle and pass variables from the dataset
-    cycle_var = ds.variables["cycle"][:].astype(int)
-    pass_var = ds.variables["pass"][:].astype(int)
+    # Fill values match no bad pass; cycles and passes are positive.
+    cycle_var = np.ma.filled(ds.variables["cycle"][:], -1).astype(int)
+    pass_var = np.ma.filled(ds.variables["pass"][:], -1).astype(int)
 
-    # Convert bad_pass_slice cycles and passes to numpy arrays for comparison
-    bad_cycles = df["cycle"].astype(int).to_numpy()
-    bad_passes = df["pass"].astype(int).to_numpy()
-
-    # Mask where cycle and pass match those in the bad_pass_slice
-    mask = np.isin(cycle_var, bad_cycles) & np.isin(pass_var, bad_passes)
+    # Match (cycle, pass) as pairs: testing each column on its own would also
+    # flag cycle A's pass q when A/p and B/q are bad, as on a cycle-crossing day.
+    mask = np.zeros(cycle_var.shape, dtype=bool)
+    for c, p in zip(df["cycle"].astype(int), df["pass"].astype(int)):
+        mask |= (cycle_var == c) & (pass_var == p)
 
     # Set nasa_flag to 1 where the mask is True
     ds.variables["nasa_flag"][mask] = 1

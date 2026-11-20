@@ -33,3 +33,21 @@ schedules:
     enabled: false
     input:
       published_product: NASA-SSH_ERS1
+
+# EventBridge Scheduler schedules that invoke one stage's Lambda directly rather
+# than the pipeline, so they name a Target instead of a Published product and
+# carry whatever input that stage takes. Scheduler rather than classic rules
+# because these run at a local wall-clock time across DST, which classic rules
+# (UTC only) cannot express.
+stage_schedules:
+  # Intended: cron(0 11 ? * MON *) in America/Los_Angeles. grace_hours covers
+  # the weekly climateelvis delivery plus ingest; it drops to 12 once the
+  # pipeline delivers each run.
+  delivery-audit:
+    target: delivery_audit
+    cron: "TBD"
+    timezone: America/Los_Angeles
+    enabled: false
+    input:
+      grace_hours: 192
+      redeliver: false

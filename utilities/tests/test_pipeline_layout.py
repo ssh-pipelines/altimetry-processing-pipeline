@@ -19,9 +19,11 @@ from utilities.pipeline_layout import (
     oer_polygon_key,
     published_along_track_filename,
     published_along_track_key,
+    published_along_track_prefix,
     published_indicators_key,
     published_indicators_prefix,
     published_simple_grid_key,
+    published_simple_grid_prefix,
     s3_uri,
     simple_grid_key,
     simple_grid_prefix,
@@ -313,6 +315,18 @@ class TestPublishedProducts(unittest.TestCase):
         self.assertEqual(
             published_indicators_prefix("NASA-SSH"), "products/NASA-SSH/indicators/"
         )
+
+    def test_family_prefixes_hold_their_keys(self):
+        """The audit lists these prefixes to find every released file, so each
+        dated key must fall under its family's prefix."""
+        d = date(2025, 1, 7)
+        for identity in ("NASA-SSH", "NASA-SSH_S3B"):
+            with self.subTest(identity=identity):
+                self.assertTrue(
+                    published_along_track_key(identity, d).startswith(published_along_track_prefix(identity))
+                )
+        self.assertEqual(published_simple_grid_prefix("NASA-SSH"), "products/NASA-SSH/simple_grid/")
+        self.assertTrue(published_simple_grid_key("NASA-SSH", d).startswith(published_simple_grid_prefix("NASA-SSH")))
 
     def test_every_published_key_lives_under_one_prefix(self):
         """A later move to a separate products bucket should be this one module

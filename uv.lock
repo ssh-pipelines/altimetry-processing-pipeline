@@ -1358,6 +1358,10 @@ daily-files = [
     { name = "requests" },
     { name = "shapely" },
 ]
+delivery-audit = [
+    { name = "boto3" },
+    { name = "requests" },
+]
 dev = [
     { name = "boto3" },
     { name = "cartopy" },
@@ -1437,6 +1441,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3" },
+    { name = "boto3", marker = "extra == 'delivery-audit'" },
     { name = "boto3", marker = "extra == 'pipeline-init'" },
     { name = "boto3", marker = "extra == 'publisher'" },
     { name = "boto3", marker = "extra == 'run-summary'" },
@@ -1467,14 +1472,15 @@ requires-dist = [
     { name = "python-cmr", marker = "extra == 'pipeline-init'", specifier = "==0.9.0" },
     { name = "pyyaml" },
     { name = "requests", marker = "extra == 'daily-files'" },
+    { name = "requests", marker = "extra == 'delivery-audit'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "s3fs", specifier = "==2026.6.0" },
     { name = "scipy", marker = "extra == 'pipeline-runtime'", specifier = "==1.15.3" },
     { name = "shapely", marker = "extra == 'daily-files'" },
-    { name = "utilities", extras = ["pipeline-runtime", "daily-files", "finalizer", "oer", "pipeline-init", "publisher", "xover", "enso", "indicators", "simple-grids", "run-summary", "start-run"], marker = "extra == 'dev'" },
+    { name = "utilities", extras = ["pipeline-runtime", "daily-files", "finalizer", "oer", "pipeline-init", "publisher", "xover", "enso", "indicators", "simple-grids", "run-summary", "start-run", "delivery-audit"], marker = "extra == 'dev'" },
     { name = "xarray", marker = "extra == 'pipeline-runtime'", specifier = "==2025.4.0" },
 ]
-provides-extras = ["pipeline-runtime", "bad-pass", "daily-files", "finalizer", "oer", "xover", "pipeline-init", "publisher", "run-summary", "start-run", "enso", "indicators", "simple-grids", "dev"]
+provides-extras = ["pipeline-runtime", "bad-pass", "daily-files", "finalizer", "oer", "xover", "pipeline-init", "publisher", "run-summary", "start-run", "delivery-audit", "enso", "indicators", "simple-grids", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-cov", specifier = ">=7.1.0" }]

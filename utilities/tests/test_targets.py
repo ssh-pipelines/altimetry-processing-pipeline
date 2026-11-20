@@ -8,11 +8,11 @@ from utilities.targets import Packaging
 # Expected catalog, kept here as an independent assertion of intent (the module
 # derives this from the filesystem; this pins what we expect to find).
 HEAVY = {"bad_pass", "daily_files", "finalizer", "oer", "xover", "enso", "indicators", "simple_grids"}
-# `run_summary` and `start_run` are orchestration Lambdas that would be zip but
-# for shipping utilities — one for pipeline_layout, one to read the Source
-# registry. A zip target is self-contained by construction, so they carry a
-# Dockerfile and land here.
-LIGHT_CONTAINER = {"pipeline_init", "publisher", "run_summary", "start_run"}
+# `run_summary`, `start_run` and `delivery_audit` are infra Lambdas that would be
+# zip but for shipping utilities — for pipeline_layout, the Source registry, and
+# the delivery declaration. A zip target is self-contained by construction, so
+# they carry a Dockerfile and land here.
+LIGHT_CONTAINER = {"pipeline_init", "publisher", "run_summary", "start_run", "delivery_audit"}
 BASE_IMAGE = {"pipeline_runtime"}
 ZIP = {"failure_handling", "podaac_auth", "merge_manifests", "set_sg_jobs"}
 
@@ -135,6 +135,14 @@ class TestNamingHelpers(unittest.TestCase):
         pa = reg.get("podaac_auth")
         self.assertTrue(pa.deployable_in("prod"))
         self.assertFalse(pa.deployable_in("dev"))
+
+    def test_delivery_audit_is_prod_only(self):
+        # It audits the prod bucket against PO.DAAC; a dev copy would email the
+        # same report twice, or report dev's partial products/ as missing.
+        da = reg.get("delivery_audit")
+        self.assertTrue(da.deployable_in("prod"))
+        self.assertFalse(da.deployable_in("dev"))
+        self.assertEqual(da.function_name("prod"), "prod-delivery_audit")
 
     def test_ecr_repo_rejects_zip(self):
         with self.assertRaises(ValueError):

@@ -198,6 +198,12 @@ AWS, stage it:
       published_product: NASA-SSH_<SOURCE>
 ```
 
+**PO.DAAC delivery is not part of onboarding.** A high-latitude line publishes to
+`products/NASA-SSH_<SOURCE>/` and is never delivered or audited until it has a
+`published_products:` entry with a `delivery:` list in `utilities/products.yaml`,
+added once PO.DAAC has created the satellite's collection
+([ADR 0013](adr/0013-podaac-delivery-in-pipeline.md)).
+
 ## Triggering a run
 
 Every pass below starts the same way: deploy, then start an execution scoped to the

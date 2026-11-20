@@ -18,6 +18,7 @@ from utilities.source_profile import (
     get_published_product,
     get_registered_sources,
     get_source_profile,
+    list_delivered_products,
     list_published_products,
 )
 
@@ -157,6 +158,51 @@ class TestPublishedProductRegistry(unittest.TestCase):
     def test_unknown_published_product_raises(self):
         with self.assertRaises(ValueError):
             get_published_product("NASA-SSH_HILAT")
+
+    def test_reference_line_delivers_its_six_collections(self):
+        entry = get_published_product("NASA-SSH")
+        self.assertEqual(
+            {(d.family, d.collection) for d in entry.delivery},
+            {
+                ("along_track", "NASA_SSH_REF_ALONGTRACK_V11"),
+                ("simple_grid", "NASA_SSH_REF_SIMPLE_GRID_V11"),
+                ("indicators", "NASA_SSH_GMSL_INDICATOR"),
+                ("indicators", "NASA_SSH_ENSO_INDICATOR"),
+                ("indicators", "NASA_SSH_IOD_INDICATOR"),
+                ("indicators", "NASA_SSH_PDO_INDICATOR"),
+            },
+        )
+        for d in entry.delivery:
+            self.assertEqual(d.prefix, d.collection)
+
+    def test_only_the_reference_line_delivers(self):
+        """High-latitude lines run in production undelivered until PO.DAAC has a
+        collection for each; a declaration appearing early would audit, and
+        later deliver, into a collection that does not exist."""
+        self.assertEqual(list_delivered_products(), ["NASA-SSH"])
+
+    def test_delivered_families_are_published(self):
+        """A delivery entry for a family the line does not publish would audit an
+        empty prefix every week."""
+        for name in list_delivered_products():
+            entry = get_published_product(name)
+            for d in entry.delivery:
+                with self.subTest(published_product=name, collection=d.collection):
+                    self.assertIn(d.family, {"along_track", "simple_grid", "indicators"})
+                    if d.family == "simple_grid":
+                        self.assertTrue(publishes_simple_grid(name))
+                    if d.family == "indicators":
+                        self.assertTrue(entry.indicators)
+                    if d.family == "along_track":
+                        self.assertTrue(registered_contributors(name))
+
+    def test_collections_are_delivered_once(self):
+        """Two lines delivering into one collection would overwrite each other's
+        granules at PO.DAAC."""
+        collections = [
+            d.collection for name in list_delivered_products() for d in get_published_product(name).delivery
+        ]
+        self.assertEqual(len(collections), len(set(collections)))
 
     def test_every_declared_grid_product_exists(self):
         for name in list_published_products():

@@ -123,10 +123,24 @@ products:
 # otherwise 15 high-latitude satellites would each need an entry restating their
 # own product_type. So there are no `along_track:` keys and no per-satellite
 # entries: `NASA-SSH_S3B` is a valid published identity without appearing here.
+#
+# `delivery` lists the PO.DAAC collection each family is delivered to, and is
+# opt-in: a line without one is published and never delivered or audited. It is
+# declared rather than inferred from `id` because a DOI can be settled before
+# PO.DAAC creates the collection, and `along_track_high_latitude` is one Product
+# shared by every high-latitude satellite while each will get its own
+# collection. `podaac_prefix` defaults to the collection name.
 published_products:
   NASA-SSH:
     simple_grid: simple_grid_reference
     indicators: true
+    delivery:
+      - {family: along_track, collection: NASA_SSH_REF_ALONGTRACK_V11}
+      - {family: simple_grid, collection: NASA_SSH_REF_SIMPLE_GRID_V11}
+      - {family: indicators, collection: NASA_SSH_GMSL_INDICATOR}
+      - {family: indicators, collection: NASA_SSH_ENSO_INDICATOR}
+      - {family: indicators, collection: NASA_SSH_IOD_INDICATOR}
+      - {family: indicators, collection: NASA_SSH_PDO_INDICATOR}
   # The composite high-latitude grid has no entry yet — its identity string is
   # unresolved. Deliberately absent rather than a placeholder, so a provisional
   # name cannot leak into dev-cluster paths and be mistaken for real.

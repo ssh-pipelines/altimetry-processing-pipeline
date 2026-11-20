@@ -33,6 +33,10 @@ targets:
   # Source registry (ADR 0010). A zip target is self-contained by construction.
   run_summary:   {}
   start_run:     {}
+  # Scheduled, not part of the pipeline. Containerized to read the delivery
+  # declaration in utilities/products.yaml. Prod only: it audits the prod bucket
+  # against PO.DAAC, and a dev copy would only send a second email.
+  delivery_audit: {deploy_stages: [prod]}
 
   # ── container — base image (built + pushed, never deployed) ───────────
   pipeline_runtime: {deployable: false}

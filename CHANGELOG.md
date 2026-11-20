@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `delivery_audit`, a prod-only Lambda run weekly by EventBridge Scheduler, checks
+  every released file in each delivered PO.DAAC collection (along-track, simple
+  grid, and each indicator's `.txt` and archive) against CMR's granules, and
+  emails files with no granule, files republished since their granule was
+  ingested, and size mismatches. Files published within the schedule's
+  `grace_hours` are reported as pending. Each collection is audited on its own,
+  so one CMR or S3 failure is reported beside the other collections' results
+  instead of stopping them; a CMR listing shorter than its `CMR-Hits` is refused
+  rather than reported as missing files. It emails on every outcome, including
+  when it cannot run. Read-only. Also runs by hand as
+  `pipeline/infra/delivery_audit/audit.py`.
+- `published_products:` entries in `utilities/products.yaml` declare `delivery:`,
+  the PO.DAAC collection each family goes to. `NASA-SSH` declares its six
+  collections; lines without an entry are not delivered or audited.
+- `utilities/schedules.yaml` mirrors schedules that invoke a single stage under
+  `stage_schedules:`, checked against the target registry.
+
 ### Fixed
 
 - On a date with bad passes, the finalizer NaN'd `ssha_smoothed` wherever

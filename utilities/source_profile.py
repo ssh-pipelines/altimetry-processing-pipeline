@@ -86,6 +86,25 @@ class Product:
 
 
 @dataclass(frozen=True)
+class Delivery:
+    """One family of a published line delivered to one PO.DAAC collection.
+
+    `collection` is the CMR short name. `podaac_prefix` is the key prefix in
+    PO.DAAC's bucket and defaults to the collection, which is true of every
+    collection today. Each indicator is its own collection, and its files are
+    named after it (`NASA_SSH_GMSL_INDICATOR.txt`), so an `indicators` entry
+    selects its files by that name.
+    """
+    family: str
+    collection: str
+    podaac_prefix: str = ""
+
+    @property
+    def prefix(self) -> str:
+        return self.podaac_prefix or self.collection
+
+
+@dataclass(frozen=True)
 class PublishedProduct:
     """A released artifact line, identified by one underscore-separated string
     used for both its `products/` directory and its filename prefix.
@@ -98,10 +117,15 @@ class PublishedProduct:
 
     `simple_grid is None` means this line publishes no grid, which is the normal
     case for a single high-latitude satellite.
+
+    `delivery` lists the PO.DAAC collections the line delivers to. Empty means
+    published but never delivered: a PO.DAAC target is something no Source can
+    supply, and settling a DOI does not create the collection.
     """
     name: str
     simple_grid: str | None = None
     indicators: bool = False
+    delivery: tuple[Delivery, ...] = ()
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -160,7 +184,9 @@ def get_published_product(name: str) -> PublishedProduct:
             f"Published product '{name}' not configured. "
             f"Available: {sorted(published)}"
         )
-    return PublishedProduct(name=name, **(published[name] or {}))
+    entry = dict(published[name] or {})
+    entry["delivery"] = tuple(Delivery(**d) for d in entry.get("delivery") or ())
+    return PublishedProduct(name=name, **entry)
 
 
 def list_published_products() -> list[str]:
@@ -171,6 +197,11 @@ def list_published_products() -> list[str]:
     absent (see `utilities/products.py`).
     """
     return sorted((_load_products_raw().get("published_products") or {}))
+
+
+def list_delivered_products() -> list[str]:
+    """Every published identity that declares at least one PO.DAAC delivery."""
+    return [name for name in list_published_products() if get_published_product(name).delivery]
 
 
 @lru_cache(maxsize=None)

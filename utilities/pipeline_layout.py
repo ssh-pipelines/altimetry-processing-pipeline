@@ -359,6 +359,22 @@ def published_simple_grid_key(identity: str, d: date_type | datetime) -> str:
     )
 
 
+def published_along_track_prefix(identity: str) -> str:
+    """Prefix holding every year of a published line's along-track files.
+
+    Example: products/NASA-SSH/along_track/
+    """
+    return f"products/{identity}/along_track/"
+
+
+def published_simple_grid_prefix(identity: str) -> str:
+    """Prefix holding every year of a published line's simple grids.
+
+    Example: products/NASA-SSH/simple_grid/
+    """
+    return f"products/{identity}/simple_grid/"
+
+
 def published_indicators_key(identity: str) -> str:
     """Bucket-relative key for the indicators artifact. Indicators write through
     to `products/` rather than being promoted — nothing outside the stage reads

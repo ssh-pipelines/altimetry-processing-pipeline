@@ -9,7 +9,7 @@ static counterparts to `start_run` raising at runtime.
 
 import unittest
 
-from utilities import schedules
+from utilities import schedules, targets
 from utilities.products import (
     contributing_sources,
     published_identity,
@@ -84,6 +84,39 @@ class TestScheduleRegistry(unittest.TestCase):
 
     def test_schedule_names_are_unique(self):
         names = [s.name for s in self.schedules]
+        self.assertEqual(len(names), len(set(names)))
+
+
+class TestStageScheduleRegistry(unittest.TestCase):
+    """Schedules that invoke one Target's Lambda rather than the pipeline. The
+    Target registry is what they are checked against, since they name no
+    Published product."""
+
+    def setUp(self):
+        schedules.clear_cache()
+        targets.clear_cache()
+        self.schedules = schedules.list_stage_schedules()
+
+    def test_every_stage_schedule_names_a_deployable_target(self):
+        for s in self.schedules:
+            with self.subTest(schedule=s.name):
+                self.assertTrue(targets.get(s.target).deployable, s.target)
+
+    def test_stage_schedules_declare_a_timezone(self):
+        """Scheduler interprets the cron in this zone; without one it is UTC, and
+        a Monday 11:00 Pacific audit would drift an hour at each DST change."""
+        for s in self.schedules:
+            with self.subTest(schedule=s.name):
+                self.assertTrue(s.timezone)
+
+    def test_stage_schedules_are_not_pipeline_triggers(self):
+        """A stage schedule naming a published_product would read as a pipeline
+        trigger to a reviewer, and the pipeline schedule tests would not see it."""
+        for s in self.schedules:
+            self.assertNotIn("published_product", s.input, s.name)
+
+    def test_names_are_unique_across_both_sections(self):
+        names = [s.name for s in schedules.list_schedules()] + [s.name for s in self.schedules]
         self.assertEqual(len(names), len(set(names)))
 
 

@@ -57,8 +57,16 @@ A produced artifact's wire format: its version, its filename templates, and the 
 _Avoid_: product family (see **Product type**), dataset, wire format
 
 **Published product**:
-A released artifact line, identified by one underscore-separated string used for both its `products/` directory and its filename prefix (`NASA-SSH`, `NASA-SSH_S3B`). Names a **Product** for each family it publishes. Distinct from a **Source**: many Sources may contribute to one Published product, and a Published product may have no Source at all. Along-track identity is *derived* from the contributing Source's **Product type** (`reference` → `NASA-SSH`, `high_latitude` → `NASA-SSH_{source}`); only the facts no Source can supply are declared, in `published_products:` in `utilities/products.yaml`. Living under `products/` asserts release *shape* — final filename, final layout, product-owned identity — not PO.DAAC ingestion.
+A released artifact line, identified by one underscore-separated string used for both its `products/` directory and its filename prefix (`NASA-SSH`, `NASA-SSH_S3B`). Names a **Product** for each family it publishes. Distinct from a **Source**: many Sources may contribute to one Published product, and a Published product may have no Source at all. Along-track identity is *derived* from the contributing Source's **Product type** (`reference` → `NASA-SSH`, `high_latitude` → `NASA-SSH_{source}`); only the facts no Source can supply are declared, in `published_products:` in `utilities/products.yaml`. Living under `products/` asserts release *shape* — final filename, final layout, product-owned identity — not PO.DAAC ingestion. Its entry may also list a **Delivery** per PO.DAAC collection; a line without one is published and never delivered.
 _Avoid_: released product, official product, public product
+
+**Delivery**:
+One family of a **Published product** sent to one PO.DAAC collection, declared under `delivery:` in its `published_products:` entry as `{family, collection, podaac_prefix}`. Opt-in and explicit: a settled DOI does not create a collection, and `along_track_high_latitude` is one **Product** shared by satellites that will each get their own collection. The **Delivery audit** checks exactly the declared collections. See [ADR 0013](adr/0013-podaac-delivery-in-pipeline.md).
+_Avoid_: export, upload (fine for the act, not the declaration)
+
+**Delivery audit**:
+The scheduled `delivery_audit` Lambda that compares each declared **Delivery**'s released files under `products/` with the collection's CMR granules, matching filename stem to GranuleUR, and emails one report: missing, stale, size mismatch, pending within the grace. CMR, not PO.DAAC's bucket, is the measure of success, since a file in the bucket proves upload and not ingest.
+_Avoid_: delivery check, CMR check
 
 **Staging**:
 The internal area of the bucket: per-**Source** working state under `daily_files/{p1,p2,p3}/`, plus `crossovers/`, `oer/`, `bad_passes/`, `simple_grids/`, `enso_grids/`, `maps/` and `pipeline_runs/`. Effectively a cache — reproducible from upstream via `force_update`, and never an address a consumer is pointed at. The complement of `products/` ([ADR 0008](adr/0008-published-products-prefix.md)).
@@ -73,7 +81,7 @@ The declared production fact: `enabled: true` in a **Source**'s `common` section
 _Avoid_: active, live, on
 
 **Schedule**:
-One EventBridge rule that triggers a run, naming a **Published product** in its input. Hand-maintained in AWS and mirrored in `utilities/schedules.yaml` so the trigger shape is reviewable; nothing in the repo deploys them. Complementary to **Enabled**, not redundant: Enabled says a Source *may* contribute, a Schedule says when anything runs at all. Both failure modes between them are silent, so a test pairs them.
+One EventBridge rule that triggers a run, naming a **Published product** in its input. Schedules that invoke a single stage's Lambda instead, such as the **Delivery audit**, are mirrored under `stage_schedules:` and name a **Target**. Hand-maintained in AWS and mirrored in `utilities/schedules.yaml` so the trigger shape is reviewable; nothing in the repo deploys them. Complementary to **Enabled**, not redundant: Enabled says a Source *may* contribute, a Schedule says when anything runs at all. Both failure modes between them are silent, so a test pairs them.
 _Avoid_: trigger (fine informally, but it also means the EventBridge-to-Step-Functions invocation), cron, rule
 
 **Product type**:

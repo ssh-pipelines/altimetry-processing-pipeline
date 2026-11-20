@@ -60,6 +60,10 @@ run_summary = [
 start_run = [
     "boto3",
 ]
+delivery_audit = [
+    "boto3",
+    "requests",
+]
 enso = [
     "cartopy==0.24.1",
     "matplotlib==3.10.3",
@@ -79,7 +83,7 @@ simple_grids = [
 dev = [
     "pytest",
     "ruff",
-    "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,publisher,xover,enso,indicators,simple_grids,run_summary,start_run]",
+    "utilities[pipeline_runtime,daily_files,finalizer,oer,pipeline_init,publisher,xover,enso,indicators,simple_grids,run_summary,start_run,delivery_audit]",
 ]
 
 [tool.ruff]

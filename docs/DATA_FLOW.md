@@ -173,3 +173,17 @@ In the along-track pipeline, the bold chain is the daily file as each stage
 rewrites it. The side branches compute the statistics that drive those rewrites —
 crossover stats set the OER correction, bad-pass stats decide which passes get
 flagged.
+
+## Delivery to PO.DAAC
+
+Not in the diagram, because it is outside the run. The climateelvis `delivery-scripts`
+cron uploads new files under `products/NASA-SSH/` to PO.DAAC weekly, and is planned to move
+into the pipeline as a step after publication
+([ADR 0013](adr/0013-podaac-delivery-in-pipeline.md)). Which lines and families are
+delivered is declared per Published product under `delivery:` in
+`utilities/products.yaml`; the high-latitude lines have none and are not delivered.
+
+The **delivery audit** (`pipeline/infra/delivery_audit/`) is a second reader of
+`products/`. A weekly schedule lists each delivered family's released files and compares
+them with the PO.DAAC collection's CMR granules, then emails the files CMR lacks or holds an
+older or different-sized copy of. It writes nothing.

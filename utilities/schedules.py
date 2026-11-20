@@ -1,8 +1,9 @@
-"""The EventBridge schedules that trigger pipeline runs.
+"""The EventBridge schedules that trigger pipeline runs, and those that invoke a
+single stage's Lambda directly.
 
 A mirror of hand-maintained AWS state, not a deployment source — see the header
-comment in `schedules.yaml`. Loaded here so a test can pair it against the
-Source registry; nothing at runtime reads it.
+comment in `schedules.yaml`. Loaded here so tests can pair it against the Source
+and Target registries; nothing at runtime reads it.
 """
 
 from __future__ import annotations
@@ -64,6 +65,43 @@ def list_schedules() -> tuple[Schedule, ...]:
     )
 
 
+@dataclass(frozen=True)
+class StageSchedule:
+    """One EventBridge Scheduler schedule invoking a single Target's Lambda.
+    `input` is the Lambda event verbatim; its shape belongs to the Target, so
+    the Target's own tests validate it."""
+
+    name: str
+    target: str
+    cron: str
+    timezone: str
+    enabled: bool
+    input: dict
+
+    @property
+    def created(self) -> bool:
+        return self.cron != UNSCHEDULED
+
+
+@lru_cache(maxsize=None)
+def list_stage_schedules() -> tuple[StageSchedule, ...]:
+    with open(SCHEDULES_PATH) as f:
+        raw = yaml.safe_load(f) or {}
+    declared = raw.get("stage_schedules") or {}
+    return tuple(
+        StageSchedule(
+            name=name,
+            target=facts["target"],
+            cron=facts.get("cron", UNSCHEDULED),
+            timezone=facts.get("timezone", ""),
+            enabled=bool(facts.get("enabled", False)),
+            input=dict(facts.get("input") or {}),
+        )
+        for name, facts in sorted(declared.items())
+    )
+
+
 def clear_cache() -> None:
     """Test helper."""
     list_schedules.cache_clear()
+    list_stage_schedules.cache_clear()

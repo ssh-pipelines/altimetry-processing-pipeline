@@ -19,7 +19,12 @@ common:
   # 0.08% step is the orbit raise; one value is well inside what knot placement
   # and the smoothing filter resolve.
   ground_speed: 6.7592   # km/s, median ground speed over 154 long passes, both windows (tools/compute_ground_speed.py)
-  intermission_bias: 0   # PLACEHOLDER, measured in onboarding step 5
+  # Per phase, the median is 0.0199 (3466192 crossovers, 2010-07-16..2020-07-31)
+  # and 0.0198 (2213035, 2020-08-01..2026-07-12), so one value covers both. The
+  # Theil-Sen trend is -0.04 mm/yr. The 90-day low-pass departs by up to ~1 cm in
+  # 2021-05..06 (cycles 210-213) and 2024-01..04 (cycles 251-255). These are
+  # months-long and absorbed by the reference OER; the median is unaffected.
+  intermission_bias: 0.0199   # m, median (ssh1 - ssh2) over 5679227 reference crossovers vs NASA-SSH, 2010-07-16..2026-07-12 p1 (tools/compute_intermission_bias.py)
   sample_period: 0.943437   # s, median sample step over 808 passes, both windows; identical in each phase
   collections:
     - shortname: dataset-l2p-uncross-calibrated-ntc-sla-c2

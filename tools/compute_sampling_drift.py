@@ -73,14 +73,14 @@ from utilities.source_profile import get_source_profile  # noqa: E402
 # this fraction of the record's median step. Before `sample_period` existed the
 # filter was off by up to 6% (CryoSat-2) and science judged that not
 # significant; 2% was ERS-1's error then. ERS-1's worst pass is now 0.90%
-# (1992-10-25..1996-06-01).
+# (1992-10-25..1996-06-01), CryoSat-2's 0.0012% (2010-07-16..2026-07-11).
 FILTER_WIDTH_TOLERANCE = 0.02
 
 # Gap-count check: the share of samples whose 19-point window holds an ambiguous
 # gap, over the record and in its worst cycle. An ambiguous count shifts the far
 # side of the gap by one slot, where the outer taps weigh 2e-4 to 1e-2 against
 # a 0.25 peak (ADR 0011). ERS-1 is 0.53% over the same record and 1.67% in its
-# worst cycle; the limits are about three times that.
+# worst cycle; the limits are about three times that. CryoSat-2 has none.
 AMBIGUOUS_SAMPLE_TOLERANCE = 0.02
 AMBIGUOUS_SAMPLE_CYCLE_TOLERANCE = 0.05
 

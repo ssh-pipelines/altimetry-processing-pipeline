@@ -45,7 +45,8 @@ functions (`local_periods`, `ambiguous_gaps`, `sample_offsets`, split out of
   gap inside their 19-point window, and under 5% in any one cycle.
 
 The limits are about three times the worst ERS-1 values over its record (0.90%;
-0.53% and 1.67% in cycle 15). The per-pass median step, IQR and its trend, and
+0.53% and 1.67% in cycle 15). CryoSat-2, over 2010-07-16..2026-07-11 and 165,438
+passes, sits at 0.0012% and has no ambiguous gap among 818,638 inside a window. The per-pass median step, IQR and its trend, and
 the correlation of step with position along the pass are reported alongside,
 as the issue asked. Uniform-grid misalignment stays as a CSV column for
 comparison with ADR 0011's figures.
@@ -55,7 +56,8 @@ comparison with ADR 0011's figures.
 - The verdict answers whether the existing smoother is correct for a source,
   not whether a simpler design would have been. A source that fails goes to
   science; per-point treatment is one possible answer, not the default.
-- The limits rest on one accepted source with drift. A source whose cycles sit
+- The limits rest on one accepted source with drift; CryoSat-2's clock is
+  constant and does not test them. A source whose cycles sit
   just inside them is worth reading cycle by cycle rather than passing on the
   verdict.
 - The tool imports the `daily_files` stage. A change to the smoother's gap

@@ -199,8 +199,9 @@ IQR grows from the first third of the record to the last; and a per-cycle table.
 Run it once per non-1 Hz source after pass 1, and over the whole record from pass 2
 when the step varies within a pass, since a two-week window cannot show accumulation.
 ERS-1 over 1992-10-25..1996-06-01 passes with margin: worst pass local period 0.90%,
-ambiguous-gap samples 0.53% (1.67% in cycle 15). A failing verdict goes to science
-rather than to a code change.
+ambiguous-gap samples 0.53% (1.67% in cycle 15). CryoSat-2 over 2010-07-16..2026-07-11
+passes with no ambiguous gaps and a local period within 0.0012%. A failing verdict goes
+to science rather than to a code change.
 
 ### On `enabled`
 

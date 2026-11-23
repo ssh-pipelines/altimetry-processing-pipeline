@@ -75,6 +75,17 @@ than the pass 1 redeploy: the reference along-track product must exist across th
 source's full date range. For a 1990s mission this means the reference backfill must
 reach back that far; `products/` is recent, so do not assume it. Verify by listing
 every year of the window and counting files against the days in it, not by inference.
+A year's listing covers the whole calendar year, so in the first and last years count
+only the in-window dates.
+
+A missing run of dates is one of two things. Check which against the reference
+collection's granules in CMR:
+
+- **A gap between reference cycles upstream.** This is permanent and the same in every
+  environment. C2 lost 16 such GSFC days in 2013 and 2020.
+- **A date the environment never processed.** Backfill it with a reference product
+  trigger and `force_update: true`. Pad the window about two weeks on each side so
+  neighbouring days' self-crossovers pick up the new dates.
 
 ## Step 1 — Write the source YAML
 
@@ -406,6 +417,14 @@ with `ground_speed` and `sample_period` deployed, run `daily_files` → `xover(p
 the full record, `force_update: true`. One `pipeline_init` call plans the window; the
 `daily_file` machine then the `xover` machine (`df_version: p1`) run against that one
 `jobs_key`.
+
+The `daily_file` Map tolerates 5% failed items, so a successful execution can still be
+missing days, and `xover` would build those days with no crossovers. Read the stage's
+`FAILED_*.json` before starting `xover`. AVISO failures under full Map concurrency are
+transient: C2 lost 16 of 5,841 days to dropped connections and Lambda timeouts. Each
+failed item's `Input` is a complete manifest item. Write them out as a `jobs.json` under
+a new `run_id` and run `daily_file` on that key, with no `pipeline_init` needed. Then run
+`xover` on the original `jobs_key`.
 
 Open one P1 file and repeat the pass 1 checks, plus:
 

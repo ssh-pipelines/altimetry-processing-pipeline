@@ -12,7 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   using the same discovery (`ThreddsEnumerator`) and processing (`DailyFileJob`) as the
   Lambdas, so high-latitude onboarding pass 1 needs no deploy or AWS run. Its output
   feeds `compute_ground_speed.py --daily-dir`.
-  
+- CryoSat-2 as a `high_latitude` source (`utilities/sources/C2.yaml`), 2010-07-16
+  through 2026-07-12 from the AVISO `dataset-l2p-uncross-calibrated-ntc-sla-c2`
+  collection, both orbit phases (cycles 7-133 and, after the 2020 orbit raise,
+  200-286) as one date range. Its constants are measured: `sample_period` 0.943437 s,
+  `ground_speed` 6.7592 km/s, and `intermission_bias` 0.0199 m over 5,679,227
+  reference crossovers (0.0199 and 0.0198 m per phase). The inherited pass-flag
+  thresholds flag one of 164,102 passes. It is **disabled** (`enabled: false`,
+  schedule staged with `cron: TBD`) until it goes to production.
+
 ## [3.1.0] - 2026-11-17
 
 ### Changed

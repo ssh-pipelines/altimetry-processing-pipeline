@@ -1,10 +1,9 @@
 common:
   product_type: high_latitude
   discovery_type: thredds
-  # Required for a manual dev run (start_run refuses a line with no enabled
-  # contributor). Goes back to false once onboarding is done unless C2 is going
-  # to production.
-  enabled: true
+  # Onboarded in dev; off until C2 goes to production. A manual dev run needs
+  # true (start_run refuses a line with no enabled contributor).
+  enabled: false
   # First and last granule in the catalog as of 2026-10-29; the mission is still
   # publishing. Two orbit phases, both in scope as one range: cycles 7-133
   # (840 passes, ~29-day sub-cycle) and, after the 2020 CRYO2ICE orbit raise,
@@ -46,8 +45,9 @@ finalizer:
   # intermission_bias (read from common). For L2P the intermission bias is the
   # absolute tie, so offset is a deliberate no-op.
   offset: 0.0
-  # Inherited unchanged; recalibrated against p2 crossover statistics in
-  # onboarding step 7.
+  # Inherited unchanged. Over 164102 passes of p2 reference crossovers
+  # (2010-07-16..2026-07-12), per-pass |mean| p99 0.022 m and RMS p99 0.069 m;
+  # one pass flagged (cycle 248 pass 477, 2023-11-28).
   pass_flag:
     mean_num: 15.0
     rms_num: 25.0

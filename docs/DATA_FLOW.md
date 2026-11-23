@@ -44,7 +44,7 @@ flowchart TB
         S3A["<b>S3A</b><br/>TBD → TBD"]
         SARAL["<b>Saral</b><br/>TBD → TBD"]
         HY2A["<b>HY-2A</b><br/>TBD → TBD"]
-        CRYO["<b>Cryosat-2</b><br/>TBD → TBD"]
+        CRYO["<b>Cryosat-2</b><br/>2010-07-16 → 2026-07-12"]
         ENVI["<b>Envisat</b><br/>TBD → TBD"]
         ERS2["<b>ERS-2</b><br/>TBD → TBD"]
         ERS1["<b>ERS-1</b><br/>1992-10-25 → 1996-06-01"]

@@ -75,6 +75,17 @@ than the pass 1 redeploy: the reference along-track product must exist across th
 source's full date range. For a 1990s mission this means the reference backfill must
 reach back that far; `products/` is recent, so do not assume it. Verify by listing
 every year of the window and counting files against the days in it, not by inference.
+A year's listing covers the whole calendar year, so in the first and last years count
+only the in-window dates.
+
+A missing run of dates is one of two things. Check which against the reference
+collection's granules in CMR:
+
+- **A gap between reference cycles upstream.** This is permanent and the same in every
+  environment. C2 lost 16 such GSFC days in 2013 and 2020.
+- **A date the environment never processed.** Backfill it with a reference product
+  trigger and `force_update: true`. Pad the window about two weeks on each side so
+  neighbouring days' self-crossovers pick up the new dates.
 
 ## Step 1 — Write the source YAML
 
@@ -287,8 +298,25 @@ Caveats:
 ## Step 3 — Pass 1: measure ground speed and sample period
 
 Run `daily_files` only, over a short window — **~2 weeks is plenty**, and the window
-need not be at the start of the record. Use the `daily_file` stage machine (see
-*Running part of the chain*); the product trigger would run the whole chain.
+need not be at the start of the record.
+
+Pass 1 does not need AWS. Its files are discarded and nothing downstream reads them, so
+they can be built on local disk with the same discovery and processing code the Lambdas
+run:
+
+```bash
+uv run python tools/local_daily_files.py --source <SOURCE> \
+  --start 1992-10-25 --end 1992-11-08 --out-dir /tmp/<SOURCE>_pass1
+```
+
+It needs the source YAML and the `SOURCE_REGISTRY` entry from steps 1–2 and an AVISO
+login (`AVISO_USER` / `AVISO_PASS` or `~/.netrc`), and prints the checks below for each
+file. Files land under `<out-dir>/daily_files/p1/<SOURCE>/<year>/`, and a re-run skips
+dates already written. The first deploy then carries the measured constants, so the
+redeploy at the end of this step is the Source's first deploy rather than its second.
+
+To run pass 1 on AWS instead, use the `daily_file` stage machine (see *Running part of
+the chain*); the product trigger would run the whole chain.
 
 ### Check the pass 1 files
 
@@ -304,6 +332,12 @@ Open a few and check:
 
 ERS-1, 15 files from 1992-10-25 to 1992-11-08: ~48,000 points/day, 91–92% of points
 with finite `ssha_smoothed`, latitude −78.5 to 81.5, `ssha` median 0.018 m.
+
+"Near zero" depends on the epoch. The SLA is relative to a 20-year mean sea surface,
+so a recent window carries the sea-level rise since then: CryoSat-2 read +0.073 m in
+July 2018 and +0.098 m in July 2023, with the MSS swap itself contributing under 5 mm.
+To tell the two apart, compare the upstream `mean_sea_surface` against DTU21 at the
+granule points; a swap error shows up there, and sea-level rise does not.
 
 ### How many files the measurement needs
 
@@ -383,6 +417,14 @@ with `ground_speed` and `sample_period` deployed, run `daily_files` → `xover(p
 the full record, `force_update: true`. One `pipeline_init` call plans the window; the
 `daily_file` machine then the `xover` machine (`df_version: p1`) run against that one
 `jobs_key`.
+
+The `daily_file` Map tolerates 5% failed items, so a successful execution can still be
+missing days, and `xover` would build those days with no crossovers. Read the stage's
+`FAILED_*.json` before starting `xover`. AVISO failures under full Map concurrency are
+transient: C2 lost 16 of 5,841 days to dropped connections and Lambda timeouts. Each
+failed item's `Input` is a complete manifest item. Write them out as a `jobs.json` under
+a new `run_id` and run `daily_file` on that key, with no `pipeline_init` needed. Then run
+`xover` on the original `jobs_key`.
 
 Open one P1 file and repeat the pass 1 checks, plus:
 
@@ -504,7 +546,8 @@ Config
 [ ] uv run ruff check .                      — green
 
 Pass 1 — ground speed + sample period (~2 weeks)
-[ ] Deploy; pipeline_init a 2-week window, then the daily_file stage machine
+[ ] tools/local_daily_files.py over a 2-week window (or deploy, pipeline_init,
+    then the daily_file stage machine)
 [ ] P1 files: ssha_smoothed populated, latitude past the reference limit,
     ssha median near zero
 [ ] compute_ground_speed --version p1 (or --daily-dir), never 1 file

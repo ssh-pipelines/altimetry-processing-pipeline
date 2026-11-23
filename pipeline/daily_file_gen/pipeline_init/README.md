@@ -132,6 +132,7 @@ Current sources (those with a `pipeline_init:` section):
 | S6B    | `cmr`     | reference      | 1 |
 | S3B    | `thredds` | high_latitude  | 1 |
 | ERS1   | `thredds` | high_latitude  | 1 |
+| C2     | `thredds` | high_latitude  | 1 |
 | EXAMPLE_S3 | `s3_bucket` | reference | 1 (template, not a real source) |
 
 To add a new source, create `utilities/sources/{source}.yaml` with a `common` block and

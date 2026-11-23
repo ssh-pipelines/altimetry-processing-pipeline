@@ -33,3 +33,8 @@ schedules:
     enabled: false
     input:
       published_product: NASA-SSH_ERS1
+  nasa-ssh-c2:
+    cron: "TBD"
+    enabled: false
+    input:
+      published_product: NASA-SSH_C2

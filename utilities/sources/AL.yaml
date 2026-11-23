@@ -14,9 +14,17 @@ common:
   # interior gaps of empty daily files.
   start_date: "2013-03-14"
   end_date: "2026-10-05"
-  ground_speed: 0   # PLACEHOLDER: measured in onboarding pass 1
+  # km/s, median ground speed over 146 long passes, 2015-03-01..03-14 and
+  # 2021-03-01..03-14 P1 (tools/compute_ground_speed.py); the phases read 6.7198
+  # and 6.7184.
+  ground_speed: 6.7189
   intermission_bias: 0   # PLACEHOLDER: measured from the pass 2 p1 crossovers
-  sample_period: 1.0   # PLACEHOLDER: measured in onboarding pass 1
+  # s, median sample step over 803 passes, same windows. Steps cluster near
+  # 1.034 s and 1.047 s, so the local period runs -1.2% to +2.3% from this value,
+  # past the 2% filter-width check (ADR 0013). Accepted: re-smoothing with every
+  # step at +2.33% moves ssha_smoothed by 0.73 mm at the 99th percentile, with a
+  # mean shift under 0.001 mm.
+  sample_period: 1.044381
   collections:
     - shortname: dataset-l2p-uncross-calibrated-ntc-sla-al
       thredds_collection: dataset-l2p-uncross-calibrated-ntc-sla-al

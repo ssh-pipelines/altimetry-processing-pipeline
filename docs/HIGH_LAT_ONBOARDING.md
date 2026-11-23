@@ -175,8 +175,32 @@ A single constant is adequate only where the rate is stable within a pass. CryoS
 and Jason-1 are constant to numerical noise; ERS-1 runs two interleaved rates
 2.4e-4 s apart, which the local median absorbs. AltiKa's step drifts along the pass
 (IQR 1.06e-02 s) and needs the full-record drift analysis before it is onboarded. The
-tool's range of per-pass medians shows drift *between* passes; it does not detect
-drift within one.
+range of per-pass medians from `compute_ground_speed` shows drift *between* passes; it
+does not detect drift within one.
+
+`tools/compute_sampling_drift.py` does. It checks that the smoother's count-based gap
+fill ([ADR 0011](adr/0011-count-based-smoother-gap-fill.md)) holds for the source,
+using the smoother's own gap measurement, and ends with a verdict on two checks
+([ADR 0013](adr/0013-sampling-drift-checks-the-smoother.md)):
+
+- **filter width**: every pass's local period, 1st to 99th percentile, within 2% of
+  the record's median step, since the taps are spaced by one `sample_period`;
+- **gap counts**: under 2% of samples over the record, and under 5% in any cycle,
+  with a gap inside their 19-point window that is not near a whole number of local
+  periods.
+
+Alongside, it reports each pass's median step, IQR, and correlation of step with
+position along the pass; the spread and yearly trend of the median step; whether the
+IQR grows from the first third of the record to the last; and a per-cycle table.
+`--csv` writes the per-pass rows. It reads the same P1 files (`--bucket` or
+`--daily-dir`, `--version` defaulting to `p1`). Pass `--sample-period` with the value
+`compute_ground_speed` measured while the YAML still holds the placeholder.
+
+Run it once per non-1 Hz source after pass 1, and over the whole record from pass 2
+when the step varies within a pass, since a two-week window cannot show accumulation.
+ERS-1 over 1992-10-25..1996-06-01 passes with margin: worst pass local period 0.90%,
+ambiguous-gap samples 0.53% (1.67% in cycle 15). A failing verdict goes to science
+rather than to a code change.
 
 ### On `enabled`
 

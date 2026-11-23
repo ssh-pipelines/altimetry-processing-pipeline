@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   using the same discovery (`ThreddsEnumerator`) and processing (`DailyFileJob`) as the
   Lambdas, so high-latitude onboarding pass 1 needs no deploy or AWS run. Its output
   feeds `compute_ground_speed.py --daily-dir`.
+- `tools/compute_sampling_drift.py` checks, from a source's P1 daily files on S3 or
+  local disk, that the smoother's count-based gap fill holds for its sampling: the
+  local sample period stays within 2% of the configured one, and few samples have
+  an ambiguous gap count in their window. It also reports per-pass median step,
+  IQR, and correlation with position along the pass, and their drift across passes
+  and cycles. The checks replace the uniform-grid threshold issue #56 proposed
+  ([ADR 0013](docs/adr/0013-sampling-drift-checks-the-smoother.md)).
+- `daily_files` smoothing exposes its gap measurement as `local_periods` and
+  `ambiguous_gaps` for the tool; `ssha_smoothed` is unchanged.
 - CryoSat-2 as a `high_latitude` source (`utilities/sources/C2.yaml`), 2010-07-16
   through 2026-07-12 from the AVISO `dataset-l2p-uncross-calibrated-ntc-sla-c2`
   collection, both orbit phases (cycles 7-133 and, after the 2020 orbit raise,

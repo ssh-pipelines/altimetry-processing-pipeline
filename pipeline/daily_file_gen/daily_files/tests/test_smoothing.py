@@ -7,7 +7,9 @@ import xarray as xr
 from daily_files.config.source_config import get_source_config
 from daily_files.processing import smoothing
 from daily_files.processing.smoothing import (
+    ambiguous_gaps,
     create_filter,
+    local_periods,
     sample_offsets,
     smooth,
     ssha_smoothing,
@@ -167,6 +169,31 @@ class SampleOffsetsTestCase(unittest.TestCase):
 
     def test_single_point(self):
         np.testing.assert_array_equal(sample_offsets(_times([5.0]), 1.0), [0])
+
+
+class LocalPeriodsTestCase(unittest.TestCase):
+    """The gap measurement `sample_offsets` counts from, exposed so the
+    onboarding drift tool checks the same numbers the smoother uses."""
+
+    def test_gap_measured_in_local_periods(self):
+        dt = 0.98
+        seconds = np.delete(np.arange(60) * dt, [30, 31])
+        d, dt_local, periods = local_periods(_times(seconds), 1.0)
+        self.assertEqual(len(d), len(seconds) - 1)
+        self.assertAlmostEqual(dt_local[29], dt, places=9)
+        self.assertAlmostEqual(periods[29], 3.0, places=9)
+        np.testing.assert_allclose(np.delete(periods, 29), 1.0, atol=1e-9)
+
+    def test_no_regular_step_falls_back_to_sample_period(self):
+        _, dt_local, periods = local_periods(_times([0.0, 30.0, 60.0]), 1.0)
+        np.testing.assert_array_equal(dt_local, [1.0, 1.0])
+        np.testing.assert_array_equal(periods, [30.0, 30.0])
+
+    def test_ambiguous_only_inside_the_window(self):
+        periods = np.array([1.0, 8.366, 8.2, 9.6, 10.4, 40.5])
+        np.testing.assert_array_equal(
+            ambiguous_gaps(periods), [False, True, False, True, False, False]
+        )
 
 
 class FilterWidthTestCase(unittest.TestCase):

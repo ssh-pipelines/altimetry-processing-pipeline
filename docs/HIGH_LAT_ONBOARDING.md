@@ -155,10 +155,18 @@ express it.
 ### Sampling rate: measure it
 
 Do not assume 1 Hz. The `reference` sources are 1 Hz on whole-second timestamps; none
-of the AVISO L2P granules inspected so far is (ERS-1 0.980468 s, CryoSat-2
-0.943437 s, Jason-1 1.007738 s, AltiKa 1.040686 s — see
-[SAMPLING_RATE_FINDINGS.md](SAMPLING_RATE_FINDINGS.md)). A collection name sometimes
-states the rate (`...-s3b-1hz`); most do not.
+of the AVISO L2P granules inspected so far is, and none of their timestamps lands on a
+whole second. A collection name sometimes states the rate (`...-s3b-1hz`); most do not.
+
+One granule each, measured before onboarding. These are cross-checks for the pass 1
+measurement, not values for the YAML:
+
+| Source | Granule | Median step (s) | Ground speed (km/s) |
+|---|---|---|---|
+| AltiKa | `C0193_P0014`, 2025-06-03 | 1.040686 | 6.7272 |
+| CryoSat-2 | `C0108_P0022`, 2018-07-10 | 0.943437 | 6.7591 |
+| ERS-1 | `C0015_P0001`, 1992-10-23 | 0.980468 | 6.7270 |
+| Jason-1 | `C0520_P0005`, 2012-12-11 | 1.007738 | 5.7770 |
 
 `sample_period` sets the smoothing filter's tap spacing (`ground_speed ×
 sample_period` km). Leaving the `1.0` default does not fail; it mis-sizes the filter
@@ -202,6 +210,16 @@ ERS-1 over 1992-10-25..1996-06-01 passes with margin: worst pass local period 0.
 ambiguous-gap samples 0.53% (1.67% in cycle 15). CryoSat-2 over 2010-07-16..2026-07-11
 passes with no ambiguous gaps and a local period within 0.0012%. A failing verdict goes
 to science rather than to a code change.
+
+Two rate dependencies remain outside `sample_period`:
+
+- The outlier median filters in `AvisoL2PDailyFile` (`n_median = 15`, `n_std = 95`)
+  are sample counts, so their along-track length scales with the rate. ERS-1's
+  15-point median spans 98.9 km rather than 100.9 km. Science judged this
+  insignificant for rates near 1 Hz; a source much further from 1 Hz should revisit it.
+- `bad_points` entries match daily-file times truncated to whole seconds, so an entry
+  matches a sub-second timestamp only if it is written as that truncated second.
+  Manual point exclusion is effectively unusable for L2P sources.
 
 ### On `enabled`
 

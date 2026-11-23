@@ -275,6 +275,19 @@ class TestProcess(unittest.TestCase):
         self.assertEqual(result["source"], "S6")
         self.assertEqual(result["bad_passes"], [{"cycle": "3", "pass_num": "77"}])
 
+    @patch.object(XoverProcessor, "write_results_to_s3")
+    @patch.object(XoverProcessor, "load_all_data")
+    @patch.object(XoverProcessor, "get_files", return_value=[])
+    @patch.object(XoverProcessor, "identify_bad_passes", return_value=[])
+    def test_clean_date_still_writes_empty_result(self, _identify, _files, _load, mock_write):
+        # A reprocess that finds none must replace the date's earlier file, which
+        # the finalizer would otherwise keep applying.
+        proc = XoverProcessor("S6", datetime(2024, 6, 1))
+        result = proc.process("test-bucket")
+
+        mock_write.assert_called_once_with(result, "test-bucket")
+        self.assertEqual(result["bad_passes"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

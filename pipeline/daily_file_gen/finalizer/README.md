@@ -12,7 +12,7 @@ For each processing date, the Lambda:
 2. **Loads bad passes** from `s3://{bucket}/bad_passes/{source}/{date}.json` (optional; returns an empty DataFrame if absent).
 3. **Downloads the P2 daily file** from `s3://{bucket}/daily_files/p2/{source}/{year}/`.
 4. **Writes pass-flag metadata** — `pass_flag_mean_num`, `pass_flag_rms_num`, `pass_flag_mean_threshold`, `pass_flag_rms_threshold` from the source config, plus `pass_flag_notes`, whose wording follows the source's **crossover type**: a `reference` source's passes are flagged against its own self crossovers, a `high_latitude` source's against the published NASA-SSH reference along-track product. The thresholds and the `flagged_passes` carrier are described identically for both.
-5. **Applies bad-pass flags** — sets `nasa_flag = 1` for matching cycle/pass rows, NaNs `ssha_smoothed` for flagged observations, and records flagged passes in the `flagged_passes` attribute.
+5. **Applies bad-pass flags** — matches each bad pass as a (cycle, pass) pair, NaNs `ssha_smoothed` at those points, sets `nasa_flag = 1` there so a user can apply it to `ssha`, and records flagged passes in the `flagged_passes` attribute. Only the bad-pass points are removed from `ssha_smoothed`: P1's `nasa_flag` was already applied to the smoother's input, and the smoother's gap-filled values at those points are kept.
 6. **Handles the absolute offset** — if the source offset is non-zero, removes any previously applied offset (via `absolute_offset_applied` attribute) and adds the configured one to both `ssha` and `ssha_smoothed`.
 7. **Applies the intermission-bias correction** — for `high_latitude` sources, subtracts `common.intermission_bias` from `ssha`/`ssha_smoothed` to tie the absolute level onto the reference datum (OER left this in place, fitting only orbit error). Idempotent via the `intermission_bias_applied` attribute (previous value added back before the new one is subtracted). Kept as a separate lever from `offset` — the two are distinct quantities with distinct provenance. No-op for reference sources (`intermission_bias` defaults to `0.0`).
 8. **Sets global attributes** — `product_generation_step = "3"`, `history`, `granule_id`, `absolute_offset_applied`, `intermission_bias_applied`, and sorts all global attributes alphabetically (case-insensitive).
@@ -118,6 +118,8 @@ From the repo root (after `uv sync --extra dev`):
 | `TestLoadBadPasses`       | Missing file returns empty DF, empty list, column rename, S3 key format |
 | `TestGetDailyFile`        | Download when exists, raises when not found                      |
 | `TestApplyBadPass`        | Flag matching cycle/pass, `flagged_passes` attr, `ssha_smoothed` NaN, no-match |
+| `TestApplyBadPassWithP1Flags` | With P1 flags present: `nasa_flag` is P1 flag or bad pass, `ssha` untouched, only bad-pass points NaN'd in `ssha_smoothed` |
+| `TestApplyBadPassMatchesPairs` | Bad passes in two cycles flag only the listed (cycle, pass) pairs; a fill-valued cycle matches none |
 | `TestProcessGSFC`         | Per-source upload path, offset is zero                           |
 | `TestProcessS6`           | Offset applied, previous offset removed before applying          |
 | `TestProcessS3B`          | Intermission bias subtracted, previous bias removed, offset/bias independent |

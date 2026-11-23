@@ -20,6 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference crossovers (0.0199 and 0.0198 m per phase). The inherited pass-flag
   thresholds flag one of 164,102 passes. It is **disabled** (`enabled: false`,
   schedule staged with `cron: TBD`) until it goes to production.
+### Fixed
+
+- On a date with bad passes, the finalizer NaN'd `ssha_smoothed` wherever
+  `nasa_flag == 1`, which included every P1-flagged point, not only the bad
+  passes. It now NaNs the bad-pass points only. P1's `nasa_flag` is applied to
+  the smoother's input, so `ssha_smoothed` keeps its gap-filled values at
+  P1-flagged points on every date, as it already did on dates without bad
+  passes. P3 `ssha_smoothed` changes on dates with bad passes once they are
+  reprocessed; `ssha` is unchanged.
+- The finalizer matched bad passes on cycle and pass number separately, so with
+  bad passes in two cycles (A/p and B/q) it also flagged A/q and B/p. It now
+  matches (cycle, pass) pairs. On dates whose bad passes span two cycles, P3
+  `nasa_flag` and `ssha_smoothed` change once reprocessed: points on passes that
+  were never flagged are no longer flagged or removed.
+- `bad_pass` wrote `bad_passes/{source}/{date}.json` only when it found bad
+  passes, so a reprocess that found none left the earlier file in place and the
+  finalizer kept applying it. It now writes the file for every date, with an
+  empty `bad_passes` list when none are found. `bad_passes/` therefore holds a
+  file per processed date; a date has bad passes when its list is non-empty, not
+  when its file exists.
 
 ## [3.1.0] - 2026-11-17
 

@@ -257,19 +257,22 @@ class Finalizer:
 
 
 def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
-    """
-    Set nasa_flag values to 1 where there are identified bad passes
-    """
-    # Get cycle and pass variables from the dataset
-    cycle_var = ds.variables["cycle"][:].astype(int)
-    pass_var = ds.variables["pass"][:].astype(int)
+    """Remove bad passes from ssha_smoothed and record them in nasa_flag.
 
-    # Convert bad_pass_slice cycles and passes to numpy arrays for comparison
-    bad_cycles = df["cycle"].astype(int).to_numpy()
-    bad_passes = df["pass"].astype(int).to_numpy()
+    ssha_smoothed already excludes P1's nasa_flag, which was applied to the
+    smoother's input. Only the bad-pass points are NaN'd here; masking with the
+    full nasa_flag would also drop the smoother's gap-filled values at P1-flagged
+    points. nasa_flag is updated so a user can apply it to ssha.
+    """
+    # Fill values match no bad pass; cycles and passes are positive.
+    cycle_var = np.ma.filled(ds.variables["cycle"][:], -1).astype(int)
+    pass_var = np.ma.filled(ds.variables["pass"][:], -1).astype(int)
 
-    # Mask where cycle and pass match those in the bad_pass_slice
-    mask = np.isin(cycle_var, bad_cycles) & np.isin(pass_var, bad_passes)
+    # Match (cycle, pass) as pairs: testing each column on its own would also
+    # flag cycle A's pass q when A/p and B/q are bad, as on a cycle-crossing day.
+    mask = np.zeros(cycle_var.shape, dtype=bool)
+    for c, p in zip(df["cycle"].astype(int), df["pass"].astype(int)):
+        mask |= (cycle_var == c) & (pass_var == p)
 
     # Set nasa_flag to 1 where the mask is True
     ds.variables["nasa_flag"][mask] = 1
@@ -279,10 +282,8 @@ def apply_bad_pass(ds: nc.Dataset, df: pd.DataFrame) -> nc.Dataset:
         df[["cycle", "pass"]].apply(lambda x: "{}/{}".format(*x), axis=1)
     )
 
-    # Reapply nasa_flag to ssha_smoothed
     ssha_smoothed = ds.variables["ssha_smoothed"][:]
-    nasa_flag = ds.variables["nasa_flag"][:]
-    ssha_smoothed[nasa_flag == 1] = np.nan
+    ssha_smoothed[mask] = np.nan
     ds.variables["ssha_smoothed"][:] = ssha_smoothed
 
     return ds

@@ -1,9 +1,9 @@
 common:
   product_type: high_latitude
   discovery_type: thredds
-  # Being onboarded in dev. A manual dev run needs true (start_run refuses a
-  # line with no enabled contributor).
-  enabled: true
+  # Onboarded in dev; off until it goes to production. A manual dev run needs
+  # true (start_run refuses a line with no enabled contributor).
+  enabled: false
   # First and last granule in the catalog as of 2026-11-23; the mission is still
   # publishing. Two orbit phases, both in scope as one range: the 35-day repeat
   # orbit, cycles 1-35 (1002 passes; cycle 35 ends at pass 522 on 2016-07-04),
@@ -48,7 +48,8 @@ finalizer:
   # intermission_bias (read from common). For L2P the intermission bias is the
   # absolute tie, so offset is a deliberate no-op.
   offset: 0.0
-  # Inherited; to be checked against the p2 reference crossover statistics.
+  # Inherited and kept. Over 135,984 passes of p2 crossovers, |mean| p99.9 is
+  # 0.042 m and RMS max 0.192 m; three passes are flagged, all on the mean.
   pass_flag:
     mean_num: 15.0
     rms_num: 25.0

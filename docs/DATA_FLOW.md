@@ -42,7 +42,7 @@ flowchart TB
         HY2B["<b>HY-2B</b><br/>TBD → TBD"]
         S3B["<b>S3B</b><br/>2018-11-24 → 2026-04-10"]
         S3A["<b>S3A</b><br/>TBD → TBD"]
-        SARAL["<b>Saral</b><br/>TBD → TBD"]
+        SARAL["<b>Saral</b><br/>2013-03-14 → 2026-10-05"]
         HY2A["<b>HY-2A</b><br/>TBD → TBD"]
         CRYO["<b>Cryosat-2</b><br/>2010-07-16 → 2026-07-12"]
         ENVI["<b>Envisat</b><br/>TBD → TBD"]

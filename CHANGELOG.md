@@ -29,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference crossovers (0.0199 and 0.0198 m per phase). The inherited pass-flag
   thresholds flag one of 164,102 passes. It is **disabled** (`enabled: false`,
   schedule staged with `cron: TBD`) until it goes to production.
+- SARAL/AltiKa as a `high_latitude` source (`utilities/sources/AL.yaml`), 2013-03-14
+  through 2026-10-05 from the AVISO `dataset-l2p-uncross-calibrated-ntc-sla-al`
+  collection, both orbit phases (the 35-day repeat orbit, cycles 1-35, and the
+  drifting orbit from 2016-07-04, cycles 100-206) as one date range. Its constants are
+  measured: `sample_period` 1.044381 s, `ground_speed` 6.7189 km/s, and
+  `intermission_bias` 0.0153 m over 5,514,970 reference crossovers (0.0162 and
+  0.0149 m per phase). AltiKa's sample steps fall in two clusters about 1.3% apart,
+  so the local period exceeds the 2% filter-width check by 0.33%; re-smoothing at
+  the worst case moves `ssha_smoothed` by under 1 mm at the 99th percentile, and it
+  is accepted. The crossover level falls about 8 mm from 2024, which the reference
+  OER removes. The inherited pass-flag thresholds flag three of 135,984 passes. It is
+  **disabled** (`enabled: false`, schedule staged with `cron: TBD`) until it goes to
+  production.
 ### Fixed
 
 - On a date with bad passes, the finalizer NaN'd `ssha_smoothed` wherever

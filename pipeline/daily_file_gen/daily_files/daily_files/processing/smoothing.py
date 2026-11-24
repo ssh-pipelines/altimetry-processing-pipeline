@@ -85,24 +85,18 @@ def smooth(ssha_vals: np.ndarray) -> np.float64:
     return smooth_point(ssha_vals)
 
 
-def sample_offsets(time: np.ndarray, sample_period: float) -> np.ndarray:
+def local_periods(
+    time: np.ndarray, sample_period: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Position of each sample in a series where every omitted sample has a slot.
+    Each step between adjacent samples, the local sample period around it, and the
+    step's length in local periods.
 
-    Sources omit records over land rather than writing NaN rows, so a window run
-    over the samples alone would reach across a land crossing. Counting the omitted
-    samples, rather than placing them on a clock grid, keeps the window 19 sample
-    periods wide at any sampling rate and with any timestamp alignment.
-
-    The count is the gap length in local sample periods, where the local period is
-    a rolling median of the surrounding regular steps: some sources' clocks drift
-    too far within a day for the configured `sample_period` to place every sample.
-    `sample_period` decides which steps are regular and stands in where there are
-    none nearby.
+    The local period is a rolling median of the surrounding regular steps (under
+    1.5 x `sample_period`): some sources' clocks drift too far within a day for
+    the configured `sample_period` to place every sample. `sample_period` decides
+    which steps are regular and stands in where there are none nearby.
     """
-    if len(time) < 2:
-        return np.zeros(len(time), dtype=np.int64)
-
     t = time.astype("datetime64[ns]").astype(np.int64)
     d = np.diff(t).astype(np.float64) / 1e9
 
@@ -114,14 +108,37 @@ def sample_offsets(time: np.ndarray, sample_period: float) -> np.ndarray:
         .fillna(sample_period)
         .to_numpy()
     )
+    return d, dt_local, d / dt_local
 
-    periods = d / dt_local
+
+def ambiguous_gaps(periods: np.ndarray) -> np.ndarray:
+    """
+    True where a step's omitted-sample count is not well determined: the step is
+    further than `_AMBIGUOUS_FRACTION` from a whole number of local periods, and
+    short enough for the far side to fall inside a 19-point window.
+    """
+    return (periods < _HALF_WINDOW + 1) & (
+        np.abs(periods - np.round(periods)) > _AMBIGUOUS_FRACTION
+    )
+
+
+def sample_offsets(time: np.ndarray, sample_period: float) -> np.ndarray:
+    """
+    Position of each sample in a series where every omitted sample has a slot.
+
+    Sources omit records over land rather than writing NaN rows, so a window run
+    over the samples alone would reach across a land crossing. Counting the omitted
+    samples, rather than placing them on a clock grid, keeps the window 19 sample
+    periods wide at any sampling rate and with any timestamp alignment. The count
+    is each gap's length in local sample periods (`local_periods`).
+    """
+    if len(time) < 2:
+        return np.zeros(len(time), dtype=np.int64)
+
+    _, _, periods = local_periods(time, sample_period)
     n_missing = np.clip(np.round(periods) - 1, 0, _HALF_WINDOW).astype(np.int64)
 
-    ambiguous = (
-        (periods < _HALF_WINDOW + 1)
-        & (np.abs(periods - np.round(periods)) > _AMBIGUOUS_FRACTION)
-    )
+    ambiguous = ambiguous_gaps(periods)
     if ambiguous.any():
         logging.debug(
             f"{ambiguous.sum()} gaps with ambiguous omitted-sample counts "

@@ -155,10 +155,18 @@ express it.
 ### Sampling rate: measure it
 
 Do not assume 1 Hz. The `reference` sources are 1 Hz on whole-second timestamps; none
-of the AVISO L2P granules inspected so far is (ERS-1 0.980468 s, CryoSat-2
-0.943437 s, Jason-1 1.007738 s, AltiKa 1.040686 s — see
-[SAMPLING_RATE_FINDINGS.md](SAMPLING_RATE_FINDINGS.md)). A collection name sometimes
-states the rate (`...-s3b-1hz`); most do not.
+of the AVISO L2P granules inspected so far is, and none of their timestamps lands on a
+whole second. A collection name sometimes states the rate (`...-s3b-1hz`); most do not.
+
+One granule each, measured before onboarding. These are cross-checks for the pass 1
+measurement, not values for the YAML:
+
+| Source | Granule | Median step (s) | Ground speed (km/s) |
+|---|---|---|---|
+| AltiKa | `C0193_P0014`, 2025-06-03 | 1.040686 | 6.7272 |
+| CryoSat-2 | `C0108_P0022`, 2018-07-10 | 0.943437 | 6.7591 |
+| ERS-1 | `C0015_P0001`, 1992-10-23 | 0.980468 | 6.7270 |
+| Jason-1 | `C0520_P0005`, 2012-12-11 | 1.007738 | 5.7770 |
 
 `sample_period` sets the smoothing filter's tap spacing (`ground_speed ×
 sample_period` km). Leaving the `1.0` default does not fail; it mis-sizes the filter
@@ -175,8 +183,43 @@ A single constant is adequate only where the rate is stable within a pass. CryoS
 and Jason-1 are constant to numerical noise; ERS-1 runs two interleaved rates
 2.4e-4 s apart, which the local median absorbs. AltiKa's step drifts along the pass
 (IQR 1.06e-02 s) and needs the full-record drift analysis before it is onboarded. The
-tool's range of per-pass medians shows drift *between* passes; it does not detect
-drift within one.
+range of per-pass medians from `compute_ground_speed` shows drift *between* passes; it
+does not detect drift within one.
+
+`tools/compute_sampling_drift.py` does. It checks that the smoother's count-based gap
+fill ([ADR 0011](adr/0011-count-based-smoother-gap-fill.md)) holds for the source,
+using the smoother's own gap measurement, and ends with a verdict on two checks
+([ADR 0013](adr/0013-sampling-drift-checks-the-smoother.md)):
+
+- **filter width**: every pass's local period, 1st to 99th percentile, within 2% of
+  the record's median step, since the taps are spaced by one `sample_period`;
+- **gap counts**: under 2% of samples over the record, and under 5% in any cycle,
+  with a gap inside their 19-point window that is not near a whole number of local
+  periods.
+
+Alongside, it reports each pass's median step, IQR, and correlation of step with
+position along the pass; the spread and yearly trend of the median step; whether the
+IQR grows from the first third of the record to the last; and a per-cycle table.
+`--csv` writes the per-pass rows. It reads the same P1 files (`--bucket` or
+`--daily-dir`, `--version` defaulting to `p1`). Pass `--sample-period` with the value
+`compute_ground_speed` measured while the YAML still holds the placeholder.
+
+Run it once per non-1 Hz source after pass 1, and over the whole record from pass 2
+when the step varies within a pass, since a two-week window cannot show accumulation.
+ERS-1 over 1992-10-25..1996-06-01 passes with margin: worst pass local period 0.90%,
+ambiguous-gap samples 0.53% (1.67% in cycle 15). CryoSat-2 over 2010-07-16..2026-07-11
+passes with no ambiguous gaps and a local period within 0.0012%. A failing verdict goes
+to science rather than to a code change.
+
+Two rate dependencies remain outside `sample_period`:
+
+- The outlier median filters in `AvisoL2PDailyFile` (`n_median = 15`, `n_std = 95`)
+  are sample counts, so their along-track length scales with the rate. ERS-1's
+  15-point median spans 98.9 km rather than 100.9 km. Science judged this
+  insignificant for rates near 1 Hz; a source much further from 1 Hz should revisit it.
+- `bad_points` entries match daily-file times truncated to whole seconds, so an entry
+  matches a sub-second timestamp only if it is written as that truncated second.
+  Manual point exclusion is effectively unusable for L2P sources.
 
 ### On `enabled`
 

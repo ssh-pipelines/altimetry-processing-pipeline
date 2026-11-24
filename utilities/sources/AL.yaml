@@ -18,7 +18,10 @@ common:
   # 2021-03-01..03-14 P1 (tools/compute_ground_speed.py); the phases read 6.7198
   # and 6.7184.
   ground_speed: 6.7189
-  intermission_bias: 0   # PLACEHOLDER: measured from the pass 2 p1 crossovers
+  # The phases agree (repeat 0.0162, drifting 0.0149). The level falls about 8 mm
+  # from 2024 (cycles 1-175 0.0169, 176 on 0.0091), which the reference OER absorbs as a
+  # slow drift; science judged a single value adequate.
+  intermission_bias: 0.0153   # m, median (ssh1 - ssh2) over 5514970 reference crossovers vs NASA-SSH, 2013-03-14..2026-10-05 p1 (tools/compute_intermission_bias.py)
   # s, median sample step over 803 passes, same windows. Steps cluster near
   # 1.034 s and 1.047 s, so the local period runs -1.2% to +2.3% from this value,
   # past the 2% filter-width check (ADR 0013). Accepted: re-smoothing with every
